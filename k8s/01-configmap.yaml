@@ -1,0 +1,23 @@
+# 非敏感配置：对应 compose 里 app 服务的 environment（服务地址部分）
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nav-deployer-config
+  namespace: nav-deployer
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nav_deployer
+  SPRING_DATA_REDIS_HOST: redis
+  SPRING_DATA_REDIS_PORT: "6379"
+  # 集群内访问 MinIO（容器网络）
+  MINIO_ENDPOINT: http://minio:9000
+  # 预签名 URL 的对外端口（NodePort 映射到宿主机 9000）
+  MINIO_EXTERNAL_PORT: "9000"
+  # 可选：MinIO 独立域名时取消注释固定签名地址（优先于动态推导）
+  # MINIO_EXTERNAL_ENDPOINT: https://minio.example.com
+  MINIO_BUCKET: user-avatars
+  # 部署程序：建图快照存储桶
+  MINIO_MAPS_BUCKET: nav-maps
+  # 仿真 AGV rosbridge 对接（Pod 内无法访问 127.0.0.1，
+  # 需改为 k3s 节点（WSL 宿主）IP，例如 ws://192.168.x.x:9090）
+  SIM_AGV_ENABLED: "true"
+  SIM_AGV_WS_URL: ws://127.0.0.1:9090

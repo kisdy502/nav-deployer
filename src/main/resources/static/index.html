@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Nav Deployer 控制台</title>
+    <link href="/vendor/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .avatar-img { width: 48px; height: 48px; object-fit: cover; border-radius: 50%; }
+        .avatar-empty {
+            width: 48px; height: 48px; border-radius: 50%;
+            background: #dee2e6; color: #6c757d;
+            display: flex; align-items: center; justify-content: center;
+            font-size: .75rem;
+        }
+        .time-cell { font-size: .8rem; color: #6c757d; white-space: nowrap; }
+    </style>
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-dark bg-primary mb-4">
+    <div class="container">
+        <span class="navbar-brand fw-bold">Nav Deployer 用户管理</span>
+        <span class="navbar-text small">
+            PostgreSQL(MyBatis-Plus) + Redis 缓存 + MinIO 头像
+            <a class="text-white ms-2" href="/swagger-ui/index.html" target="_blank">Swagger</a>
+            <span class="badge bg-light text-primary ms-2">page v4</span>
+        </span>
+    </div>
+</nav>
+
+<div class="container pb-5">
+    <div id="alertBox"></div>
+
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+            <h6 class="mb-0">用户列表</h6>
+            <div class="d-flex gap-2">
+                <input type="text" class="form-control form-control-sm" id="searchInput"
+                       placeholder="按姓名搜索" style="width: 160px;">
+                <button id="btnSearch" class="btn btn-sm btn-outline-secondary">搜索</button>
+                <button id="btnNew" class="btn btn-sm btn-primary">+ 新增用户</button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th style="width: 80px;">头像</th>
+                        <th>姓名</th>
+                        <th>年龄</th>
+                        <th>头像 Key (MinIO)</th>
+                        <th>创建时间 / 修改时间</th>
+                        <th style="width: 220px;">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                    <tr><td colspan="7" class="text-center text-muted py-4">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增 / 编辑用户 -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <form id="userForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">新增用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">姓名</label>
+                        <input type="text" class="form-control" id="nameInput" maxlength="64" placeholder="请输入姓名" required>
+                    </div>
+                    <div class="mb-1">
+                        <label class="form-label">年龄</label>
+                        <input type="number" class="form-control" id="ageInput" min="0" max="150" placeholder="0 - 150" required>
+                    </div>
+                    <div class="text-danger small mt-2 d-none" id="formError"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary btn-sm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="avatarFile" accept=".jpg,.jpeg,.png,.gif,.webp" hidden>
+
+<script src="/vendor/jquery.min.js"></script>
+<script src="/vendor/bootstrap.bundle.min.js"></script>
+<script>
+    window.onerror = function (msg) {
+        $('#alertBox').html(
+            `<div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <strong>脚本错误：</strong>${String(msg).replace(/[<>"']/g, '')}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`);
+    };
+</script>
+<script>
+    const API = '/api/v1/users';
+    const AVATAR_PLACEHOLDER = `data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Ccircle cx='24' cy='24' r='24' fill='%23dee2e6'/%3E%3C/svg%3E`;
+    let editingId = null;   // null = 新增，否则为编辑中的用户 id
+    let avatarUserId = null;
+
+    function debugLog() {
+        if (window.console && console.log) console.log('[avatar]', ...arguments);
+    }
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g,
+            c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+
+    function fmtTime(s) {
+        if (!s) return '-';
+        const d = new Date(s);
+        return isNaN(d) ? s : d.toLocaleString('zh-CN', {hour12: false});
+    }
+
+    function showAlert(type, message) {
+        $('#alertBox').html(
+            `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${escapeHtml(message)}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`);
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    function failHandler(xhr) {
+        const msg = xhr.responseJSON && xhr.responseJSON.msg
+            ? xhr.responseJSON.msg : `请求失败 (${xhr.status})`;
+        showAlert('danger', msg);
+    }
+
+    function avatarCell(u) {
+        if (!u.avatar_key) return '<div class="avatar-empty">无</div>';
+        return `<img class="avatar-img" alt="头像" loading="lazy" src="${AVATAR_PLACEHOLDER}" data-avatar-user="${u.id}">`;
+    }
+
+    function fillAvatar(id) {
+        $.getJSON(`${API}/${id}/avatar-url`)
+            .done(r => {
+                const $img = $(`img[data-avatar-user="${id}"]`);
+                if ($img.length === 0) {
+                    debugLog('img 节点未找到, id=', id);
+                    return;
+                }
+                let triedProxy = false;
+                $img.off('error').on('error', function () {
+                    if (!triedProxy) {
+                        triedProxy = true;
+                        debugLog('预签名 URL 加载失败，回退同源代理, id=', id, 'url=', r.data.url);
+                        this.src = `${API}/${id}/avatar`;
+                    } else {
+                        debugLog('同源代理也失败, id=', id);
+                        this.src = AVATAR_PLACEHOLDER;
+                    }
+                });
+                $img.attr('src', r.data.url);
+            })
+            .fail(xhr => {
+                debugLog('avatar-url 接口失败, id=', id, 'status=', xhr.status);
+                $(`img[data-avatar-user="${id}"]`).attr('src', `${API}/${id}/avatar`);
+            });
+    }
+
+    function render(users) {
+        const $tb = $('#userTableBody').empty();
+        if (!users || !users.length) {
+            $tb.append('<tr><td colspan="7" class="text-center text-muted py-4">暂无用户，点击右上角新增</td></tr>');
+            return;
+        }
+        users.forEach(u => {
+            $tb.append(`
+                <tr>
+                    <td>${u.id}</td>
+                    <td>${avatarCell(u)}</td>
+                    <td class="fw-bold">${escapeHtml(u.name)}</td>
+                    <td>${u.age ?? '-'}</td>
+                    <td class="small text-muted">${escapeHtml(u.avatar_key || '-')}</td>
+                    <td class="time-cell">${fmtTime(u.created_at)}<br>${fmtTime(u.updated_at)}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary btn-edit" data-id="${u.id}">编辑</button>
+                        <button class="btn btn-sm btn-outline-success btn-avatar" data-id="${u.id}">换头像</button>
+                        <button class="btn btn-sm btn-outline-danger btn-del" data-id="${u.id}">删除</button>
+                    </td>
+                </tr>`);
+            if (u.avatar_key) fillAvatar(u.id);
+        });
+    }
+
+    function loadUsers() {
+        const name = $.trim($('#searchInput').val());
+        $.getJSON(API, name ? {name: name} : {})
+            .done(r => render(r.data))
+            .fail(failHandler);
+    }
+
+    $('#btnSearch').on('click', loadUsers);
+    $('#searchInput').on('keydown', e => {
+        if (e.key === 'Enter') loadUsers();
+    });
+
+    $('#btnNew').on('click', () => {
+        editingId = null;
+        $('#modalTitle').text('新增用户');
+        $('#userForm')[0].reset();
+        $('#formError').addClass('d-none');
+        bootstrap.Modal.getOrCreateInstance($('#userModal')[0]).show();
+    });
+
+    $('#userTableBody')
+        .on('click', '.btn-edit', function () {
+            const id = $(this).data('id');
+            $.getJSON(`${API}/${id}`).done(r => {
+                editingId = r.data.id;
+                $('#modalTitle').text(`编辑用户 #${r.data.id}`);
+                $('#nameInput').val(r.data.name);
+                $('#ageInput').val(r.data.age);
+                $('#formError').addClass('d-none');
+                bootstrap.Modal.getOrCreateInstance($('#userModal')[0]).show();
+            }).fail(failHandler);
+        })
+        .on('click', '.btn-del', function () {
+            const id = $(this).data('id');
+            if (!confirm(`确定删除用户 #${id} 吗？其头像也会从 MinIO 删除。`)) return;
+            $.ajax({url: `${API}/${id}`, method: 'DELETE'})
+                .done(() => {
+                    showAlert('success', `用户 #${id} 已删除`);
+                    loadUsers();
+                }).fail(failHandler);
+        })
+        .on('click', '.btn-avatar', function () {
+            avatarUserId = $(this).data('id');
+            $('#avatarFile').val('');
+            $('#avatarFile').click();
+        });
+
+    $('#userForm').on('submit', e => {
+        e.preventDefault();
+        const payload = {
+            name: $('#nameInput').val().trim(),
+            age: parseInt($('#ageInput').val(), 10)
+        };
+        if (!payload.name || isNaN(payload.age)) {
+            $('#formError').text('请填写姓名和年龄').removeClass('d-none');
+            return;
+        }
+        const req = editingId === null
+            ? $.ajax({url: API, method: 'POST', contentType: 'application/json', data: JSON.stringify(payload)})
+            : $.ajax({url: `${API}/${editingId}`, method: 'PUT', contentType: 'application/json', data: JSON.stringify(payload)});
+        req.done(() => {
+            bootstrap.Modal.getOrCreateInstance($('#userModal')[0]).hide();
+            showAlert('success', editingId === null ? '用户创建成功' : '用户更新成功');
+            loadUsers();
+        }).fail(xhr => {
+            const msg = xhr.responseJSON && xhr.responseJSON.msg
+                ? xhr.responseJSON.msg : `保存失败 (${xhr.status})`;
+            $('#formError').text(msg).removeClass('d-none');
+        });
+    });
+
+    $('#avatarFile').on('change', function () {
+        const file = this.files[0];
+        if (!file || avatarUserId === null) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        $.ajax({
+            url: `${API}/${avatarUserId}/avatar`,
+            method: 'POST',
+            data: fd,
+            processData: false,
+            contentType: false
+        }).done(() => {
+            showAlert('success', `用户 #${avatarUserId} 头像已更新`);
+            loadUsers();
+        }).fail(failHandler);
+    });
+
+    $(loadUsers);
+</script>
+</body>
+</html>

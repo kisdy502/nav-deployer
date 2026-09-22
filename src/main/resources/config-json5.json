@@ -1,0 +1,10 @@
+{
+  "connect": {
+    "endpoints": ["tcp/192.168.63.15:31709"]
+  },
+  "scouting": {
+    "multicast": { "enabled": false },
+    "gossip": { "enabled": false }
+  },
+  "namespace": "cz_qc"
+}

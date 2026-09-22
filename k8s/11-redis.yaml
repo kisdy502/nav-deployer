@@ -1,0 +1,38 @@
+# Redis：Deployment（缓存可丢，演示环境不挂 PVC；需要持久化可参照 postgres 改成 StatefulSet）
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: nav-deployer
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: nav-deployer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 3
+            periodSeconds: 5

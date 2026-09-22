@@ -1,0 +1,111 @@
+server:
+  port: 8083
+  tomcat:
+    accesslog:
+      enabled: true
+      directory: /tmp
+
+spring:
+  application:
+    name: nav-deployer
+  datasource:
+    # 本地开发用默认值，Docker 部署时由环境变量覆盖
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nav_deployer}
+    username: ${SPRING_DATASOURCE_USERNAME:appuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:app123456}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      # 每次启动执行 schema.sql（幂等建表），替代 JPA 的 ddl-auto
+      mode: always
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          # 页面禁止启发式缓存，避免改版后浏览器仍用旧 JS 调旧接口
+          no-cache: true
+  jackson:
+    # 接口契约统一 snake_case（created_at / avatar_key / expire_in_seconds）
+    property-naming-strategy: SNAKE_CASE
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
+
+mybatis-plus:
+  global-config:
+    banner: false
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+minio:
+  # 应用数据操作用的地址（Docker 内为 http://minio:9000）
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  # 预签名 URL 的 MinIO 外部端口，host 部分按浏览器请求的 Host 动态推导
+  external-port: ${MINIO_EXTERNAL_PORT:9000}
+  # 可选：MinIO 独立域名（如 https://minio.example.com）。配置后固定用它签名；留空则动态推导
+  external-endpoint: ${MINIO_EXTERNAL_ENDPOINT:}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin123}
+  bucket: ${MINIO_BUCKET:user-avatars}
+  region: ${MINIO_REGION:us-east-1}
+  # 部署程序：建图快照（gzip OccupancyGrid）存储桶
+  maps-bucket: ${MINIO_MAPS_BUCKET:nav-maps}
+
+logging:
+  level:
+    com.agv.navdeployer: info
+
+
+# ============================================================
+# Simulated AGV (rosbridge) telemetry source.
+# Live data comes from the simulated_chassis stack (Gazebo + Nav2 + Cartographer)
+# through agv_bridge_v2: /agv/status (1Hz), /tf (map->AGV001/base_link, 10Hz).
+# Prerequisite: `docker compose --profile navigation up -d` on the sim host.
+# ============================================================
+sim_agv:
+  enabled: ${SIM_AGV_ENABLED:true}
+  ws_url: ${SIM_AGV_WS_URL:ws://127.0.0.1:9090}
+  status_topic: /agv/status
+  tf_topic: /tf
+  # Must match the bridge agv_id (child_frame_id = <agv_id>/base_link).
+  tf_child_frame: AGV001/base_link
+  tf_throttle_ms: 100
+  odom_enabled: false
+  odom_topic: /odom
+  reconnect_delay_ms: 3000
+  scan_enabled: true
+  pose_topic: /agv/pose
+  scan_throttle_ms: 333
+  scan_topic_1: /scan_1
+  scan_topic_2: /scan_2
+  summary_interval_ms: 5000
+  # 建图：/map 大消息订阅（分片重组在 RosbridgeClient 内完成）
+  map_enabled: true
+  map_topic: /map
+  map_throttle_ms: 5000
+  map_fragment_size: 500000
+  # 下行通道：follow_edge action / set_control 服务 / 重定位
+  follow_edge_action: /agv/follow_edge
+  follow_edge_action_type: agv_bridge_v2_interfaces/action/FollowEdge
+  set_control_service: /agv/set_control
+  initial_pose_topic: /initialpose
+  service_timeout_ms: 5000
+  goal_timeout_s: 600
+  default_max_speed: 0.6
+  default_step: 0.1
+  # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理，完成看 mode 流转）
+  list_maps_service: /agv/list_maps
+  get_map_service: /agv/get_map
+  load_map_service: /agv/load_map
+  start_mapping_service: /agv/start_mapping
+  save_map_service: /agv/save_map
+  # 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作
+  status_fresh_ms: 5000
+  # 模式任务（切图等）整体截止时间
+  mode_task_timeout_ms: 90000

@@ -1,0 +1,62 @@
+# 应用：Deployment(2 副本) + Service（对应 compose 的 app 服务）
+# initContainer 等 postgres/redis/minio 就绪再启动（替代 compose 的 depends_on）
+apiVersion: v1
+kind: Service
+metadata:
+  name: nav-deployer
+  namespace: nav-deployer
+spec:
+  selector:
+    app: nav-deployer
+  ports:
+    - port: 8083
+      targetPort: 8083
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nav-deployer
+  namespace: nav-deployer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nav-deployer
+  template:
+    metadata:
+      labels:
+        app: nav-deployer
+    spec:
+      initContainers:
+        - name: wait-for-infra
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z postgres 5432 && nc -z redis 6379 && nc -z minio 9000; do echo waiting for infra...; sleep 2; done"]
+      containers:
+        - name: nav-deployer
+          image: nav-deployer:v0.1.0
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: nav-deployer-config
+            - secretRef:
+                name: nav-deployer-secret
+          ports:
+            - containerPort: 8083
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8083
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8083
+            initialDelaySeconds: 40
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi

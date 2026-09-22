@@ -1,0 +1,31 @@
+# Ingress：K3s 自带 Traefik，k3d 建集群时已把宿主机 8083 映射到集群 80 入口
+# Traefik 按 Host 头路由：带 host 的规则优先匹配，不带 host 的规则兜底（IP 或任意域名访问）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nav-deployer
+  namespace: nav-deployer
+spec:
+  ingressClassName: traefik
+  rules:
+    # 规则一：域名 localhost 访问（本机）
+    - host: localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nav-deployer
+                port:
+                  number: 8083
+    # 规则二：兜底，任意 Host（http://<IP>:8083 / 其他机器访问）都转发到 app
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nav-deployer
+                port:
+                  number: 8083

@@ -1,0 +1,93 @@
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16
+    container_name: nav-deployer-postgres
+    environment:
+      POSTGRES_DB: nav_deployer
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: app123456
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d nav_deployer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Redis 缓存
+  redis:
+    image: redis:7
+    container_name: nav-deployer-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # MinIO 对象存储（9000 API，9001 Web 控制台）
+  minio:
+    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: nav-deployer-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Spring Boot 应用
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: nav-deployer:v0.1.0
+    container_name: nav-deployer-app
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nav_deployer
+      SPRING_DATASOURCE_USERNAME: appuser
+      SPRING_DATASOURCE_PASSWORD: app123456
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINIO_ENDPOINT: http://minio:9000
+      # 预签名 URL 的 MinIO 对外端口（host 按浏览器访问地址自动推导）
+      MINIO_EXTERNAL_PORT: "9000"
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: user-avatars
+      MINIO_MAPS_BUCKET: nav-maps
+      # 仿真 AGV rosbridge（compose 单机部署时机器人栈需与本机互通）
+      SIM_AGV_ENABLED: "true"
+      SIM_AGV_WS_URL: ws://host.docker.internal:9090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
