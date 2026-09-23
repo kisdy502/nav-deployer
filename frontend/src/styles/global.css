@@ -1,0 +1,62 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    sans-serif;
+  color: #303133;
+  background: #f5f7fa;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* three CSS2D 标签（CSS2DRenderer 会覆盖元素自身 transform，位移写在子元素上） */
+.nd-label {
+  pointer-events: none;
+  user-select: none;
+}
+
+.nd-label-inner {
+  display: inline-block;
+  transform: translateY(-30px);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #cdd0d8;
+  border-radius: 4px;
+  color: #303133;
+  white-space: nowrap;
+}
+
+.nd-label-inner--robot {
+  background: rgba(64, 158, 255, 0.92);
+  border-color: #409eff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.nd-label-inner--measure {
+  background: rgba(245, 108, 108, 0.92);
+  border-color: #f56c6c;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 画布光标 */
+.map-cursor-idle .map-canvas-el {
+  cursor: grab;
+}
+.map-cursor-cross .map-canvas-el {
+  cursor: crosshair;
+}
+.map-cursor-point .map-canvas-el {
+  cursor: pointer;
+}

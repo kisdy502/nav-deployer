@@ -1,0 +1,32 @@
+{
+  "name": "nav-deployer-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "@tweenjs/tween.js": "^25.0.0",
+    "axios": "^1.7.9",
+    "dayjs": "^1.11.13",
+    "element-plus": "^2.9.3",
+    "pinia": "^3.0.3",
+    "three": "^0.172.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/three": "^0.172.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "playwright-core": "^1.63.0",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  }
+}
