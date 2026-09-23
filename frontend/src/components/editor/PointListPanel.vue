@@ -20,7 +20,7 @@ const tasks = useTasksStore()
 
 const keyword = ref('')
 
-const colorOf = (t: string): string => (t === 'CHARGER' ? '#e6a23c' : t === 'HOME' ? '#67c23a' : '#409eff')
+const colorOf = (t: string): string => (t === 'CHARGER' ? '#e6a23c' : '#95d475')
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase()

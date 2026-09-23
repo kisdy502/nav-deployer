@@ -1,271 +1,358 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { DataLine, More, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import {
+  FolderOpened,
+  FullScreen,
+  Odometer,
+  ScaleToOriginal,
+  Share,
+} from '@element-plus/icons-vue'
+import MapCanvas from '@/components/editor/MapCanvas.vue'
+import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
+import MappingPanel from '@/components/editor/MappingPanel.vue'
+import MapsManageDialog from '@/components/editor/MapsManageDialog.vue'
+import BrowsePanel from '@/components/browse/BrowsePanel.vue'
+import { useEditorStore } from '@/stores/editor'
 import { useMapListStore } from '@/stores/mapList'
+import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { fmtTime, MAP_STATUS_TAG } from '@/utils/format'
+import { startMapping } from '@/api/tasks'
 
 const router = useRouter()
+const editor = useEditorStore()
 const mapStore = useMapListStore()
+const robot = useRobotStore()
 const tasks = useTasksStore()
 
-const saveDialog = reactive({ visible: false, name: '' })
-const saving = ref(false)
+const mapCanvasRef = ref<InstanceType<typeof MapCanvas>>()
+const mappingVisible = ref(false)
+const manageVisible = ref(false)
+const guide = reactive({ visible: false, starting: false })
+/** 用户手动切换过地图后，不再自动跟随机器人地图 */
+const manualSelected = ref(false)
 
-const switchTask = computed(() =>
-  tasks.currentMapTask && tasks.currentMapTask.type === 'SWITCH_MAP' && tasks.mapTaskInFlight
-    ? tasks.currentMapTask
-    : null,
-)
-
-const statusTag = (s: 'DRAFT' | 'ACTIVE' | 'ARCHIVED') => MAP_STATUS_TAG[s]
-
-onMounted(() => {
-  mapStore.load()
-  mapStore.fetchLive()
-  tasks.refresh()
+// 地图下拉：机器人当前地图排第一，其次部署中
+const sortedMaps = computed(() => {
+  const name = robot.status?.map_name
+  const score = (m: { map_name: string; robot_map_name: string | null; status: string }) => {
+    if (name && (name === m.map_name || name === m.robot_map_name)) return 0
+    return m.status === 'ACTIVE' ? 1 : 2
+  }
+  return [...mapStore.maps].sort((a, b) => score(a) - score(b))
 })
 
-// 切图任务结束后刷新列表
-const stopWatch = watch(
-  () => tasks.currentMapTask,
-  (t, prev) => {
-    if (!t || !prev) return
-    if (t.type === 'SWITCH_MAP' && (t.status === 'SUCCEEDED' || t.status === 'FAILED')) {
-      mapStore.load()
-    }
+const currentMapId = computed({
+  get: () => editor.mapId || undefined,
+  set: (v: number | undefined) => {
+    if (v) selectMap(v)
   },
-)
-onBeforeUnmount(() => stopWatch())
+})
 
-function openEditor(id: number) {
-  router.push({ name: 'editor', params: { id: String(id) } })
-}
-
-async function onSaveLive() {
-  const name = saveDialog.name.trim()
-  if (!name) return
-  saving.value = true
-  try {
-    const vo = await mapStore.saveLiveAsMap(name)
-    ElMessage.success(`已保存为地图「${vo.map_name}」`)
-    saveDialog.visible = false
-    saveDialog.name = ''
-  } finally {
-    saving.value = false
+/** 打开页面第一步：加载机器人默认地图（机器人当前 > 部署中 > 最新） */
+async function pickDefaultMap() {
+  const maps = mapStore.maps
+  if (maps.length === 0) {
+    guide.visible = true
+    return
+  }
+  const name = robot.status?.map_name
+  const target =
+    (name ? maps.find((m) => m.map_name === name || m.robot_map_name === name) : null) ??
+    maps.find((m) => m.status === 'ACTIVE') ??
+    maps[0]
+  if (!target) return
+  if (editor.mapId !== target.id || !editor.grid) {
+    await editor.loadMap(target.id)
   }
 }
 
-async function onActivate(id: number) {
-  await mapStore.activate(id)
-  ElMessage.success('已设为部署地图')
+function selectMap(id: number) {
+  manualSelected.value = true
+  void editor.loadMap(id)
 }
 
-async function onSwitch(id: number, robotMapName: string | null) {
-  await ElMessageBox.confirm(
-    '将命令机器人加载该地图并重定位，期间机器人不可执行其他任务，确认继续？',
-    '切换机器人地图',
-    { type: 'warning', confirmButtonText: '切换', cancelButtonText: '取消' },
-  )
-  await mapStore.switchTo(id, robotMapName ?? undefined)
-  ElMessage.info('切换任务已下发，等待机器人完成重定位…')
+// 机器人地图变化时（未手动选择过）自动跟随
+watch(
+  () => robot.status?.map_name,
+  (name) => {
+    if (!name || manualSelected.value || guide.visible) return
+    const m = mapStore.maps.find((x) => x.map_name === name || x.robot_map_name === name)
+    if (m && m.id !== editor.mapId) void editor.loadMap(m.id)
+  },
+)
+
+onMounted(async () => {
+  await mapStore.load()
+  tasks.refresh()
+  await pickDefaultMap()
+})
+
+function editMap() {
+  if (!editor.mapId) {
+    ElMessage.warning('请先选择一张地图')
+    return
+  }
+  router.push({ name: 'editor', params: { id: String(editor.mapId) } })
 }
 
-async function onRename(id: number, oldName: string) {
-  const { value } = await ElMessageBox.prompt('输入新的地图名称', '重命名地图', {
-    inputValue: oldName,
-    inputPattern: /^\S{1,64}$/,
-    inputErrorMessage: '1~64 个非空白字符',
-  })
-  await mapStore.rename(id, value.trim())
-  ElMessage.success('已重命名')
+function toggleMeasure() {
+  editor.setMode(editor.mode === 'measure' ? 'idle' : 'measure')
 }
 
-async function onDelete(id: number, name: string) {
-  await ElMessageBox.confirm(`确认删除地图「${name}」？该操作不可恢复。`, '删除地图', {
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-  })
-  await mapStore.remove(id)
-  ElMessage.success('已删除')
+async function startMappingNow() {
+  guide.starting = true
+  try {
+    await startMapping()
+    guide.visible = false
+    mappingVisible.value = true
+    ElMessage.success('已进入建图模式，操作机器人建图完成后，在右侧面板点击「保存并入库」')
+  } catch {
+    /* http 层已提示 */
+  } finally {
+    guide.starting = false
+  }
 }
 </script>
 
 <template>
-  <div class="home">
-    <header class="home-header">
-      <div class="home-title">
-        <el-icon :size="22"><MapLocation /></el-icon>
-        <h1>Nav Deployer 部署控制台</h1>
+  <div class="browse">
+    <header class="browse-header">
+      <div class="header-title">
+        <el-icon :size="20"><MapLocation /></el-icon>
+        <span>Nav Deployer 部署控制台</span>
       </div>
-      <div class="home-actions">
-        <el-button type="primary" :icon="DataLine" @click="saveDialog.visible = true">保存实时图为新地图</el-button>
-        <el-button :icon="Refresh" @click="mapStore.load(); mapStore.fetchLive()">刷新</el-button>
+
+      <div class="header-map">
+        <el-select
+          v-model="currentMapId"
+          placeholder="选择地图"
+          size="default"
+          style="width: 240px"
+        >
+          <el-option
+            v-for="m in sortedMaps"
+            :key="m.id"
+            :value="m.id"
+            :label="m.map_name"
+          >
+            <div class="map-option">
+              <span>{{ m.map_name }}</span>
+              <el-tag
+                v-if="robot.status?.map_name && (robot.status.map_name === m.map_name || robot.status.map_name === m.robot_map_name)"
+                size="small"
+                type="success"
+                effect="light"
+              >机器人当前</el-tag>
+              <el-tag v-else-if="m.status === 'ACTIVE'" size="small" type="primary" effect="light">部署中</el-tag>
+            </div>
+          </el-option>
+        </el-select>
+        <el-tag v-if="editor.mapInfo" size="small" :type="editor.mapInfo.status === 'ACTIVE' ? 'success' : 'info'">
+          {{ editor.mapInfo.status === 'ACTIVE' ? '部署中' : editor.mapInfo.status }}
+        </el-tag>
+      </div>
+
+      <div class="header-actions">
+        <el-button type="primary" :icon="Share" @click="editMap">编辑地图</el-button>
+        <el-button :icon="Odometer" @click="mappingVisible = true">建图</el-button>
+        <el-button :icon="FolderOpened" @click="manageVisible = true">地图管理</el-button>
       </div>
     </header>
 
-    <el-alert
-      v-if="switchTask"
-      class="switch-alert"
-      type="warning"
-      :closable="false"
-      show-icon
-    >
-      <template #title>
-        正在切换机器人地图「{{ switchTask.map_name ?? switchTask.robot_map_name }}」：
-        {{ switchTask.status === 'RELOCATING' ? '机器人重定位中…' : '任务已下发…' }}
-      </template>
-    </el-alert>
+    <div class="browse-body">
+      <!-- 左侧编辑菜单栏 -->
+      <aside class="rail">
+        <el-tooltip content="编辑地图" placement="right">
+          <button class="rail-btn" :class="{ active: false }" @click="editMap">
+            <el-icon :size="18"><Share /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="建图 / 保存地图" placement="right">
+          <button class="rail-btn" @click="mappingVisible = true">
+            <el-icon :size="18"><Odometer /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="地图管理" placement="right">
+          <button class="rail-btn" @click="manageVisible = true">
+            <el-icon :size="18"><FolderOpened /></el-icon>
+          </button>
+        </el-tooltip>
+        <div class="rail-divider"></div>
+        <el-tooltip content="测量距离" placement="right">
+          <button class="rail-btn" :class="{ active: editor.mode === 'measure' }" @click="toggleMeasure">
+            <el-icon :size="18"><ScaleToOriginal /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="适应视图" placement="right">
+          <button class="rail-btn" @click="mapCanvasRef?.fitView()">
+            <el-icon :size="18"><FullScreen /></el-icon>
+          </button>
+        </el-tooltip>
+      </aside>
 
-    <main class="home-main">
-      <div v-loading="mapStore.loading" class="map-grid">
-        <el-empty v-if="!mapStore.loading && mapStore.maps.length === 0" description="还没有地图：先开始建图，或在机器人建图完成后保存入库" />
+      <main class="browse-main">
+        <MapCanvas ref="mapCanvasRef" :editable="false" />
+      </main>
 
-        <el-card v-for="m in mapStore.maps" :key="m.id" class="map-card" shadow="hover">
-          <div class="map-card-head">
-            <span class="map-name" :title="m.map_name">{{ m.map_name }}</span>
-            <el-tag :type="statusTag(m.status).type" size="small">{{ statusTag(m.status).label }}</el-tag>
-          </div>
-          <div class="map-card-info">
-            <div>分辨率：{{ m.resolution ?? '-' }} m/格</div>
-            <div>尺寸：{{ m.width ?? '-' }} × {{ m.height ?? '-' }}</div>
-            <div>机器人地图名：{{ m.robot_map_name || '-' }}</div>
-            <div>更新时间：{{ fmtTime(m.updated_at) }}</div>
-          </div>
-          <template #footer>
-            <div class="map-card-btns">
-              <el-button type="primary" size="small" @click="openEditor(m.id)">编辑部署</el-button>
-              <el-button
-                size="small"
-                :disabled="m.status === 'ACTIVE'"
-                @click="onActivate(m.id)"
-              >设为部署图</el-button>
-              <el-button
-                size="small"
-                type="success"
-                plain
-                :disabled="!!switchTask"
-                @click="onSwitch(m.id, m.robot_map_name)"
-              >切换到机器人</el-button>
-              <el-dropdown trigger="click" @command="(cmd: string) => (cmd === 'rename' ? onRename(m.id, m.map_name) : onDelete(m.id, m.map_name))">
-                <el-button size="small" text :icon="More"></el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="rename">重命名</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided>
-                      <span style="color: var(--el-color-danger)">删除</span>
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </template>
-        </el-card>
+      <aside class="browse-right">
+        <BrowsePanel @locate-point="(xy) => mapCanvasRef?.flyToPoint(xy.x, xy.y)" @locate-bounds="(pts) => mapCanvasRef?.flyToBounds(pts)" />
+      </aside>
+    </div>
+
+    <footer class="browse-footer">
+      <RobotStatusBar />
+    </footer>
+
+    <MappingPanel v-if="mappingVisible" @close="mappingVisible = false" />
+    <MapsManageDialog v-model="manageVisible" @browse="(id: number) => selectMap(id)" />
+
+    <!-- 空地图建图引导 -->
+    <el-dialog v-model="guide.visible" title="欢迎使用 Nav Deployer" width="460px" :close-on-click-modal="false">
+      <div class="guide-body">
+        <el-empty description="当前还没有任何地图" :image-size="80" />
+        <div class="guide-steps">
+          <div>1. 点击「开始建图」，机器人进入在线建图模式；</div>
+          <div>2. 遥控机器人走遍作业区域，地图实时预览；</div>
+          <div>3. 建图完成后在「建图」面板点击「保存并入库」；</div>
+          <div>4. 入库成功后即可在本页浏览、标注点位与路线。</div>
+        </div>
       </div>
-    </main>
-
-    <el-dialog v-model="saveDialog.visible" title="保存实时图为新地图" width="420px">
-      <el-alert
-        v-if="!mapStore.liveGrid"
-        type="info"
-        :closable="false"
-        show-icon
-        title="当前没有可用的实时地图（机器人尚未上传 /map）"
-        style="margin-bottom: 12px"
-      />
-      <el-form label-width="90px" @submit.prevent>
-        <el-form-item label="地图名称" required>
-          <el-input v-model="saveDialog.name" maxlength="64" placeholder="1~64 字符" @keyup.enter="onSaveLive" />
-        </el-form-item>
-      </el-form>
       <template #footer>
-        <el-button @click="saveDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="!mapStore.liveGrid" @click="onSaveLive">保存</el-button>
+        <el-button @click="guide.visible = false">稍后</el-button>
+        <el-button type="primary" :loading="guide.starting" @click="startMappingNow">开始建图</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.home {
+.browse {
   height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-.home-header {
+.browse-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px;
+  gap: 16px;
+  padding: 10px 16px;
   background: #fff;
   border-bottom: 1px solid #e4e7ed;
 }
 
-.home-title {
+.header-title {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.home-title h1 {
-  font-size: 18px;
-  margin: 0;
   font-weight: 600;
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
-.home-actions {
+.header-map {
   display: flex;
+  align-items: center;
   gap: 8px;
-}
-
-.switch-alert {
-  margin: 12px 24px 0;
-}
-
-.home-main {
   flex: 1;
-  overflow: auto;
-  padding: 20px 24px;
+  min-width: 0;
 }
 
-.map-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-  min-height: 200px;
-}
-
-.map-card-head {
+.map-option {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
 }
 
-.map-name {
-  font-size: 15px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.map-card-info {
-  margin-top: 10px;
-  display: grid;
-  gap: 4px;
-  font-size: 12.5px;
-  color: #606266;
-}
-
-.map-card-btns {
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.browse-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.rail {
+  width: 48px;
+  background: #fff;
+  border-right: 1px solid #e4e7ed;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+  gap: 6px;
+  z-index: 20;
+}
+
+.rail-btn {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #606266;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rail-btn:hover {
+  background: #f5f7fa;
+  color: #409eff;
+}
+
+.rail-btn.active {
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+.rail-divider {
+  width: 24px;
+  height: 1px;
+  background: #e4e7ed;
+  margin: 4px 0;
+}
+
+.browse-main {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.browse-right {
+  width: 300px;
+  background: #fff;
+  border-left: 1px solid #e4e7ed;
+}
+
+.browse-footer {
+  height: 36px;
+}
+
+.guide-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.guide-steps {
+  align-self: stretch;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #606266;
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 8px;
 }
 </style>

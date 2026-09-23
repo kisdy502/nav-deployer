@@ -14,6 +14,9 @@ const emit = defineEmits<{
   (e: 'context', payload: { hit: PickResult | null; x: number; y: number; world: { x: number; y: number } }): void
 }>()
 
+// editable=false 为浏览模式：可选中点位/路线，但不可拖拽编辑
+const props = withDefaults(defineProps<{ editable?: boolean }>(), { editable: true })
+
 const editor = useEditorStore()
 const robot = useRobotStore()
 
@@ -176,8 +179,8 @@ watch(
 )
 
 watch(
-  () => [editor.points, editor.selectedPointId] as const,
-  ([pts, sel]) => pointLayer?.sync(pts, sel ?? null),
+  () => [editor.points, editor.selectedPointId, props.editable] as const,
+  ([pts, sel, editable]) => pointLayer?.sync(pts, sel ?? null, editable),
   { deep: false },
 )
 
@@ -237,7 +240,7 @@ function onDown(_hit: PickResult | null, world: THREE.Vector3, ev: PointerEvent)
     }
     return
   }
-  if (editor.mode !== 'idle' || editor.pathEdit) return
+  if (editor.mode !== 'idle' || editor.pathEdit || !props.editable) return
   const hit = scene.pick(ev.clientX, ev.clientY)
   if (!hit) return
   if (hit.type === 'point' && hit.id != null) {
@@ -337,6 +340,12 @@ function onClick(hit: PickResult | null, world: THREE.Vector3) {
     editor.selectPoint(hit.id)
   } else if (hit?.type === 'rotateHandle' && hit.id != null) {
     editor.selectPoint(hit.id)
+  } else if (hit?.type === 'path' && hit.id != null) {
+    editor.selectPath(hit.id)
+    void editor.ensurePathDetail(hit.id)
+  } else if (!props.editable) {
+    // 浏览模式：点空白也允许清除选择
+    editor.clearSelection()
   } else {
     editor.clearSelection()
   }
