@@ -308,17 +308,7 @@ public class MapModeTaskService {
     private void syncRobotMap(MapModeStateMachine machine) {
         String robotMapName = machine.getRobotMapName();
         try {
-            GetMapResult result = dispatcher.getMap(robotMapName).join();
-            if (!result.success() || result.grid() == null) {
-                throw new IllegalStateException("get_map 失败: "
-                        + (result.message() == null || result.message().isBlank() ? "无栅格数据" : result.message()));
-            }
-            LiveMapCache.OccupancyGrid grid = LiveMapCache.parse(result.grid());
-            if (grid == null) {
-                throw new IllegalStateException("get_map 返回的栅格数据非法（几何不一致）");
-            }
-            NavMapVO saved = navMapService.saveRobotGrid(robotMapName, robotMapName, grid);
-            navMapService.activate(saved.getId());
+            NavMapVO saved = importRobotMap(robotMapName);
             log.info("map synced from robot after save: navMapId={}, robotMapName={}",
                     saved.getId(), robotMapName);
             ssePublisher.publishEvent("map-sync", Map.of(
@@ -329,6 +319,58 @@ public class MapModeTaskService {
             ssePublisher.publishEvent("map-sync", Map.of(
                     "success", false, "robotMapName", robotMapName,
                     "message", String.valueOf(cause.getMessage())));
+        }
+    }
+
+    /** 机器人侧现有地图列表（maps_dir 下 pgm+yaml 齐全的地图名）。 */
+    public List<String> listRobotMaps() {
+        requireConnection();
+        RosCommandDispatcher.ListMapsResult result;
+        try {
+            result = dispatcher.listMaps().join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new IllegalStateException("list_maps 调用失败: " + cause.getMessage(), cause);
+        }
+        if (!result.success()) {
+            throw new IllegalStateException("机器人拒绝 list_maps: " + result.message());
+        }
+        return result.mapNames();
+    }
+
+    /**
+     * 手动从机器人导入地图（命令行 save_map、历史地图等场景）：
+     * get_map 拉栅格 -> 入库（同名 upsert，source=ROBOT_SYNC）-> 激活为 ACTIVE。
+     */
+    public NavMapVO importRobotMap(String robotMapName) {
+        String target = robotMapName == null ? "" : robotMapName.trim();
+        requireValidRobotMapName(target);
+        requireConnection();
+
+        GetMapResult result;
+        try {
+            result = dispatcher.getMap(target).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new IllegalStateException("get_map 调用失败: " + cause.getMessage(), cause);
+        }
+        if (!result.success() || result.grid() == null) {
+            throw new IllegalStateException("get_map 失败: "
+                    + (result.message() == null || result.message().isBlank() ? "无栅格数据" : result.message()));
+        }
+        LiveMapCache.OccupancyGrid grid = LiveMapCache.parse(result.grid());
+        if (grid == null) {
+            throw new IllegalStateException("get_map 返回的栅格数据非法（几何不一致）");
+        }
+        NavMapVO saved = navMapService.saveRobotGrid(target, target, grid);
+        navMapService.activate(saved.getId());
+        log.info("map imported from robot: navMapId={}, robotMapName={}", saved.getId(), target);
+        return saved;
+    }
+
+    private void requireConnection() {
+        if (!rosbridgeClient.isConnected()) {
+            throw new IllegalStateException("rosbridge 未连接，无法访问机器人地图");
         }
     }
 

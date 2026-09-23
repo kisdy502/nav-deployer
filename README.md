@@ -11,7 +11,7 @@
 
 | 模块 | 能力 | 主要接口 |
 |---|---|---|
-| 建图 / 地图管理 | /map 实时栅格、快照建图（gzip 入 MinIO）、机器人同步入库、激活部署 | `/api/v1/nav-maps` |
+| 建图 / 地图管理 | /map 实时栅格、快照建图（gzip 入 MinIO）、机器人地图列表/导入（get_map 入库）、激活部署 | `/api/v1/nav-maps`、`/robot-maps`、`/import-from-robot` |
 | 地图模式任务 | 切图（load_map）、在线建图（start_mapping）、保存并自动同步（save_map）；mode 状态机跟踪，成功才对齐 ACTIVE | `/api/v1/nav-maps/{id}/switch`、`/api/v1/map-mode-tasks/*` |
 | 点位部署 | CRUD、把机器人当前位姿标记为点位 | `/api/v1/nav-points`、`/api/v1/nav-points/from-current-pose` |
 | 路线部署 | 有序边序列（直线/贝塞尔/倒车/限速）、连续性校验、部署 | `/api/v1/nav-paths`、`/{id}/edges`、`/{id}/deploy` |

@@ -5,6 +5,7 @@ import com.agv.navdeployer.dto.MapSwitchDTO;
 import com.agv.navdeployer.dto.NavMapCreateDTO;
 import com.agv.navdeployer.dto.NavMapRobotNameDTO;
 import com.agv.navdeployer.dto.NavMapUpdateDTO;
+import com.agv.navdeployer.dto.RobotMapImportDTO;
 import com.agv.navdeployer.service.MapModeTaskService;
 import com.agv.navdeployer.service.NavMapService;
 import com.agv.navdeployer.vo.MapGridVO;
@@ -101,6 +102,20 @@ public class NavMapController {
     @PostMapping("/{id}/activate")
     public ApiResponse<NavMapVO> activate(@PathVariable Long id) {
         return ApiResponse.ok(navMapService.activate(id));
+    }
+
+    @Operation(summary = "机器人地图列表", description = "机器人 maps_dir 下可用的地图名（pgm+yaml 齐全）")
+    @GetMapping("/robot-maps")
+    public ApiResponse<List<String>> robotMaps() {
+        return ApiResponse.ok(mapModeTaskService.listRobotMaps());
+    }
+
+    @Operation(summary = "从机器人导入地图",
+            description = "调 /agv/get_map 拉取机器人侧地图栅格，入库（同名覆盖，source=ROBOT_SYNC）并激活。"
+                    + "适用于命令行 save_map、历史地图等未经上位机编排保存的地图")
+    @PostMapping("/import-from-robot")
+    public ApiResponse<NavMapVO> importFromRobot(@Valid @RequestBody RobotMapImportDTO dto) {
+        return ApiResponse.ok(mapModeTaskService.importRobotMap(dto.robotMapName()));
     }
 
     @Operation(summary = "删除地图", description = "有关联点位/路线或处于 ACTIVE 时拒绝")
