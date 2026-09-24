@@ -29,8 +29,8 @@ const EDITING_COLOR = 0x409eff
 const SELECTED_COLOR = 0xf56c6c
 const CP_COLOR = 0xff9900
 /** 路线带宽（米）：加宽便于点选与拖拽 */
-const RIBBON_W = 0.12
-const RIBBON_W_EDITING = 0.14
+const RIBBON_W = 0.09
+const RIBBON_W_EDITING = 0.11
 
 /** 沿采样点生成有宽度的平面条带（俯视呈粗线），便于拾取 */
 function ribbonGeometry(pts: THREE.Vector3[], width: number): THREE.BufferGeometry {
@@ -79,8 +79,11 @@ export class PathLayer {
     for (const item of items) {
       if (!item.edges) continue
       const base = item.editing ? EDITING_COLOR : (STATUS_COLORS[item.status] ?? STATUS_COLORS.DRAFT)
+      /** 选中路线（非编辑态）整体高亮 */
+      const pathColor = !item.editing && item.selected ? SELECTED_COLOR : base
+      const nodeSet = new Set<string>()
       for (const e of item.edges) {
-        const color = e.selected ? SELECTED_COLOR : base
+        const color = e.selected ? SELECTED_COLOR : pathColor
         const pts = this.sampleEdge(e)
         if (pts.length < 2) continue
         const mesh = new THREE.Mesh(
@@ -90,6 +93,24 @@ export class PathLayer {
         mesh.position.z = 0.05
         mesh.userData.pick = { type: 'path', id: item.id, edgeIdx: e.edgeIdx }
         this.group.add(mesh)
+
+        // 选中路线的节点辅助点（去重后的顶点）
+        if (!item.editing && item.selected) {
+          for (const p of [
+            { x: e.sx, y: e.sy },
+            { x: e.tx, y: e.ty },
+          ]) {
+            const key = `${p.x.toFixed(3)},${p.y.toFixed(3)}`
+            if (nodeSet.has(key)) continue
+            nodeSet.add(key)
+            const dot = new THREE.Mesh(
+              new THREE.CircleGeometry(0.06, 16),
+              new THREE.MeshBasicMaterial({ color: CP_COLOR }),
+            )
+            dot.position.set(p.x, p.y, 0.09)
+            this.group.add(dot)
+          }
+        }
 
         if (!item.editing) continue
         // 控制点手柄

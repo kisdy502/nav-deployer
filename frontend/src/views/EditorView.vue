@@ -11,7 +11,6 @@ import PropertyPanel from '@/components/editor/PropertyPanel.vue'
 import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import MappingPanel from '@/components/editor/MappingPanel.vue'
 import { useEditorStore } from '@/stores/editor'
-import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import type { PickResult } from '@/three/MapScene'
 
@@ -20,7 +19,6 @@ const props = defineProps<{ id: string }>()
 const route = useRoute()
 const router = useRouter()
 const editor = useEditorStore()
-const robot = useRobotStore()
 const tasks = useTasksStore()
 
 const mapCanvasRef = ref<InstanceType<typeof MapCanvas>>()
@@ -50,25 +48,14 @@ function openCtx(payload: { hit: PickResult | null; x: number; y: number; world:
     const p = editor.pointsById.get(hit.id)
     if (p) {
       editor.selectPoint(p.id)
-      items.push(
-        { label: '定位到点位', action: () => mapCanvasRef.value?.flyToPoint(p.x, p.y) },
-        {
-          label: '导航到此',
-          action: async () => {
-            if (!robot.status?.pose_initialized) return ElMessage.warning('机器人位姿未初始化，无法导航')
-            if (tasks.moveTaskInFlight) return ElMessage.warning('已有执行中的移动任务，请先取消')
-            await tasks.navigateToPoint(p.id)
-          },
+      items.push({
+        label: '删除点位',
+        danger: true,
+        action: async () => {
+          await editor.deletePoint(p.id)
+          ElMessage.success('已删除')
         },
-        {
-          label: '删除点位',
-          danger: true,
-          action: async () => {
-            await editor.deletePoint(p.id)
-            ElMessage.success('已删除')
-          },
-        },
-      )
+      })
     }
   } else if (editor.pathEdit) {
     if (hit?.type === 'control' && hit.edgeIdx != null) {

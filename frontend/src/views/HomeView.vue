@@ -19,6 +19,8 @@ import { useMapListStore } from '@/stores/mapList'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { startMapping } from '@/api/tasks'
+import type { PickResult } from '@/three/MapScene'
+import { onBeforeUnmount } from 'vue'
 
 const router = useRouter()
 const editor = useEditorStore()
@@ -114,6 +116,63 @@ async function startMappingNow() {
     guide.starting = false
   }
 }
+
+// ---------- 浏览态右键菜单：导航/定位/循线 ----------
+interface CtxItem {
+  label: string
+  danger?: boolean
+  action: () => void
+}
+const ctx = reactive({ visible: false, x: 0, y: 0, items: [] as CtxItem[] })
+
+function closeCtx() {
+  ctx.visible = false
+  window.removeEventListener('click', closeCtx)
+}
+
+function navToPoint(p: { id: number; x: number; y: number }) {
+  if (!robot.status?.pose_initialized) return ElMessage.warning('机器人位姿未初始化，无法导航')
+  if (tasks.moveTaskInFlight) return ElMessage.warning('已有执行中的移动任务，请先取消')
+  void tasks.navigateToPoint(p.id)
+}
+
+function followPathById(id: number) {
+  const path = editor.paths.find((x) => x.id === id)
+  if (!path) return
+  if (path.status !== 'DEPLOYED') return ElMessage.warning('只有已部署（DEPLOYED）的路线才能循线')
+  if (!robot.status?.pose_initialized) return ElMessage.warning('机器人位姿未初始化，无法循线')
+  if (tasks.moveTaskInFlight) return ElMessage.warning('已有执行中的移动任务，请先取消')
+  void tasks.followPath(path.id)
+}
+
+function openCtx(payload: { hit: PickResult | null; x: number; y: number; world: { x: number; y: number } }) {
+  const hit = payload.hit
+  const items: CtxItem[] = []
+  if (hit?.type === 'point' && hit.id != null) {
+    const p = editor.pointsById.get(hit.id)
+    if (p) {
+      editor.selectPoint(p.id)
+      items.push(
+        { label: '导航到此', action: () => navToPoint(p) },
+        { label: '定位到此', action: () => mapCanvasRef.value?.flyToPoint(p.x, p.y) },
+      )
+    }
+  } else if (hit?.type === 'path' && hit.id != null) {
+    editor.selectPath(hit.id)
+    void editor.ensurePathDetail(hit.id)
+    items.push({ label: '循线', action: () => followPathById(hit!.id!) })
+  } else {
+    items.push({ label: '适应视图', action: () => mapCanvasRef.value?.fitView() })
+  }
+  if (items.length === 0) return
+  ctx.items = items
+  ctx.x = payload.x
+  ctx.y = payload.y
+  ctx.visible = true
+  window.addEventListener('click', closeCtx, { once: true })
+}
+
+onBeforeUnmount(closeCtx)
 </script>
 
 <template>
@@ -193,7 +252,7 @@ async function startMappingNow() {
       </aside>
 
       <main class="browse-main">
-        <MapCanvas ref="mapCanvasRef" :editable="false" />
+        <MapCanvas ref="mapCanvasRef" :editable="false" @context="openCtx" />
       </main>
 
       <aside class="browse-right">
@@ -207,6 +266,19 @@ async function startMappingNow() {
 
     <MappingPanel v-if="mappingVisible" @close="mappingVisible = false" />
     <MapsManageDialog v-model="manageVisible" @browse="(id: number) => selectMap(id)" />
+
+    <!-- 浏览态右键菜单 -->
+    <div v-if="ctx.visible" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">
+      <div
+        v-for="(item, i) in ctx.items"
+        :key="i"
+        class="ctx-item"
+        :class="{ danger: item.danger }"
+        @click="item.action(); closeCtx()"
+      >
+        {{ item.label }}
+      </div>
+    </div>
 
     <!-- 空地图建图引导 -->
     <el-dialog v-model="guide.visible" title="欢迎使用 Nav Deployer" width="460px" :close-on-click-modal="false">
@@ -336,6 +408,32 @@ async function startMappingNow() {
 
 .browse-footer {
   height: 36px;
+}
+
+.ctx-menu {
+  position: fixed;
+  z-index: 3000;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  min-width: 130px;
+}
+
+.ctx-item {
+  padding: 7px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ctx-item:hover {
+  background: #f5f7fa;
+}
+
+.ctx-item.danger {
+  color: #f56c6c;
 }
 
 .guide-body {

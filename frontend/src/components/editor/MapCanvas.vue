@@ -136,7 +136,33 @@ onMounted(() => {
     const w = scene.screenToWorld(ev.clientX, ev.clientY)
     coordsText.value = `${w.x.toFixed(2)} , ${w.y.toFixed(2)} m`
   })
+
+  // 组件重挂载（如编辑器返回浏览页）时场景是新的，需主动同步一次已有数据
+  syncAll()
 })
+
+/** 把 store 中的当前状态整体刷进场景 */
+function syncAll() {
+  if (!scene) return
+  if (editor.grid) {
+    scene.setMap(editor.grid)
+    if (scene.mapBounds) scene.fitView(scene.mapBounds)
+  } else {
+    scene.hideMap()
+  }
+  pointLayer?.sync(editor.points, editor.selectedPointId ?? null, props.editable)
+  pathLayer?.render(pathItems.value)
+  robotLayer?.setTarget(robot.pose)
+  robotLayer?.setTrail(robot.trail)
+  scene.mapGroup.visible = editor.layers.map
+  if (pointLayer) pointLayer.group.visible = editor.layers.points
+  if (pathLayer) pathLayer.group.visible = editor.layers.paths
+  if (robotLayer) {
+    robotLayer.group.visible = editor.layers.robot
+    robotLayer.trailGroup.visible = editor.layers.trail
+  }
+  scene.showMeasure(editor.measure.a, editor.measure.b)
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)

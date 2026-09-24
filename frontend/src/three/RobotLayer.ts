@@ -3,9 +3,9 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { angleDelta } from '@/utils/coords'
 
 const TRAIL_MAX = 2000
-/** 机器人矩形尺寸（长 0.5m × 宽 0.4m），朝向沿 +x */
-const BODY_L = 0.5
-const BODY_W = 0.4
+/** 机器人矩形尺寸（长 0.4m × 宽 0.32m），朝向沿 +x */
+const BODY_L = 0.4
+const BODY_W = 0.32
 
 function triangleMesh(a: [number, number], b: [number, number], c: [number, number], color: number): THREE.Mesh {
   const g = new THREE.BufferGeometry()
@@ -13,7 +13,7 @@ function triangleMesh(a: [number, number], b: [number, number], c: [number, numb
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }))
 }
 
-/** 机器人图层：蓝色矩形车体 + 车体内「》」朝向符号 + 几何中心点（观察停靠对齐）+ 轨迹线 */
+/** 机器人图层：蓝色矩形车体 + 车内「》」朝向符号 + 几何中心点（观察停靠对齐）+ 轨迹线 */
 export class RobotLayer {
   readonly group = new THREE.Group()
   readonly trailGroup = new THREE.Group()
@@ -43,14 +43,14 @@ export class RobotLayer {
     )
     // 几何中心点：观察停靠对齐
     const centerDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.03, 16),
+      new THREE.CircleGeometry(0.024, 16),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     )
     centerDot.position.z = 0.03
-    // 「》」朝向符号（两个尖角）
+    // 「》」朝向符号（两个尖角，绕车体中心旋转，顶点已按中心对称取值）
     this.chevron.add(
-      triangleMesh([-0.07, 0.09], [0.03, 0], [-0.07, -0.09], 0xffffff),
-      triangleMesh([0.03, 0.09], [0.13, 0], [0.03, -0.09], 0xffffff),
+      triangleMesh([-0.05, 0.045], [0, 0], [-0.05, -0.045], 0xffffff),
+      triangleMesh([0, 0.045], [0.05, 0], [0, -0.045], 0xffffff),
     )
     this.chevron.position.z = 0.04
 
