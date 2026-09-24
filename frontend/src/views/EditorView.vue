@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Odometer, Position } from '@element-plus/icons-vue'
@@ -11,7 +11,9 @@ import PropertyPanel from '@/components/editor/PropertyPanel.vue'
 import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import MappingPanel from '@/components/editor/MappingPanel.vue'
 import { useEditorStore } from '@/stores/editor'
+import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
+import { nextAutoCode } from '@/utils/format'
 import type { PickResult } from '@/three/MapScene'
 
 const props = defineProps<{ id: string }>()
@@ -19,6 +21,7 @@ const props = defineProps<{ id: string }>()
 const route = useRoute()
 const router = useRouter()
 const editor = useEditorStore()
+const robot = useRobotStore()
 const tasks = useTasksStore()
 
 const mapCanvasRef = ref<InstanceType<typeof MapCanvas>>()
@@ -26,6 +29,15 @@ const pointPanelRef = ref<InstanceType<typeof PointListPanel>>()
 const mappingVisible = ref(false)
 const loadingLocal = ref(false)
 const activeTab = ref<'points' | 'paths'>('points')
+
+// 机器人处于建图模式时自动打开建图面板（刷新页面后恢复建图上下文）
+watch(
+  () => robot.status?.mode,
+  (mode) => {
+    if (mode === 'MAPPING') mappingVisible.value = true
+  },
+  { immediate: true },
+)
 
 // ---------- 右键菜单 ----------
 interface CtxItem {
@@ -107,13 +119,13 @@ const placeDialog = reactive({
 })
 
 function onPlacePoint(xy: { x: number; y: number }) {
-  placeDialog.code = ''
+  // 自动生成编码，保存后保持 placePoint 模式，可连续点击放置多个点位（Esc 退出）
+  placeDialog.code = nextAutoCode(editor.points.map((p) => p.point_code), 'P')
   placeDialog.type = 'NORMAL'
   placeDialog.x = xy.x
   placeDialog.y = xy.y
   placeDialog.yawDeg = 0
   placeDialog.visible = true
-  editor.setMode('idle')
 }
 
 async function savePlacePoint() {
@@ -131,7 +143,8 @@ async function savePlacePoint() {
       yaw: (placeDialog.yawDeg * Math.PI) / 180,
     })
     placeDialog.visible = false
-    ElMessage.success(`点位「${vo.point_code}」已创建`)
+    editor.setMode('placePoint')
+    ElMessage.success(`点位「${vo.point_code}」已创建，可继续点击地图放置下一个点位（Esc 退出）`)
   } catch {
     /* http 层已提示 */
   } finally {
@@ -212,6 +225,9 @@ onBeforeUnmount(() => {
 
     <!-- 点位落点确认 -->
     <el-dialog v-model="placeDialog.visible" title="创建点位" width="400px" :append-to-body="true">
+      <div class="muted" style="margin-bottom: 12px; font-size: 12px">
+        编码已自动生成（可修改）。保存后仍处于「新建点位」模式，可继续点击地图连续创建；按 Esc 退出。
+      </div>
       <el-form label-width="80px" @submit.prevent>
         <el-form-item label="编码" required>
           <el-input v-model="placeDialog.code" maxlength="64" placeholder="图内唯一，如 P5" />

@@ -20,6 +20,8 @@ public class SimAgvProperties {
     private String statusTopic = "/agv/status";
     private String poseTopic = "/agv/pose";
     private String tfTopic = "/tf";
+    /** 静态 TF（雷达等传感器安装关系：base_link → laser_frame），点云安装变换的优先来源 */
+    private String tfStaticTopic = "/tf_static";
     private String tfChildFrame = "AGV001/base_link";
     private int tfThrottleMs = 100;
     private boolean odomEnabled = false;
@@ -28,6 +30,9 @@ public class SimAgvProperties {
     private String scanTopic1 = "/scan_1";
     private String scanTopic2 = "/scan_2";
     private int scanThrottleMs = 333;
+    /** 雷达安装朝向偏移（度）：雷达自身坐标系相对 base_link 的旋转角。对装（背靠背）的反装雷达通常为 180。 */
+    private double scan1MountYawDeg = 0.0;
+    private double scan2MountYawDeg = 0.0;
 
     private boolean mapEnabled = true;
     private String mapTopic = "/map";
@@ -114,6 +119,14 @@ public class SimAgvProperties {
         this.tfTopic = tfTopic;
     }
 
+    public String getTfStaticTopic() {
+        return tfStaticTopic;
+    }
+
+    public void setTfStaticTopic(String tfStaticTopic) {
+        this.tfStaticTopic = tfStaticTopic;
+    }
+
     public String getTfChildFrame() {
         return tfChildFrame;
     }
@@ -176,6 +189,22 @@ public class SimAgvProperties {
 
     public void setScanThrottleMs(int scanThrottleMs) {
         this.scanThrottleMs = scanThrottleMs;
+    }
+
+    public double getScan1MountYawDeg() {
+        return scan1MountYawDeg;
+    }
+
+    public void setScan1MountYawDeg(double scan1MountYawDeg) {
+        this.scan1MountYawDeg = scan1MountYawDeg;
+    }
+
+    public double getScan2MountYawDeg() {
+        return scan2MountYawDeg;
+    }
+
+    public void setScan2MountYawDeg(double scan2MountYawDeg) {
+        this.scan2MountYawDeg = scan2MountYawDeg;
     }
 
     public boolean isMapEnabled() {

@@ -85,6 +85,15 @@ watch(
   },
 )
 
+// 机器人处于建图模式时自动打开建图面板（刷新页面后恢复建图上下文）
+watch(
+  () => robot.status?.mode,
+  (mode) => {
+    if (mode === 'MAPPING') mappingVisible.value = true
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
   await mapStore.load()
   tasks.refresh()

@@ -5,7 +5,7 @@ import { Aim, Delete, EditPen, Plus, Position, Promotion, Search } from '@elemen
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { POINT_TYPE_LABEL } from '@/utils/format'
+import { nextAutoCode, POINT_TYPE_LABEL } from '@/utils/format'
 import { radToDeg } from '@/utils/coords'
 import type { PointType } from '@/types/api'
 
@@ -52,7 +52,7 @@ const robotDialog = reactive({
 })
 
 function openManual(xy?: { x: number; y: number }) {
-  manualDialog.point_code = ''
+  manualDialog.point_code = nextAutoCode(editor.points.map((p) => p.point_code), 'P')
   manualDialog.point_type = 'NORMAL'
   manualDialog.x = xy?.x ?? 0
   manualDialog.y = xy?.y ?? 0

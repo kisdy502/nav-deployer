@@ -78,6 +78,8 @@ public class RosbridgeConfig {
             if (props.isScanEnabled()) {
                 client.subscribe(props.getScanTopic1(), props.getScanThrottleMs());
                 client.subscribe(props.getScanTopic2(), props.getScanThrottleMs());
+                // 雷达安装变换（base_link → laser，平移+旋转）：点云投影的优先来源，缺失时回退 yaml 安装角
+                client.subscribe(props.getTfStaticTopic(), 0);
             }
             if (props.isMapEnabled()) {
                 client.subscribe(props.getMapTopic(), props.getMapThrottleMs(), props.getMapFragmentSize());

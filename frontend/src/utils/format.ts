@@ -11,6 +11,14 @@ import type {
 
 export const fmtTime = (s: string | null | undefined) => (s ? dayjs(s).format('YYYY-MM-DD HH:mm:ss') : '-')
 
+/** 按前缀自动生成图内唯一编码：prefix1、prefix2…（跳过已存在的编号） */
+export const nextAutoCode = (existingCodes: string[], prefix: string): string => {
+  const existing = new Set(existingCodes)
+  let i = 1
+  while (existing.has(`${prefix}${i}`)) i++
+  return `${prefix}${i}`
+}
+
 export const MAP_STATUS_TAG: Record<NavMapStatus, { label: string; type: 'success' | 'info' | 'warning' }> = {
   ACTIVE: { label: '部署中', type: 'success' },
   DRAFT: { label: '草稿', type: 'info' },

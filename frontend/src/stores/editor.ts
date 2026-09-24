@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import * as mapsApi from '@/api/maps'
 import * as pointsApi from '@/api/points'
 import * as pathsApi from '@/api/paths'
+import { useRobotStore } from './robot'
 import type {
   EdgeType,
   MapGridVO,
@@ -57,7 +58,7 @@ export const useEditorStore = defineStore('editor', () => {
   const mode = ref<EditorMode>('idle')
   const pathEdit = ref<{ pathId: number; edges: PathEdgeDraft[]; pendingSourceId: number | null } | null>(null)
   const measure = ref<{ a: XY | null; b: XY | null }>({ a: null, b: null })
-  const layers = reactive({ map: true, points: true, paths: true, robot: true, trail: true })
+  const layers = reactive({ map: true, points: true, paths: true, robot: true, trail: true, scan: true })
   const livePolling = ref(false)
   const loading = ref(false)
 
@@ -123,7 +124,6 @@ export const useEditorStore = defineStore('editor', () => {
     const vo = await pointsApi.createPoint({ map_id: mapId.value, ...dto })
     points.value = [...points.value, vo]
     selectPoint(vo.id)
-    setMode('idle')
     return vo
   }
 
@@ -360,12 +360,35 @@ export const useEditorStore = defineStore('editor', () => {
     if (liveTimer) window.clearInterval(liveTimer)
     liveTimer = undefined
     livePolling.value = false
+    autoLive.value = false
   }
 
   let liveTimer: number | undefined
+  /** 本次预览是否由建图模式自动开启（退出建图时只关自动开启的） */
+  const autoLive = ref(false)
 
-  // 离开编辑器时停掉轮询
-  watch(mapId, () => stopLivePolling())
+  const robotStore = useRobotStore()
+
+  // 离开编辑器时停掉轮询；建图模式下不关，切换地图预览继续
+  watch(mapId, () => {
+    if (robotStore.status?.mode !== 'MAPPING') stopLivePolling()
+  })
+
+  // 建图默认开启实时预览：机器人进入 MAPPING 自动开（刷新后同样生效），退出建图自动关
+  watch(
+    () => robotStore.status?.mode,
+    (mode) => {
+      if (mode === 'MAPPING') {
+        if (!livePolling.value) {
+          startLivePolling()
+          autoLive.value = true
+        }
+      } else if (mode && autoLive.value) {
+        stopLivePolling()
+      }
+    },
+    { immediate: true },
+  )
 
   return {
     mapId,

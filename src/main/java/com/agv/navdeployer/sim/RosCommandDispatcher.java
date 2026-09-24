@@ -49,6 +49,9 @@ public class RosCommandDispatcher implements RosbridgeHandler {
         requireClient();
         String goalId = "goal-" + idSequence.incrementAndGet();
         actionListeners.put(goalId, listener);
+        log.info("dispatch follow_edge: goal={}, command_id={}, node_id={}, target=({}, {}, {}rad), edge_type={}, max_speed={}, step={}, end_point={}, control_points={}",
+                goalId, goal.commandId(), goal.nodeId(), goal.x(), goal.y(), goal.theta(),
+                goal.edgeType(), goal.maxSpeed(), goal.step(), goal.endPoint(), goal.controlPoints().size());
         client.send(buildFollowEdgeOp(goalId, props.getFollowEdgeAction(), props.getFollowEdgeActionType(), goal));
         return goalId;
     }

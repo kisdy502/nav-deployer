@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useEditorStore } from '@/stores/editor'
+import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { useMapListStore } from '@/stores/mapList'
 import { startMapping as startMappingApi, saveMapTask as saveMapTaskApi, getRecentMapTasks } from '@/api/tasks'
@@ -10,6 +11,7 @@ import { fmtTime, MAP_TASK_STATUS_TAG, MAP_TASK_TYPE_LABEL } from '@/utils/forma
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const editor = useEditorStore()
+const robot = useRobotStore()
 const tasks = useTasksStore()
 const mapList = useMapListStore()
 
@@ -19,6 +21,8 @@ const saveDialog = reactive({ visible: false, name: '' })
 
 const currentTask = computed(() => tasks.currentMapTask)
 const inFlight = computed(() => tasks.mapTaskInFlight)
+/** 机器人是否处于在线建图模式（/agv/status 的 mode，唯一事实源） */
+const mappingMode = computed(() => robot.status?.mode === 'MAPPING')
 
 async function loadRecent() {
   try {
@@ -82,6 +86,10 @@ async function reloadCurrentMap() {
     <div class="mapping">
       <div class="card">
         <div class="card-title">当前任务</div>
+        <div v-if="mappingMode" class="task-line">
+          <el-tag type="warning" effect="dark">建图中</el-tag>
+          <span class="muted">机器人正在在线建图，实时预览已自动开启</span>
+        </div>
         <template v-if="currentTask">
           <div class="task-line">
             <el-tag size="small">{{ MAP_TASK_TYPE_LABEL[currentTask.type] }}</el-tag>
@@ -92,14 +100,14 @@ async function reloadCurrentMap() {
           </div>
           <div v-if="currentTask.error_message" class="task-err">{{ currentTask.error_message }}</div>
         </template>
-        <div v-else class="muted">暂无任务</div>
+        <div v-else-if="!mappingMode" class="muted">暂无任务</div>
 
         <div class="btns">
-          <el-button type="primary" :disabled="inFlight" @click="onStartMapping">开始建图</el-button>
+          <el-button type="primary" :disabled="inFlight || mappingMode" @click="onStartMapping">开始建图</el-button>
           <el-button type="success" :disabled="inFlight" @click="openSaveDialog">保存并入库</el-button>
         </div>
         <div class="tip">
-          建图期间可开启下方实时预览查看 /map 变化；保存成功后地图自动入库并激活，可在首页管理。
+          建图期间实时预览自动开启（下方可手动开关）查看 /map 变化；保存成功后地图自动入库并激活，可在首页管理。
         </div>
       </div>
 

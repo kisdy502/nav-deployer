@@ -30,12 +30,19 @@ public final class SimAgvTelemetry {
     ) {
     }
 
-    /** 2D 激光一帧摘要：束数 + 有限测距的最小/最大值。 */
+    /**
+     * 2D 激光一帧：束数 + 有限测距的最小/最大值 + 点云坐标 + 捕获时位姿。
+     * points 为传感器（base_link）系下的扁平坐标 [x0,y0,x1,y1,...]，单位米，保留 3 位小数；
+     * pose 为该帧到达时机器人最新 map 系位姿（点云投影到地图必须用它，而非"当前"位姿），
+     * 从未收到位姿时为 null；消息缺 angle_min/angle_increment 时 points 为空数组（仅摘要可用）。
+     */
     public record ScanSnapshot(
             String frameId,
             int rangeCount,
             double minRange,
             double maxRange,
+            double[] points,
+            PoseSnapshot pose,
             Instant receivedAt
     ) {
     }

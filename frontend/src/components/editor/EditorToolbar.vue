@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import {
   Aim,
   Back,
+  Check,
   Location,
   Odometer,
   Pointer,
@@ -11,12 +13,10 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import { useEditorStore, type EditorMode } from '@/stores/editor'
-import { PATH_STATUS_TAG } from '@/utils/format'
+import { nextAutoCode } from '@/utils/format'
 
 const router = useRouter()
 const editor = useEditorStore()
-
-const pathPick = reactive({ visible: false, code: '', name: '', creating: false })
 
 const modeButtons: { mode: EditorMode; label: string; icon: typeof Pointer }[] = [
   { mode: 'idle', label: '选择/平移', icon: Pointer },
@@ -26,37 +26,43 @@ const modeButtons: { mode: EditorMode; label: string; icon: typeof Pointer }[] =
   { mode: 'measure', label: '测量', icon: Odometer },
 ]
 
-function onModeClick(mode: EditorMode) {
-  if (mode === 'drawPath' && !editor.pathEdit) {
-    pathPick.visible = true
+const creatingPath = ref(false)
+const savingPath = ref(false)
+
+async function onModeClick(mode: EditorMode) {
+  if (mode !== 'drawPath') {
+    editor.setMode(mode)
     return
   }
-  editor.setMode(mode)
-}
-
-async function onCreateAndEdit() {
-  const code = pathPick.code.trim()
-  if (!code) return
-  pathPick.creating = true
+  // 已在绘制中：恢复模式即可
+  if (editor.pathEdit) {
+    editor.setMode('drawPath')
+    return
+  }
+  // 免弹框：自动生成路线编码，直接创建并进入绘制（点击起点 → 终点 → 保存）
+  if (creatingPath.value) return
+  creatingPath.value = true
   try {
-    const vo = await editor.createPath(code, pathPick.name.trim() || undefined)
-    pathPick.visible = false
-    pathPick.code = ''
-    pathPick.name = ''
+    const code = nextAutoCode(editor.paths.map((p) => p.path_code), 'ROUTE_')
+    const vo = await editor.createPath(code)
     await editor.startPathEdit(vo.id)
+    ElMessage.success(`路线「${code}」已创建：依次点击起点、终点等点位，完成后点「保存路线」`)
   } catch {
     /* http 层已提示 */
   } finally {
-    pathPick.creating = false
+    creatingPath.value = false
   }
 }
 
-async function onPickExisting(id: number) {
+async function onSavePath() {
+  savingPath.value = true
   try {
-    await editor.startPathEdit(id)
-    pathPick.visible = false
-  } catch {
-    /* http 层已提示 */
+    await editor.savePathEdit()
+    ElMessage.success('路线已保存')
+  } catch (err) {
+    if (err instanceof Error && err.message) ElMessage.warning(err.message)
+  } finally {
+    savingPath.value = false
   }
 }
 
@@ -85,6 +91,7 @@ const mapName = computed(() => editor.mapInfo?.map_name ?? '')
           {{ b.label }}
         </el-radio-button>
       </el-radio-group>
+      <el-button v-if="editor.mode === 'drawPath' && editor.pathEdit" type="primary" :icon="Check" :loading="savingPath" @click="onSavePath">保存路线</el-button>
       <el-button v-if="editor.mode === 'drawPath'" type="warning" plain @click="exitDraw">退出路线编辑</el-button>
     </div>
 
@@ -108,36 +115,14 @@ const mapName = computed(() => editor.mapInfo?.map_name ?? '')
             <el-dropdown-item @click="editor.layers.trail = !editor.layers.trail">
               <el-checkbox :model-value="editor.layers.trail" @click.prevent />轨迹
             </el-dropdown-item>
+            <el-dropdown-item @click="editor.layers.scan = !editor.layers.scan">
+              <el-checkbox :model-value="editor.layers.scan" @click.prevent />雷达点云
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
     </div>
   </div>
-
-  <el-dialog v-model="pathPick.visible" title="编辑路线" width="500px">
-    <div class="pick-title">新建路线</div>
-    <el-form :model="pathPick" inline label-width="60px" @submit.prevent>
-      <el-form-item label="编码" required>
-        <el-input v-model="pathPick.code" placeholder="如 ROUTE_A" style="width: 150px" />
-      </el-form-item>
-      <el-form-item label="名称">
-        <el-input v-model="pathPick.name" placeholder="可选" style="width: 150px" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" :loading="pathPick.creating" @click="onCreateAndEdit">创建并绘制</el-button>
-      </el-form-item>
-    </el-form>
-    <el-divider />
-    <div class="pick-title">选择已有路线继续编辑</div>
-    <el-scrollbar max-height="220px">
-      <div v-for="p in editor.paths" :key="p.id" class="pick-item" @click="onPickExisting(p.id)">
-        <span>{{ p.path_code }}</span>
-        <span class="pick-item-name">{{ p.path_name || '' }}</span>
-        <el-tag size="small" :type="PATH_STATUS_TAG[p.status].type">{{ PATH_STATUS_TAG[p.status].label }}</el-tag>
-      </div>
-      <el-empty v-if="editor.paths.length === 0" description="暂无路线" :image-size="60" />
-    </el-scrollbar>
-  </el-dialog>
 </template>
 
 <style scoped>
@@ -161,29 +146,5 @@ const mapName = computed(() => editor.mapInfo?.map_name ?? '')
 .map-title {
   font-weight: 600;
   font-size: 15px;
-}
-
-.pick-title {
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.pick-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.pick-item:hover {
-  background: #f5f7fa;
-}
-
-.pick-item-name {
-  color: #909399;
-  font-size: 12px;
-  flex: 1;
 }
 </style>

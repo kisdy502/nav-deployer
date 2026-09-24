@@ -1,6 +1,7 @@
 package com.agv.navdeployer.sim;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,11 +19,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 前端接入：
  *   const es = new EventSource("/sse/agv");
  *   es.addEventListener("telemetry", e => console.log(JSON.parse(e.data)));
+ *   es.addEventListener("scan", e => console.log(JSON.parse(e.data)));
  *   es.addEventListener("heartbeat", ...);
  *
  * 事件：
  *   connected  —— 接入即回一条（含时间戳）
  *   telemetry  —— 每 telemetry-interval 一条聚合快照（状态/位姿/双雷达/计数）
+ *   scan       —— 收到新雷达帧时推送点云（base_link 系扁平 [x0,y0,x1,y1,...]，约 2~3Hz）
  *   heartbeat  —— 每 30s 一条
  */
 @Component
@@ -35,6 +38,10 @@ public class SimAgvSsePublisher {
     private final CopyOnWriteArrayList<SseSubscription> subscriptions = new CopyOnWriteArrayList<>();
     private final SimAgvTelemetry telemetry;
     private final SimAgvProperties props;
+
+    /** 上次推送过的 scan 快照引用（用于判断是否出现新帧，避免重复推送） */
+    private volatile SimAgvTelemetry.ScanSnapshot lastPushedScan1;
+    private volatile SimAgvTelemetry.ScanSnapshot lastPushedScan2;
 
     public SimAgvSsePublisher(SimAgvTelemetry telemetry, SimAgvProperties props) {
         this.telemetry = telemetry;
@@ -59,6 +66,28 @@ public class SimAgvSsePublisher {
             return;
         }
         publish("telemetry", buildSnapshot());
+    }
+
+    /** 雷达点云推送：500ms 轮询，只有收到新帧（快照引用变化）才发，实际约等于雷达帧率（节流后 ~3Hz）。 */
+    @Scheduled(fixedDelay = 500)
+    public void pushScan() {
+        if (subscriptions.isEmpty()) {
+            return;
+        }
+        var scan1 = telemetry.getScan1();
+        var scan2 = telemetry.getScan2();
+        boolean scan1Changed = scan1 != null && scan1 != lastPushedScan1;
+        boolean scan2Changed = scan2 != null && scan2 != lastPushedScan2;
+        if (!scan1Changed && !scan2Changed) {
+            return;
+        }
+        lastPushedScan1 = scan1;
+        lastPushedScan2 = scan2;
+        ObjectNode root = MAPPER.createObjectNode();
+        root.put("timestamp", Instant.now().toString());
+        appendScanCloud(root, "scan1", scan1);
+        appendScanCloud(root, "scan2", scan2);
+        publish("scan", root);
     }
 
     @Scheduled(fixedDelay = 30000)
@@ -135,6 +164,33 @@ public class SimAgvSsePublisher {
         node.put("range_count", scan.rangeCount());
         node.put("min_range", round(scan.minRange()));
         node.put("max_range", round(scan.maxRange()));
+    }
+
+    /** scan 事件用：摘要 + 点云扁平坐标数组 + 捕获时位姿（前端用它投影点云到地图） */
+    private void appendScanCloud(ObjectNode root, String field, SimAgvTelemetry.ScanSnapshot scan) {
+        if (scan == null) {
+            root.putNull(field);
+            return;
+        }
+        ObjectNode node = root.putObject(field);
+        node.put("frame_id", scan.frameId());
+        node.put("range_count", scan.rangeCount());
+        var pose = scan.pose();
+        if (pose != null) {
+            ObjectNode poseNode = node.putObject("pose");
+            poseNode.put("x", pose.x());
+            poseNode.put("y", pose.y());
+            poseNode.put("yaw", pose.yaw());
+        } else {
+            node.putNull("pose");
+        }
+        ArrayNode pts = node.putArray("points");
+        double[] points = scan.points();
+        if (points != null) {
+            for (double v : points) {
+                pts.add(v);
+            }
+        }
     }
 
     private static double round(double v) {

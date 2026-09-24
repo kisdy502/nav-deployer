@@ -13,6 +13,7 @@ import com.agv.navdeployer.sim.SimAgvSsePublisher;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.agv.navdeployer.vo.MapModeTaskVO;
 import com.agv.navdeployer.vo.NavMapVO;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -340,32 +341,112 @@ public class MapModeTaskService {
 
     /**
      * 手动从机器人导入地图（命令行 save_map、历史地图等场景）：
-     * get_map 拉栅格 -> 入库（同名 upsert，source=ROBOT_SYNC）-> 激活为 ACTIVE。
+     * get_map 拉栅格 -> 入库（同名 upsert，source=ROBOT_SYNC）。
+     * 激活策略：仅当机器人当前就在这张图上时才置 ACTIVE（机器人是唯一事实源，
+     * 导入一张机器人没在用的图不应改变部署状态）；否则保持 DRAFT，
+     * 由 {@link #alignActiveMapWithRobot()} 周期对账兜底。
      */
     public NavMapVO importRobotMap(String robotMapName) {
         String target = robotMapName == null ? "" : robotMapName.trim();
         requireValidRobotMapName(target);
         requireConnection();
 
-        GetMapResult result;
+        GetMapResult getMapResult;
         try {
-            result = dispatcher.getMap(target).join();
+            getMapResult = dispatcher.getMap(target).join();
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("get_map 调用失败: " + cause.getMessage(), cause);
         }
-        if (!result.success() || result.grid() == null) {
+        if (!getMapResult.success() || getMapResult.grid() == null) {
             throw new IllegalStateException("get_map 失败: "
-                    + (result.message() == null || result.message().isBlank() ? "无栅格数据" : result.message()));
+                    + (getMapResult.message() == null || getMapResult.message().isBlank()
+                            ? "无栅格数据" : getMapResult.message()));
         }
-        LiveMapCache.OccupancyGrid grid = LiveMapCache.parse(result.grid());
+        LiveMapCache.OccupancyGrid grid = LiveMapCache.parse(getMapResult.grid());
         if (grid == null) {
             throw new IllegalStateException("get_map 返回的栅格数据非法（几何不一致）");
         }
         NavMapVO saved = navMapService.saveRobotGrid(target, target, grid);
-        navMapService.activate(saved.getId());
-        log.info("map imported from robot: navMapId={}, robotMapName={}", saved.getId(), target);
-        return saved;
+
+        // 激活策略：机器人当前就在这张图上才置 ACTIVE（机器人是唯一事实源）
+        boolean robotOnThisMap = telemetry.isStatusFresh(props.getStatusFreshMs())
+                && telemetry.getStatus() != null
+                && target.equals(telemetry.getStatus().mapName());
+        NavMapVO result = robotOnThisMap ? navMapService.activate(saved.getId()) : saved;
+        log.info("map imported from robot: navMapId={}, robotMapName={}, activated={}",
+                result.getId(), target, robotOnThisMap);
+        return result;
+    }
+
+    /**
+     * 周期对账（对齐「机器人是唯一事实源」）：机器人 map_name 与 DB ACTIVE 不一致时，
+     * 若库中存在该地图档案则自动对齐；不存在则只暴露状态，由前端提示导入。
+     */
+    @Scheduled(fixedDelay = 5000)
+    public void alignActiveMapWithRobot() {
+        if (!telemetry.isStatusFresh(props.getStatusFreshMs())) {
+            return;
+        }
+        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+        String robotMap = status.mapName();
+        if (robotMap == null || robotMap.isBlank()) {
+            return;
+        }
+        NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
+                .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE).last("LIMIT 1"));
+        if (active != null && robotMap.equals(active.getRobotMapName())) {
+            return; // 已对齐
+        }
+        NavMap match = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
+                .eq(NavMap::getRobotMapName, robotMap)
+                .orderByDesc(NavMap::getId).last("LIMIT 1"));
+        if (match == null) {
+            return; // 库里没有机器人当前地图，无法对齐（snapshot 会暴露 ROBOT_MAP_MISSING）
+        }
+        navMapService.activate(match.getId());
+        log.info("map aligned to robot truth: robotMap={} -> navMapId={} ACTIVE", robotMap, match.getId());
+        ssePublisher.publishEvent("map-align", Map.of(
+                "aligned", true, "navMapId", match.getId(), "robotMapName", robotMap));
+    }
+
+    /**
+     * 机器人当前地图与档案库的对齐状态（/robot/snapshot 的 map_align 字段）。
+     * state：ALIGNED / MISMATCH（库里匹配但非 ACTIVE）/ ROBOT_MAP_MISSING（库里没有）/ UNKNOWN（未上报或状态过期）
+     */
+    public Map<String, Object> computeAlignment() {
+        String robotMap = null;
+        if (telemetry.isStatusFresh(props.getStatusFreshMs()) && telemetry.getStatus() != null) {
+            robotMap = telemetry.getStatus().mapName();
+        }
+        NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
+                .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE).last("LIMIT 1"));
+        NavMap robotRecord = null;
+        if (robotMap != null && !robotMap.isBlank()) {
+            robotRecord = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
+                    .eq(NavMap::getRobotMapName, robotMap)
+                    .orderByDesc(NavMap::getId).last("LIMIT 1"));
+        }
+
+        String state;
+        if (robotMap == null || robotMap.isBlank()) {
+            state = "UNKNOWN";
+        } else if (robotRecord == null) {
+            state = "ROBOT_MAP_MISSING";
+        } else if (active != null && (robotRecord.getId().equals(active.getId())
+                || robotMap.equals(active.getRobotMapName()))) {
+            state = "ALIGNED";
+        } else {
+            state = "MISMATCH";
+        }
+
+        Map<String, Object> align = new java.util.LinkedHashMap<>();
+        align.put("robot_map_name", robotMap);
+        align.put("state", state);
+        align.put("robot_map_record_id", robotRecord == null ? null : robotRecord.getId());
+        align.put("active_map_id", active == null ? null : active.getId());
+        align.put("active_map_name", active == null ? null : active.getMapName());
+        return align;
     }
 
     private void requireConnection() {

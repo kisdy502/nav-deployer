@@ -3,10 +3,13 @@ package com.agv.navdeployer.controller;
 import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.dto.InitialPoseDTO;
 import com.agv.navdeployer.dto.RobotControlDTO;
+import com.agv.navdeployer.service.MapModeTaskService;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.RosCommandDispatcher.SetControlResult;
 import com.agv.navdeployer.sim.RosbridgeClient;
 import com.agv.navdeployer.sim.SimAgvSsePublisher;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -26,19 +29,27 @@ public class RobotController {
     private final SimAgvSsePublisher ssePublisher;
     private final RosCommandDispatcher dispatcher;
     private final RosbridgeClient rosbridgeClient;
+    private final MapModeTaskService mapModeTaskService;
+    private final ObjectMapper objectMapper;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
-                           RosbridgeClient rosbridgeClient) {
+                           RosbridgeClient rosbridgeClient,
+                           MapModeTaskService mapModeTaskService,
+                           ObjectMapper objectMapper) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
+        this.mapModeTaskService = mapModeTaskService;
+        this.objectMapper = objectMapper;
     }
 
-    @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数")
+    @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数 / 地图对齐状态")
     @GetMapping("/api/v1/robot/snapshot")
     public ApiResponse<Object> snapshot() {
-        return ApiResponse.ok(ssePublisher.buildSnapshot());
+        ObjectNode snap = ssePublisher.buildSnapshot();
+        snap.set("map_align", objectMapper.valueToTree(mapModeTaskService.computeAlignment()));
+        return ApiResponse.ok(snap);
     }
 
     @Operation(summary = "任务闸门", description = "start 恢复接单 / stop 停车暂停 / reset 复位（同步等 service_response）")

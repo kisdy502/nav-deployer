@@ -6,6 +6,7 @@ import { MapScene, type PickResult } from '@/three/MapScene'
 import { PointLayer } from '@/three/PointLayer'
 import { PathLayer, type PathRenderItem } from '@/three/PathLayer'
 import { RobotLayer } from '@/three/RobotLayer'
+import { ScanLayer } from '@/three/ScanLayer'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 
@@ -25,13 +26,13 @@ const coordsText = ref('')
 const hint = computed(() => {
   switch (editor.mode) {
     case 'placePoint':
-      return '在地图上点击放置点位'
+      return '在地图上点击放置点位，保存后可连续创建（Esc 退出）'
     case 'drawPath':
       return editor.pathEdit
         ? editor.pathEdit.pendingSourceId == null
-          ? '点击一个点位作为路线节点（链式连接）'
+          ? '点击一个点位作为路线节点（链式连接），完成后点「保存路线」'
           : '点击下一个点位以连接（Esc 取消起点）'
-        : '请先在左侧选择或新建路线'
+        : '正在创建路线…'
     case 'initialPose':
       return '按下并拖动：设置机器人初始位姿（方向 = 拖动方向）'
     case 'measure':
@@ -45,6 +46,7 @@ let scene: MapScene | null = null
 let pointLayer: PointLayer
 let pathLayer: PathLayer
 let robotLayer: RobotLayer
+let scanLayer: ScanLayer
 
 // 拖拽状态
 type DragState =
@@ -100,6 +102,19 @@ const pathItems = computed<PathRenderItem[]>(() => {
   })
 })
 
+// 路线编辑中已选中的点位（起终点）：蓝色高亮环
+const pathEditHighlightIds = computed<Set<number> | null>(() => {
+  const pe = editor.pathEdit
+  if (!pe) return null
+  const ids = new Set<number>()
+  if (pe.pendingSourceId != null) ids.add(pe.pendingSourceId)
+  for (const e of pe.edges) {
+    ids.add(e.source_point_id)
+    ids.add(e.target_point_id)
+  }
+  return ids
+})
+
 // ---------- 生命周期 ----------
 onMounted(() => {
   const el = containerRef.value!
@@ -107,6 +122,7 @@ onMounted(() => {
   pointLayer = new PointLayer()
   pathLayer = new PathLayer()
   robotLayer = new RobotLayer()
+  scanLayer = new ScanLayer()
   scene = new MapScene(el, {
     onLeftDown: onDown,
     onLeftMove: onMove,
@@ -116,6 +132,7 @@ onMounted(() => {
     onFrame: (dt) => robotLayer?.tick(dt),
   })
   scene.pickRoot.add(pointLayer.group, pathLayer.group, robotLayer.group, robotLayer.trailGroup)
+  scene.scene.add(scanLayer.group)
 
   // 重定位模式的方向预览箭头
   posePreview = new THREE.Group()
@@ -150,10 +167,13 @@ function syncAll() {
   } else {
     scene.hideMap()
   }
-  pointLayer?.sync(editor.points, editor.selectedPointId ?? null, props.editable)
+  pointLayer?.sync(editor.points, editor.selectedPointId ?? null, props.editable, pathEditHighlightIds.value ?? undefined)
   pathLayer?.render(pathItems.value)
   robotLayer?.setTarget(robot.pose)
   robotLayer?.setTrail(robot.trail)
+  scanLayer?.setScan(1, robot.scan1Cloud?.points ?? null, robot.scan1Cloud?.pose ?? null)
+  scanLayer?.setScan(2, robot.scan2Cloud?.points ?? null, robot.scan2Cloud?.pose ?? null)
+  scanLayer?.setLayerVisible(editor.layers.scan)
   scene.mapGroup.visible = editor.layers.map
   if (pointLayer) pointLayer.group.visible = editor.layers.points
   if (pathLayer) pathLayer.group.visible = editor.layers.paths
@@ -205,16 +225,24 @@ watch(
 )
 
 watch(
-  () => [editor.points, editor.selectedPointId, props.editable] as const,
-  ([pts, sel, editable]) => pointLayer?.sync(pts, sel ?? null, editable),
+  () => [editor.points, editor.selectedPointId, props.editable, pathEditHighlightIds.value] as const,
+  ([pts, sel, editable, hi]) => pointLayer?.sync(pts, sel ?? null, editable, hi ?? undefined),
   { deep: false },
 )
 
 watch(pathItems, (items) => pathLayer?.render(items), { deep: true })
 
 watch(
-  () => [editor.layers.map, editor.layers.points, editor.layers.paths, editor.layers.robot, editor.layers.trail] as const,
-  ([map, points, paths, rb, trail]) => {
+  () => [robot.scan1Cloud, robot.scan2Cloud] as const,
+  ([s1, s2]) => {
+    scanLayer?.setScan(1, s1?.points ?? null, s1?.pose ?? null)
+    scanLayer?.setScan(2, s2?.points ?? null, s2?.pose ?? null)
+  },
+)
+
+watch(
+  () => [editor.layers.map, editor.layers.points, editor.layers.paths, editor.layers.robot, editor.layers.trail, editor.layers.scan] as const,
+  ([map, points, paths, rb, trail, scan]) => {
     if (!scene) return
     scene.mapGroup.visible = map
     if (pointLayer) pointLayer.group.visible = points
@@ -223,6 +251,7 @@ watch(
       robotLayer.group.visible = rb
       robotLayer.trailGroup.visible = trail
     }
+    if (scanLayer) scanLayer.setLayerVisible(scan)
   },
 )
 

@@ -2,8 +2,8 @@ import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { NavPointVO, PointType } from '@/types/api'
 
-/** 点位半径 0.11m（直径 0.22），箭头高 = 半径，底面在圆心、尖端抵圆周 */
-const R = 0.11
+/** 点位半径 0.22m（直径 0.44，基础 0.11 的 2 倍便于观察），箭头高 = 半径，底面在圆心、尖端抵圆周 */
+const R = 0.22
 const ARROW_H = R
 
 const TYPE_COLORS: Record<PointType, number> = {
@@ -20,6 +20,7 @@ interface PointVisual {
   discMat: THREE.MeshBasicMaterial
   arrow: THREE.Mesh
   ring: THREE.Mesh
+  halo: THREE.Mesh
   handle: THREE.Mesh
   labelInner: HTMLElement
   x: number
@@ -27,13 +28,13 @@ interface PointVisual {
   yaw: number
 }
 
-/** 点位图层：小圆盘 + 朝向小箭头 + 选中环 + 旋转手柄 + CSS2D 名称标签 */
+/** 点位图层：小圆盘 + 朝向小箭头 + 选中环 + 路线编辑高亮环 + 旋转手柄 + CSS2D 名称标签 */
 export class PointLayer {
   readonly group = new THREE.Group()
   private visuals = new Map<number, PointVisual>()
 
-  /** showHandles=false（浏览模式）时不显示旋转手柄 */
-  sync(points: NavPointVO[], selectedId: number | null, showHandles = true) {
+  /** showHandles=false（浏览模式）时不显示旋转手柄；highlightIds=路线编辑中已选中的起终点，蓝色外环高亮 */
+  sync(points: NavPointVO[], selectedId: number | null, showHandles = true, highlightIds?: Set<number>) {
     const alive = new Set<number>()
     for (const p of points) {
       alive.add(p.id)
@@ -44,6 +45,7 @@ export class PointLayer {
       }
       this.updateVisual(v, p, p.id === selectedId)
       v.handle.visible = showHandles && p.id === selectedId
+      v.halo.visible = highlightIds?.has(p.id) ?? false
     }
     for (const [id, v] of [...this.visuals]) {
       if (!alive.has(id)) {
@@ -62,19 +64,26 @@ export class PointLayer {
     disc.userData.pick = { type: 'point', id: p.id }
     // 朝向箭头：高 = 半径，底面在圆心，尖端抵圆周
     const arrow = new THREE.Mesh(
-      new THREE.ConeGeometry(0.045, ARROW_H, 12),
+      new THREE.ConeGeometry(0.09, ARROW_H, 12),
       new THREE.MeshBasicMaterial({ color: 0x2f6b3a }),
     )
     arrow.position.z = 0.02
     arrow.userData.pick = { type: 'point', id: p.id }
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(R + 0.02, R + 0.07, 32),
+      new THREE.RingGeometry(R + 0.04, R + 0.14, 32),
       new THREE.MeshBasicMaterial({ color: 0xf56c6c, side: THREE.DoubleSide }),
     )
     ring.position.z = 0.005
     ring.visible = false
+    // 路线编辑高亮环（选中的起终点）：蓝色，位于红色选中环外侧
+    const halo = new THREE.Mesh(
+      new THREE.RingGeometry(R * 1.8, R * 2.2, 32),
+      new THREE.MeshBasicMaterial({ color: 0x409eff, side: THREE.DoubleSide }),
+    )
+    halo.position.z = 0.006
+    halo.visible = false
     const handle = new THREE.Mesh(
-      new THREE.SphereGeometry(0.04, 12, 12),
+      new THREE.SphereGeometry(0.08, 12, 12),
       new THREE.MeshBasicMaterial({ color: 0xe6a23c }),
     )
     handle.position.z = 0.02
@@ -88,9 +97,9 @@ export class PointLayer {
     el.appendChild(inner)
     const label = new CSS2DObject(el)
 
-    root.add(disc, arrow, ring, handle, label)
+    root.add(disc, arrow, ring, halo, handle, label)
     this.group.add(root)
-    return { root, disc, discMat, arrow, ring, handle, labelInner: inner, x: p.x, y: p.y, yaw: p.yaw }
+    return { root, disc, discMat, arrow, ring, halo, handle, labelInner: inner, x: p.x, y: p.y, yaw: p.yaw }
   }
 
   private updateVisual(v: PointVisual, p: NavPointVO, selected: boolean) {
@@ -112,8 +121,8 @@ export class PointLayer {
     // 底面在圆心：沿朝向偏移半个箭头高度
     v.arrow.position.x = Math.cos(yaw) * (ARROW_H / 2)
     v.arrow.position.y = Math.sin(yaw) * (ARROW_H / 2)
-    v.handle.position.x = Math.cos(yaw) * (R + 0.18)
-    v.handle.position.y = Math.sin(yaw) * (R + 0.18)
+    v.handle.position.x = Math.cos(yaw) * (R + 0.36)
+    v.handle.position.y = Math.sin(yaw) * (R + 0.36)
   }
 
   /** 拖拽预览：不落库仅更新视觉 */

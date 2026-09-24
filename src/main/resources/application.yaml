@@ -73,6 +73,8 @@ sim_agv:
   ws_url: ${SIM_AGV_WS_URL:ws://127.0.0.1:9090}
   status_topic: /agv/status
   tf_topic: /tf
+  # 静态 TF：雷达安装关系（base_link → laser 的平移+旋转），点云安装变换优先来源；拿不到时回退 scan*_mount_yaw_deg
+  tf_static_topic: /tf_static
   # Must match the bridge agv_id (child_frame_id = <agv_id>/base_link).
   tf_child_frame: AGV001/base_link
   tf_throttle_ms: 100
@@ -84,6 +86,10 @@ sim_agv:
   scan_throttle_ms: 333
   scan_topic_1: /scan_1
   scan_topic_2: /scan_2
+  # 雷达安装朝向偏移（度）：雷达自身坐标系相对 base_link 的固定旋转角。
+  # 双雷达对装（背靠背）时，反装的那个通常为 180。若画面上某雷达点云与实际障碍方向相反，调整此值（0/90/180/270）。
+  scan1_mount_yaw_deg: 0
+  scan2_mount_yaw_deg: 180
   summary_interval_ms: 5000
   # 建图：/map 大消息订阅（分片重组在 RosbridgeClient 内完成）
   map_enabled: true

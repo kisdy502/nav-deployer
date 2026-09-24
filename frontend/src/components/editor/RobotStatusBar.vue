@@ -26,8 +26,13 @@ const poseText = computed(() => {
 })
 
 const scanText = computed(() => {
-  const s = robot.snapshot?.scan1
-  return s ? `雷达1: ${s.range_count ?? '-'} 点 (${s.min_range ?? '-'}~${s.max_range ?? '-'}m)` : '雷达: -'
+  const s1 = robot.snapshot?.scan1
+  const s2 = robot.snapshot?.scan2
+  const p1 = robot.scan1Cloud
+  const p2 = robot.scan2Cloud
+  const fmt = (s: typeof s1, cloud: typeof p1) =>
+    s ? `${s.range_count ?? '-'}点 (${s.min_range ?? '-'}~${s.max_range ?? '-'}m${cloud?.points?.length ? ', 点云✓' : ', 无点云'})` : '-'
+  return `雷达1: ${fmt(s1, p1)} | 雷达2: ${fmt(s2, p2)}`
 })
 
 async function onControl(action: 'start' | 'stop' | 'reset') {

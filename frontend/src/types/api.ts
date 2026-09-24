@@ -207,6 +207,22 @@ export interface ScanSummary {
   max_range: number | null
 }
 
+/** scan SSE 事件体：双雷达点云（base_link 系扁平坐标 [x0,y0,x1,y1,...]） */
+export interface ScanCloudEvent {
+  timestamp: string
+  scan1: ScanCloud | null
+  scan2: ScanCloud | null
+}
+
+export interface ScanCloud {
+  frame_id: string
+  range_count: number
+  /** 扁平 [x0,y0,x1,y1,...]，单位米，base_link 系 */
+  points: number[]
+  /** 该帧捕获时机器人的 map 系位姿；投影到地图必须用它。null = 当时位姿未知（无法正确绘制） */
+  pose: { x: number; y: number; yaw: number } | null
+}
+
 /** telemetry 事件体（= GET /robot/snapshot 的 data） */
 export interface TelemetrySnapshot {
   timestamp: string

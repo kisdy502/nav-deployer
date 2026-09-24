@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { connectAgvSse } from '@/sse/agv-sse'
 import { getRobotSnapshot, robotControl as robotControlApi, setInitialPose as setInitialPoseApi } from '@/api/robot'
 import { useTasksStore } from './tasks'
-import type { TelemetrySnapshot } from '@/types/api'
+import type { ScanCloud, TelemetrySnapshot } from '@/types/api'
 
 const TRAIL_MAX = 2000
 
@@ -11,6 +11,8 @@ export const useRobotStore = defineStore('robot', () => {
   const connStatus = ref<'connecting' | 'open' | 'closed'>('connecting')
   const snapshot = ref<TelemetrySnapshot | null>(null)
   const trail = ref<{ x: number; y: number }[]>([])
+  const scan1Cloud = ref<ScanCloud | null>(null)
+  const scan2Cloud = ref<ScanCloud | null>(null)
   const started = ref(false)
 
   const pose = computed(() => snapshot.value?.pose ?? null)
@@ -39,6 +41,10 @@ export const useRobotStore = defineStore('robot', () => {
     connectAgvSse({
       onStatus: (s) => (connStatus.value = s),
       onTelemetry: (t) => applySnapshot(t),
+      onScan: (t) => {
+        scan1Cloud.value = t.scan1
+        scan2Cloud.value = t.scan2
+      },
       onMoveTask: (t) => useTasksStore().onMoveTask(t),
       onMapTask: (t) => useTasksStore().onMapTask(t),
       onMapSync: (e) => useTasksStore().onMapSync(e),
@@ -57,5 +63,18 @@ export const useRobotStore = defineStore('robot', () => {
     trail.value = []
   }
 
-  return { connStatus, snapshot, trail, pose, status, battery, start, control, setInitialPose, clearTrail }
+  return {
+    connStatus,
+    snapshot,
+    trail,
+    scan1Cloud,
+    scan2Cloud,
+    pose,
+    status,
+    battery,
+    start,
+    control,
+    setInitialPose,
+    clearTrail,
+  }
 })

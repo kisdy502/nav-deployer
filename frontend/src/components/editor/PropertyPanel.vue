@@ -294,6 +294,7 @@ const pointCodeOf = (id: number) => editor.pointsById.get(id)?.point_code ?? `#$
             <el-checkbox v-model="editor.layers.paths" label="路线" />
             <el-checkbox v-model="editor.layers.robot" label="机器人" />
             <el-checkbox v-model="editor.layers.trail" label="轨迹" />
+            <el-checkbox v-model="editor.layers.scan" label="雷达点云" />
           </div>
 
           <el-divider />
