@@ -3,13 +3,22 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { angleDelta } from '@/utils/coords'
 
 const TRAIL_MAX = 2000
+/** 机器人矩形尺寸（长 0.4m × 宽 0.32m），朝向沿 +x */
+const BODY_L = 0.4
+const BODY_W = 0.32
 
-/** 机器人图层：位姿箭头（平滑趋近目标）+ 历史轨迹线 */
+function triangleMesh(a: [number, number], b: [number, number], c: [number, number], color: number): THREE.Mesh {
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute([a[0], a[1], 0, b[0], b[1], 0, c[0], c[1], 0], 3))
+  return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }))
+}
+
+/** 机器人图层：蓝色矩形车体 + 车内「》」朝向符号 + 几何中心点（观察停靠对齐）+ 轨迹线 */
 export class RobotLayer {
   readonly group = new THREE.Group()
   readonly trailGroup = new THREE.Group()
   private root = new THREE.Group()
-  private arrow: THREE.Mesh
+  private chevron = new THREE.Group()
   private target: { x: number; y: number; yaw: number } | null = null
   private shown: { x: number; y: number; yaw: number } | null = null
   private trailLine: THREE.Line
@@ -17,16 +26,34 @@ export class RobotLayer {
 
   constructor() {
     this.group.position.z = 0.2
-    const base = new THREE.Mesh(
-      new THREE.CircleGeometry(0.28, 32),
-      new THREE.MeshBasicMaterial({ color: 0x409eff, transparent: true, opacity: 0.95 }),
+
+    const body = new THREE.Mesh(
+      new THREE.PlaneGeometry(BODY_L, BODY_W),
+      new THREE.MeshBasicMaterial({ color: 0x409eff, side: THREE.DoubleSide }),
     )
-    base.position.z = 0.01
-    this.arrow = new THREE.Mesh(
-      new THREE.ConeGeometry(0.12, 0.42, 12),
-      new THREE.MeshBasicMaterial({ color: 0xd946ef }),
+    body.position.z = 0.01
+    const border = new THREE.LineLoop(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-BODY_L / 2, -BODY_W / 2, 0.02),
+        new THREE.Vector3(BODY_L / 2, -BODY_W / 2, 0.02),
+        new THREE.Vector3(BODY_L / 2, BODY_W / 2, 0.02),
+        new THREE.Vector3(-BODY_L / 2, BODY_W / 2, 0.02),
+      ]),
+      new THREE.LineBasicMaterial({ color: 0x1d6fd1 }),
     )
-    this.arrow.position.z = 0.03
+    // 几何中心点：观察停靠对齐
+    const centerDot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.024, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    )
+    centerDot.position.z = 0.03
+    // 「》」朝向符号（两个尖角，绕车体中心旋转，顶点已按中心对称取值）
+    this.chevron.add(
+      triangleMesh([-0.05, 0.045], [0, 0], [-0.05, -0.045], 0xffffff),
+      triangleMesh([0, 0.045], [0.05, 0], [0, -0.045], 0xffffff),
+    )
+    this.chevron.position.z = 0.04
+
     const el = document.createElement('div')
     el.className = 'nd-label'
     const inner = document.createElement('span')
@@ -34,7 +61,8 @@ export class RobotLayer {
     inner.textContent = 'AGV'
     el.appendChild(inner)
     const label = new CSS2DObject(el)
-    this.root.add(base, this.arrow, label)
+
+    this.root.add(body, border, centerDot, this.chevron, label)
     this.group.add(this.root)
 
     const buf = new Float32Array(TRAIL_MAX * 3)
@@ -73,7 +101,7 @@ export class RobotLayer {
     if (!this.shown) return
     this.root.position.x = this.shown.x
     this.root.position.y = this.shown.y
-    this.arrow.rotation.z = this.shown.yaw - Math.PI / 2
+    this.chevron.rotation.z = this.shown.yaw
   }
 
   setTrail(points: { x: number; y: number }[]) {

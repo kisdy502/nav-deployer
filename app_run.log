@@ -1,0 +1,188 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ------------------------< com.agv:nav-deployer >------------------------
+[INFO] Building nav-deployer 0.1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] >>> spring-boot:3.3.5:run (default-cli) > test-compile @ nav-deployer >>>
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ nav-deployer ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 6 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ nav-deployer ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ nav-deployer ---
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ nav-deployer ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] <<< spring-boot:3.3.5:run (default-cli) < test-compile @ nav-deployer <<<
+[INFO] 
+[INFO] 
+[INFO] --- spring-boot:3.3.5:run (default-cli) @ nav-deployer ---
+[INFO] Attaching agents: []
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.3.5)
+
+2026-09-24T09:37:24.601+08:00  INFO 14772 --- [nav-deployer] [           main] c.a.navdeployer.NavDeployerApplication   : Starting NavDeployerApplication using Java 21.0.10 with PID 14772 (D:\workspace\testDispatch\target\classes started by biwe01 in D:\workspace\testDispatch)
+2026-09-24T09:37:24.603+08:00  INFO 14772 --- [nav-deployer] [           main] c.a.navdeployer.NavDeployerApplication   : No active profile set, falling back to 1 default profile: "default"
+2026-09-24T09:37:25.375+08:00  INFO 14772 --- [nav-deployer] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Multiple Spring Data modules found, entering strict repository configuration mode
+2026-09-24T09:37:25.376+08:00  INFO 14772 --- [nav-deployer] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-09-24T09:37:25.405+08:00  INFO 14772 --- [nav-deployer] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 13 ms. Found 0 Redis repository interfaces.
+2026-09-24T09:37:25.966+08:00  INFO 14772 --- [nav-deployer] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8083 (http)
+2026-09-24T09:37:25.981+08:00  INFO 14772 --- [nav-deployer] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-09-24T09:37:25.981+08:00  INFO 14772 --- [nav-deployer] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-09-24T09:37:26.063+08:00  INFO 14772 --- [nav-deployer] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-09-24T09:37:26.064+08:00  INFO 14772 --- [nav-deployer] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 1412 ms
+2026-09-24T09:37:26.145+08:00  INFO 14772 --- [nav-deployer] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-09-24T09:37:26.246+08:00  INFO 14772 --- [nav-deployer] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@723742b2
+2026-09-24T09:37:26.247+08:00  INFO 14772 --- [nav-deployer] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-09-24T09:37:27.015+08:00  INFO 14772 --- [nav-deployer] [           main] o.s.b.a.w.s.WelcomePageHandlerMapping    : Adding welcome page: class path resource [static/index.html]
+2026-09-24T09:37:27.595+08:00  INFO 14772 --- [nav-deployer] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8083 (http) with context path '/'
+2026-09-24T09:37:27.602+08:00  INFO 14772 --- [nav-deployer] [           main] c.a.navdeployer.NavDeployerApplication   : Started NavDeployerApplication in 3.381 seconds (process running for 3.708)
+2026-09-24T09:37:27.604+08:00  INFO 14772 --- [nav-deployer] [           main] c.a.navdeployer.config.RosbridgeConfig   : live map cache armed on topic /map (throttle=5000ms, fragment=500000)
+2026-09-24T09:37:27.614+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-67] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:27.615+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-67] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:27.615+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-67] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:30.629+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-74] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:30.629+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-74] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:30.629+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-74] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:33.642+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-75] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:33.643+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-75] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:33.643+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-75] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:36.654+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-76] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:36.654+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-76] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:36.654+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-76] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:39.661+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-77] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:39.661+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-77] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:39.661+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-77] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:42.664+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-78] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:42.664+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-78] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:42.664+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-78] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:45.668+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-79] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:45.668+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-79] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:45.668+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-79] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:48.683+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-80] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:48.683+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-80] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:48.683+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-80] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:51.697+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-81] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:51.697+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-81] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:51.699+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-81] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:54.700+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-82] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:54.701+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-82] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:54.701+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-82] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:57.703+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-83] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:37:57.703+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-83] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:37:57.703+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-83] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:00.720+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-84] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:00.720+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-84] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:00.720+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-84] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:03.724+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-85] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:03.724+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-85] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:03.724+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-85] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:06.731+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-86] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:06.731+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-86] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:06.732+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-86] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:09.745+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-87] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:09.745+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-87] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:09.745+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-87] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:12.759+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-88] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:12.759+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-88] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:12.759+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-88] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:15.766+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-89] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:15.766+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-89] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:15.768+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-89] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:18.775+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-90] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:18.775+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-90] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:18.775+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-90] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:21.791+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-91] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:21.791+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-91] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:21.791+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-91] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:24.807+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-92] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:24.807+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-92] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:24.807+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-92] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:27.820+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-93] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:27.820+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-93] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:27.820+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-93] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:30.836+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-94] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:30.836+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-94] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:30.836+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-94] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:33.846+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-95] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:33.846+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-95] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:33.846+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-95] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:36.861+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-96] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:36.861+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-96] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:36.862+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-96] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:39.880+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-97] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:39.880+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-97] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:39.880+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-97] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:42.891+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-98] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:42.892+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-98] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:42.892+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-98] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:45.905+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-99] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:45.905+08:00  INFO 14772 --- [nav-deployer] [ctReadThread-99] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:45.905+08:00  WARN 14772 --- [nav-deployer] [ctReadThread-99] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:48.920+08:00  WARN 14772 --- [nav-deployer] [tReadThread-100] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge transport error: Connection refused: connect
+2026-09-24T09:38:48.921+08:00  INFO 14772 --- [nav-deployer] [tReadThread-100] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge disconnected: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:48.921+08:00  WARN 14772 --- [nav-deployer] [tReadThread-100] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused: connect
+2026-09-24T09:38:51.943+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.agv.navdeployer.sim.RosbridgeClient    : rosbridge connected: ws://127.0.0.1:9090
+2026-09-24T09:38:52.020+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV rosbridge ready, waiting for /agv/status / /tf / /scan_1 / /scan_2
+2026-09-24T09:38:52.171+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-09-24T09:38:57.190+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.20m] (14 msg) | scan2 [270 pts, range 1.64~21.75m] (14 msg)
+2026-09-24T09:39:02.215+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (29 msg) | scan2 [270 pts, range 1.64~21.76m] (29 msg)
+2026-09-24T09:39:07.239+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.20m] (44 msg) | scan2 [270 pts, range 1.63~21.76m] (44 msg)
+2026-09-24T09:39:12.274+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (58 msg) | scan2 [270 pts, range 1.64~21.73m] (59 msg)
+2026-09-24T09:39:14.075+08:00  INFO 14772 --- [nav-deployer] [nio-8083-exec-2] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-09-24T09:39:14.076+08:00  INFO 14772 --- [nav-deployer] [nio-8083-exec-2] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2026-09-24T09:39:14.077+08:00  INFO 14772 --- [nav-deployer] [nio-8083-exec-2] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2026-09-24T09:39:17.307+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (73 msg) | scan2 [270 pts, range 1.64~21.75m] (73 msg)
+2026-09-24T09:39:22.337+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (88 msg) | scan2 [270 pts, range 1.63~21.74m] (88 msg)
+2026-09-24T09:39:27.362+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.17m] (103 msg) | scan2 [270 pts, range 1.65~21.74m] (103 msg)
+2026-09-24T09:39:32.374+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.20m] (117 msg) | scan2 [270 pts, range 1.66~21.75m] (118 msg)
+2026-09-24T09:39:37.458+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (132 msg) | scan2 [270 pts, range 1.62~21.76m] (132 msg)
+2026-09-24T09:39:42.514+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.20m] (147 msg) | scan2 [270 pts, range 1.64~21.74m] (147 msg)
+2026-09-24T09:39:47.563+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (162 msg) | scan2 [270 pts, range 1.64~21.75m] (162 msg)
+2026-09-24T09:39:52.582+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (176 msg) | scan2 [270 pts, range 1.65~21.76m] (177 msg)
+2026-09-24T09:39:57.586+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.18m] (191 msg) | scan2 [270 pts, range 1.64~21.74m] (191 msg)
+2026-09-24T09:40:02.631+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (206 msg) | scan2 [270 pts, range 1.65~21.73m] (206 msg)
+2026-09-24T09:40:07.636+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.32~24.19m] (220 msg) | scan2 [270 pts, range 1.63~21.74m] (221 msg)
+2026-09-24T09:40:12.734+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.19m] (235 msg) | scan2 [270 pts, range 1.66~21.74m] (235 msg)
+2026-09-24T09:40:17.803+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (250 msg) | scan2 [270 pts, range 1.65~21.74m] (250 msg)
+2026-09-24T09:40:22.864+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.33~24.18m] (265 msg) | scan2 [270 pts, range 1.64~21.74m] (265 msg)
+2026-09-24T09:40:27.881+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (279 msg) | scan2 [270 pts, range 1.64~21.75m] (280 msg)
+2026-09-24T09:40:32.941+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (294 msg) | scan2 [270 pts, range 1.65~21.74m] (294 msg)
+2026-09-24T09:40:37.986+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (309 msg) | scan2 [270 pts, range 1.64~21.72m] (309 msg)
+2026-09-24T09:40:43.035+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.33~24.19m] (324 msg) | scan2 [270 pts, range 1.64~21.75m] (324 msg)
+2026-09-24T09:40:48.067+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.18m] (339 msg) | scan2 [270 pts, range 1.64~21.72m] (339 msg)
+2026-09-24T09:40:53.099+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.20m] (353 msg) | scan2 [270 pts, range 1.64~21.76m] (353 msg)
+2026-09-24T09:40:58.178+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.20m] (368 msg) | scan2 [270 pts, range 1.65~21.75m] (368 msg)
+2026-09-24T09:41:03.196+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (383 msg) | scan2 [270 pts, range 1.64~21.75m] (383 msg)
+2026-09-24T09:41:08.247+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.19m] (397 msg) | scan2 [270 pts, range 1.64~21.75m] (397 msg)
+2026-09-24T09:41:13.274+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (412 msg) | scan2 [270 pts, range 1.65~21.73m] (412 msg)
+2026-09-24T09:41:18.324+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (427 msg) | scan2 [270 pts, range 1.66~21.75m] (427 msg)
+2026-09-24T09:41:23.326+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.18m] (441 msg) | scan2 [270 pts, range 1.64~21.74m] (442 msg)
+2026-09-24T09:41:28.332+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (456 msg) | scan2 [270 pts, range 1.63~21.74m] (456 msg)
+2026-09-24T09:41:33.372+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.33~24.19m] (471 msg) | scan2 [270 pts, range 1.65~21.73m] (471 msg)
+2026-09-24T09:41:38.375+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.20m] (485 msg) | scan2 [270 pts, range 1.65~21.76m] (486 msg)
+2026-09-24T09:41:43.435+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.17m] (500 msg) | scan2 [270 pts, range 1.64~21.74m] (500 msg)
+2026-09-24T09:41:48.452+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.18m] (515 msg) | scan2 [270 pts, range 1.64~21.74m] (515 msg)
+2026-09-24T09:41:50.348+08:00  INFO 14772 --- [nav-deployer] [nio-8083-exec-5] o.springdoc.api.AbstractOpenApiResource  : Init duration for springdoc-openapi is: 825 ms
+2026-09-24T09:41:53.459+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.18m] (529 msg) | scan2 [270 pts, range 1.64~21.74m] (529 msg)
+2026-09-24T09:41:58.500+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.19m] (544 msg) | scan2 [270 pts, range 1.65~21.73m] (544 msg)
+2026-09-24T09:42:03.529+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (559 msg) | scan2 [270 pts, range 1.64~21.76m] (559 msg)
+2026-09-24T09:42:08.574+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (573 msg) | scan2 [270 pts, range 1.63~21.74m] (573 msg)
+2026-09-24T09:42:13.631+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.19m] (588 msg) | scan2 [270 pts, range 1.64~21.73m] (588 msg)
+2026-09-24T09:42:18.691+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.33~24.19m] (603 msg) | scan2 [270 pts, range 1.64~21.74m] (603 msg)
+2026-09-24T09:42:23.691+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.34~24.19m] (618 msg) | scan2 [270 pts, range 1.63~21.74m] (618 msg)
+2026-09-24T09:42:28.782+08:00  INFO 14772 --- [nav-deployer] [tReadThread-101] c.a.n.sim.SimAgvTelemetryCollector       : Sim AGV summary | conn=true | status=n/a (0 msg) | pose n/a (0 msg) | scan1 [270 pts, range 3.35~24.17m] (632 msg) | scan2 [270 pts, range 1.64~21.75m] (632 msg)

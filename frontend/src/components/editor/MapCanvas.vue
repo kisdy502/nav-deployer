@@ -14,6 +14,9 @@ const emit = defineEmits<{
   (e: 'context', payload: { hit: PickResult | null; x: number; y: number; world: { x: number; y: number } }): void
 }>()
 
+// editable=false 为浏览模式：可选中点位/路线，但不可拖拽编辑
+const props = withDefaults(defineProps<{ editable?: boolean }>(), { editable: true })
+
 const editor = useEditorStore()
 const robot = useRobotStore()
 
@@ -133,7 +136,33 @@ onMounted(() => {
     const w = scene.screenToWorld(ev.clientX, ev.clientY)
     coordsText.value = `${w.x.toFixed(2)} , ${w.y.toFixed(2)} m`
   })
+
+  // 组件重挂载（如编辑器返回浏览页）时场景是新的，需主动同步一次已有数据
+  syncAll()
 })
+
+/** 把 store 中的当前状态整体刷进场景 */
+function syncAll() {
+  if (!scene) return
+  if (editor.grid) {
+    scene.setMap(editor.grid)
+    if (scene.mapBounds) scene.fitView(scene.mapBounds)
+  } else {
+    scene.hideMap()
+  }
+  pointLayer?.sync(editor.points, editor.selectedPointId ?? null, props.editable)
+  pathLayer?.render(pathItems.value)
+  robotLayer?.setTarget(robot.pose)
+  robotLayer?.setTrail(robot.trail)
+  scene.mapGroup.visible = editor.layers.map
+  if (pointLayer) pointLayer.group.visible = editor.layers.points
+  if (pathLayer) pathLayer.group.visible = editor.layers.paths
+  if (robotLayer) {
+    robotLayer.group.visible = editor.layers.robot
+    robotLayer.trailGroup.visible = editor.layers.trail
+  }
+  scene.showMeasure(editor.measure.a, editor.measure.b)
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey)
@@ -176,8 +205,8 @@ watch(
 )
 
 watch(
-  () => [editor.points, editor.selectedPointId] as const,
-  ([pts, sel]) => pointLayer?.sync(pts, sel ?? null),
+  () => [editor.points, editor.selectedPointId, props.editable] as const,
+  ([pts, sel, editable]) => pointLayer?.sync(pts, sel ?? null, editable),
   { deep: false },
 )
 
@@ -237,7 +266,7 @@ function onDown(_hit: PickResult | null, world: THREE.Vector3, ev: PointerEvent)
     }
     return
   }
-  if (editor.mode !== 'idle' || editor.pathEdit) return
+  if (editor.mode !== 'idle' || editor.pathEdit || !props.editable) return
   const hit = scene.pick(ev.clientX, ev.clientY)
   if (!hit) return
   if (hit.type === 'point' && hit.id != null) {
@@ -337,6 +366,12 @@ function onClick(hit: PickResult | null, world: THREE.Vector3) {
     editor.selectPoint(hit.id)
   } else if (hit?.type === 'rotateHandle' && hit.id != null) {
     editor.selectPoint(hit.id)
+  } else if (hit?.type === 'path' && hit.id != null) {
+    editor.selectPath(hit.id)
+    void editor.ensurePathDetail(hit.id)
+  } else if (!props.editable) {
+    // 浏览模式：点空白也允许清除选择
+    editor.clearSelection()
   } else {
     editor.clearSelection()
   }

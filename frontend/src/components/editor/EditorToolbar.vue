@@ -70,7 +70,7 @@ const mapName = computed(() => editor.mapInfo?.map_name ?? '')
 <template>
   <div class="toolbar">
     <div class="toolbar-left">
-      <el-button :icon="Back" text @click="router.push('/')">返回</el-button>
+      <el-button :icon="Back" text @click="router.push('/')">退出编辑</el-button>
       <el-divider direction="vertical" />
       <span class="map-title">{{ mapName }}</span>
       <el-tag v-if="editor.mapInfo" size="small" :type="editor.mapInfo.status === 'ACTIVE' ? 'success' : 'info'">
