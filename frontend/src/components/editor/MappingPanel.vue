@@ -68,6 +68,21 @@ async function onSaveMap() {
   }
 }
 
+/** 放弃建图：机器人协议没有取消建图服务，唯一退出方式是 save_map；
+ *  自动把半成品存为临时地图以回到导航模式，用户之后可在地图管理删除。 */
+async function onAbandonMapping() {
+  await ElMessageBox.confirm(
+    '机器人协议没有「取消建图」服务，退出建图模式的唯一方式是保存地图。' +
+      '将把当前半成品自动存为临时地图（完成后机器人回到导航模式），' +
+      '之后可在「地图管理」中删除这张临时地图。继续？',
+    '放弃建图',
+    { type: 'warning', confirmButtonText: '放弃建图', cancelButtonText: '继续建图' },
+  )
+  const name = `放弃建图_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`
+  await saveMapTaskApi(name)
+  ElMessage.info('已下发保存，机器人回到导航模式后可在「地图管理」删除该临时地图')
+}
+
 function toggleLive() {
   editor.livePolling ? editor.stopLivePolling() : editor.startLivePolling()
 }
@@ -105,6 +120,7 @@ async function reloadCurrentMap() {
         <div class="btns">
           <el-button type="primary" :disabled="inFlight || mappingMode" @click="onStartMapping">开始建图</el-button>
           <el-button type="success" :disabled="inFlight" @click="openSaveDialog">保存并入库</el-button>
+          <el-button v-if="mappingMode" type="danger" plain :disabled="inFlight" @click="onAbandonMapping">放弃建图</el-button>
         </div>
         <div class="tip">
           建图期间实时预览自动开启（下方可手动开关）查看 /map 变化；保存成功后地图自动入库并激活，可在首页管理。
