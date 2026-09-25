@@ -60,10 +60,11 @@ public class SimAgvProperties {
 
     /**
      * 模式任务（切图/建图/保存）整体截止时间：超时未达到预期 mode 判 FAILED。
-     * SAVE_MAP 机器人侧含 pbstream 优化、栅格导出、定位重启（大地图 pbstream 加载
-     * 在低端主机可达分钟级），90s 不够用，取 240s。
+     * SAVE_MAP 机器人侧含 pbstream 优化、栅格导出、定位重启；arm64 上大地图
+     * load_state 优化实测超 150s（机器人侧轨迹状态检查已放宽到 300s），
+     * 任务截止需覆盖全流程，取 360s。
      */
-    private long modeTaskTimeoutMs = 240000L;
+    private long modeTaskTimeoutMs = 360000L;
 
     private final List<String> advertiseTopics = new ArrayList<>();
 

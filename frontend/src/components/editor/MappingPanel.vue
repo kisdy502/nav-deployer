@@ -6,6 +6,7 @@ import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { useMapListStore } from '@/stores/mapList'
 import { startMapping as startMappingApi, saveMapTask as saveMapTaskApi, getRecentMapTasks } from '@/api/tasks'
+import { importFromRobot, listRobotMaps } from '@/api/maps'
 import { fmtTime, MAP_TASK_STATUS_TAG, MAP_TASK_TYPE_LABEL } from '@/utils/format'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -18,6 +19,8 @@ const mapList = useMapListStore()
 const recent = ref<Awaited<ReturnType<typeof getRecentMapTasks>>>([])
 const saving = ref(false)
 const saveDialog = reactive({ visible: false, name: '' })
+const importing = ref(false)
+const importDialog = reactive({ visible: false, loading: false, name: '', options: [] as string[] })
 
 const currentTask = computed(() => tasks.currentMapTask)
 const inFlight = computed(() => tasks.mapTaskInFlight)
@@ -70,8 +73,7 @@ async function onSaveMap() {
 
 /** 放弃建图：机器人协议没有取消建图服务，唯一退出方式是 save_map；
  *  自动把半成品存为临时地图以回到导航模式，用户之后可在地图管理删除。 */
-async function onAbandonMapping() {
-  await ElMessageBox.confirm(
+async function onAbandonMapping() {  await ElMessageBox.confirm(
     '机器人协议没有「取消建图」服务，退出建图模式的唯一方式是保存地图。' +
       '将把当前半成品自动存为临时地图（完成后机器人回到导航模式），' +
       '之后可在「地图管理」中删除这张临时地图。继续？',
@@ -81,6 +83,36 @@ async function onAbandonMapping() {
   const name = `放弃建图_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}`
   await saveMapTaskApi(name)
   ElMessage.info('已下发保存，机器人回到导航模式后可在「地图管理」删除该临时地图')
+}
+
+/** 地图救援：保存任务报失败但机器人实际已存图时，从机器人侧手动导入入库 */
+async function openImportDialog() {
+  importDialog.visible = true
+  importDialog.loading = true
+  importDialog.name = ''
+  try {
+    importDialog.options = await listRobotMaps()
+  } catch {
+    /* http 层已提示 */
+  } finally {
+    importDialog.loading = false
+  }
+}
+
+async function onImportFromRobot() {
+  const name = importDialog.name.trim()
+  if (!name) return
+  importing.value = true
+  try {
+    const saved = await importFromRobot(name)
+    importDialog.visible = false
+    ElMessage.success(`地图「${name}」已导入入库（navMapId=${saved.id}）`)
+    await mapList.load()
+  } catch {
+    /* http 层已提示 */
+  } finally {
+    importing.value = false
+  }
 }
 
 function toggleLive() {
@@ -128,6 +160,16 @@ async function reloadCurrentMap() {
       </div>
 
       <div class="card">
+        <div class="card-title">地图救援</div>
+        <div class="btns">
+          <el-button :loading="importDialog.loading" @click="openImportDialog">从机器人导入地图</el-button>
+        </div>
+        <div class="tip">
+          保存任务超时报失败、但机器人实际已把图存好时，可在这里从机器人侧拉取地图手动入库。
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">实时预览</div>
         <div class="btns">
           <el-switch
@@ -164,6 +206,31 @@ async function reloadCurrentMap() {
       <template #footer>
         <el-button @click="saveDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="onSaveMap">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="importDialog.visible" title="从机器人导入地图" width="420px" :append-to-body="true">
+      <el-form label-width="90px" @submit.prevent>
+        <el-form-item label="机器人地图" required>
+          <el-select
+            v-model="importDialog.name"
+            placeholder="选择机器人侧已保存的地图"
+            :loading="importDialog.loading"
+            style="width: 100%"
+          >
+            <el-option v-for="name in importDialog.options" :key="name" :label="name" :value="name" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="tip" style="padding: 0 12px">
+        列表来自机器人 maps 目录（pgm+yaml 齐全）；导入后同名地图会被覆盖更新。
+        仅当机器人当前正在使用该地图时才会自动激活，否则为草稿状态。
+      </div>
+      <template #footer>
+        <el-button @click="importDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="importing" :disabled="!importDialog.name" @click="onImportFromRobot">
+          导入
+        </el-button>
       </template>
     </el-dialog>
   </el-drawer>

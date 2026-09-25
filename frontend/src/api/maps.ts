@@ -15,3 +15,9 @@ export const switchMap = (id: number, robot_map_name?: string) =>
   post<object>(`/nav-maps/${id}/switch`, robot_map_name ? { robot_map_name } : {})
 export const activateMap = (id: number) => post<NavMapVO>(`/nav-maps/${id}/activate`)
 export const deleteMap = (id: number) => del<void>(`/nav-maps/${id}`)
+
+/** 机器人侧现有地图列表（maps_dir 下 pgm+yaml 齐全的名字） */
+export const listRobotMaps = () => get<string[]>('/nav-maps/robot-maps')
+/** 从机器人导入地图入库（保存任务报失败但机器人实际已存图的补救通道） */
+export const importFromRobot = (robot_map_name: string) =>
+  post<NavMapVO>('/nav-maps/import-from-robot', { robot_map_name })
