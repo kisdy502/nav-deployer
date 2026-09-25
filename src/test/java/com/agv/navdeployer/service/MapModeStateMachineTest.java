@@ -62,11 +62,27 @@ class MapModeStateMachineTest {
     }
 
     @Test
-    void staleStatusFails() {
+    void staleStatusHoldsUntilRecoveryOrDeadline() {
+        // 保存地图/重启定位窗口里状态断流：挂起不判死，deadline 兜底
         MapModeStateMachine machine = machine("map0922", 90_000);
-        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.FAILED),
+        assertEquals(java.util.Optional.empty(),
                 machine.onStatus("RELOCALIZING", "map0922", STALE_LIMIT + 1, STALE_LIMIT));
-        assertEquals("机器人状态失联（30s 未收到 /agv/status）", machine.getErrorMessage());
+        assertEquals(MapModeStateMachine.Status.DISPATCHED, machine.getStatus());
+        // 链路恢复后继续正常跟踪
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.RELOCATING),
+                machine.onStatus("RELOCALIZING", "map0922", 100, STALE_LIMIT));
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.SUCCEEDED),
+                machine.onStatus("NAVIGATION", "map0922", 100, STALE_LIMIT));
+    }
+
+    @Test
+    void staleStatusUntilDeadlineFails() {
+        // 失联贯穿到 deadline：仍由超时兜底判失败
+        MapModeStateMachine machine = machine("map0922", -1); // 已过期
+        assertEquals(java.util.Optional.empty(),
+                machine.onStatus("RELOCALIZING", "map0922", Long.MAX_VALUE, STALE_LIMIT));
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.FAILED),
+                machine.onDeadline(Instant.now()));
     }
 
     @Test

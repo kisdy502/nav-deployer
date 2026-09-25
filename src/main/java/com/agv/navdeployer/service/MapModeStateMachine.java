@@ -11,16 +11,20 @@ import java.util.Optional;
  *
  * SWITCH_MAP（/agv/load_map）：
  *   DISPATCHED --mode=RELOCALIZING--> RELOCATING --mode=NAVIGATION 且 map_name=目标--> SUCCEEDED
- *   异常：mode=MAPPING（被建图抢占）/ RELOCIZING 后回到 NAVIGATION 但不是目标 / 失联 / 超时
+ *   异常：mode=MAPPING（被建图抢占）/ RELOCIZING 后回到 NAVIGATION 但不是目标 / 超时
  *
  * START_MAPPING（/agv/start_mapping）：
  *   DISPATCHED --mode=MAPPING--> SUCCEEDED（map_name 被机器人清空）
- *   异常：mode=RELOCALIZING（被切图抢占）/ 失联 / 超时
+ *   异常：mode=RELOCALIZING（被切图抢占）/ 超时
  *
  * SAVE_MAP（/agv/save_map）：
  *   DISPATCHED（保存中，mode 维持 MAPPING）--mode=RELOCALIZING--> RELOCATING
  *   --mode=NAVIGATION 且 map_name=目标--> SUCCEEDED（成功后服务层自动同步栅格入库）
- *   异常：RELOCIZING 后回到 NAVIGATION 但不是目标 / 失联 / 超时（保存/转换失败时机器人维持 MAPPING，只能超时兜底）
+ *   异常：RELOCIZING 后回到 NAVIGATION 但不是目标 / 超时（保存/转换失败时机器人维持 MAPPING，只能超时兜底）
+ *
+ * 状态失联（/agv/status 断流）不判死：保存地图 → 重启定位的窗口里链路可能短暂中断
+ * （rosbridge 重连、CPU 高负载等），机器人侧流程往往仍在推进。失联期间挂起不迁移，
+ * 恢复后继续跟踪；真失败由任务 deadline（modeTaskTimeoutMs）兜底。
  */
 public final class MapModeStateMachine {
 
@@ -72,7 +76,8 @@ public final class MapModeStateMachine {
             return Optional.empty();
         }
         if (statusAgeMs > staleLimitMs) {
-            return transition(Status.FAILED, "机器人状态失联（" + statusAgeMs / 1000 + "s 未收到 /agv/status）");
+            // 失联只挂起不判死（见类注释）：不迁移、不喂入过期快照，deadline 兜底
+            return Optional.empty();
         }
         if (mode == null) {
             // 旧版机器人不携带 mode 字段：无法跟踪，交给超时兜底

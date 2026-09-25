@@ -58,8 +58,12 @@ public class SimAgvProperties {
     /** 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。 */
     private long statusFreshMs = 5000L;
 
-    /** 模式任务（切图等）整体截止时间：超时未回到 NAVIGATION 判 FAILED。 */
-    private long modeTaskTimeoutMs = 90000L;
+    /**
+     * 模式任务（切图/建图/保存）整体截止时间：超时未达到预期 mode 判 FAILED。
+     * SAVE_MAP 机器人侧含 pbstream 优化、栅格导出、定位重启（大地图 pbstream 加载
+     * 在低端主机可达分钟级），90s 不够用，取 240s。
+     */
+    private long modeTaskTimeoutMs = 240000L;
 
     private final List<String> advertiseTopics = new ArrayList<>();
 
