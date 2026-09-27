@@ -111,7 +111,9 @@ sim_agv:
   load_map_service: /agv/load_map
   start_mapping_service: /agv/start_mapping
   save_map_service: /agv/save_map
-  # 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作
-  status_fresh_ms: 5000
+  # 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
+  # 放宽到 15s：/agv/status(1Hz) 与 ~3MB 的 /map JSON 共用一条 rosbridge websocket，
+  # 宿主机负载高时小消息会被挤过 5s；rosbridge 重连窗口同理。只拦"桥接真死"，放过抖动。
+  status_fresh_ms: 15000
   # 模式任务（切图等）整体截止时间
   mode_task_timeout_ms: 90000

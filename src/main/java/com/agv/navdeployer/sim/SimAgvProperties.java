@@ -55,8 +55,13 @@ public class SimAgvProperties {
     private String startMappingService = "/agv/start_mapping";
     private String saveMapService = "/agv/save_map";
 
-    /** 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。 */
-    private long statusFreshMs = 5000L;
+    /**
+     * 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
+     * 不能太紧：机器人侧 /agv/status 是 1Hz wall timer，但与 ~3MB 的 /map JSON（已限流 5s/帧）
+     * 共用同一条 rosbridge websocket，宿主机同时跑 gazebo/nav2/RViz 时小消息会被挤到 5s 之外；
+     * rosbridge 断线重连的窗口同理。取 15s：只拦截"桥接真死了"，放过传输层抖动。
+     */
+    private long statusFreshMs = 15000L;
 
     /**
      * 模式任务（切图/建图/保存）整体截止时间：超时未达到预期 mode 判 FAILED。
