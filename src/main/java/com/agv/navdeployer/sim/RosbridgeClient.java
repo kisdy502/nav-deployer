@@ -84,12 +84,23 @@ public final class RosbridgeClient {
 
     /** 订阅话题（重连后自动恢复）。throttleMs &lt;= 0 表示不限流。 */
     public void subscribe(String topic, int throttleMs) {
-        subscribe(topic, throttleMs, 0);
+        subscribe(topic, null, throttleMs, 0);
     }
 
     /** 订阅话题，可指定 fragment_size（订阅 /map 这类大消息时必填，例如 500000）。 */
     public void subscribe(String topic, int throttleMs, int fragmentSize) {
-        Subscription subscription = new Subscription(topic, throttleMs, fragmentSize);
+        subscribe(topic, null, throttleMs, fragmentSize);
+    }
+
+    /**
+     * 订阅话题，带显式消息类型。客户端连接后立即订阅时，若机器人侧话题尚未
+     * advertise（桥接节点还在阻塞初始化），rosbridge 的类型推断会失败
+     * （"Cannot infer topic type"）且永不重试——上位机从此收不到该话题，
+     * /agv/status 失明直接导致模式闸门全部误判。带显式类型时 rosbridge
+     * 会立即建订阅，发布者出现后数据自动流入，从根上消除启动竞态。
+     */
+    public void subscribe(String topic, String type, int throttleMs, int fragmentSize) {
+        Subscription subscription = new Subscription(topic, type, throttleMs, fragmentSize);
         subscriptions.put(topic, subscription);
         if (isConnected()) {
             sendSubscribe(subscription);
@@ -201,6 +212,9 @@ public final class RosbridgeClient {
         operation.put("op", "subscribe");
         operation.put("id", "sub-" + subscription.topic() + "-" + subscriptionSequence.incrementAndGet());
         operation.put("topic", subscription.topic());
+        if (subscription.type() != null && !subscription.type().isBlank()) {
+            operation.put("type", subscription.type());
+        }
         if (subscription.throttleMs() > 0) {
             operation.put("throttle_rate", subscription.throttleMs());
         }
@@ -256,7 +270,7 @@ public final class RosbridgeClient {
         }
     }
 
-    private record Subscription(String topic, int throttleMs, int fragmentSize) {
+    private record Subscription(String topic, String type, int throttleMs, int fragmentSize) {
     }
 
     private record Advertisement(String topic, String type) {

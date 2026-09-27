@@ -39,6 +39,16 @@ public class SimAgvProperties {
     private int mapThrottleMs = 5000;
     private int mapFragmentSize = 500000;
 
+    // ===== 订阅话题的显式消息类型（rosbridge 协议 subscribe.type）=====
+    // 客户端一连接就订阅，若机器人侧话题还没 advertise（桥接节点阻塞初始化中），
+    // rosbridge 类型推断失败且不重试 → 永久失明。显式类型从根上消除该竞态。
+    private String statusTopicType = "agv_bridge_v2_interfaces/msg/AgvStatus";
+    private String poseTopicType = "geometry_msgs/msg/PoseStamped";
+    private String tfTopicType = "tf2_msgs/msg/TFMessage";
+    private String odomTopicType = "nav_msgs/msg/Odometry";
+    private String scanTopicType = "sensor_msgs/msg/LaserScan";
+    private String mapTopicType = "nav_msgs/msg/OccupancyGrid";
+
     private String followEdgeAction = "/agv/follow_edge";
     private String followEdgeActionType = "agv_bridge_v2_interfaces/action/FollowEdge";
     private String setControlService = "/agv/set_control";
@@ -247,6 +257,54 @@ public class SimAgvProperties {
 
     public void setMapFragmentSize(int mapFragmentSize) {
         this.mapFragmentSize = mapFragmentSize;
+    }
+
+    public String getStatusTopicType() {
+        return statusTopicType;
+    }
+
+    public void setStatusTopicType(String statusTopicType) {
+        this.statusTopicType = statusTopicType;
+    }
+
+    public String getPoseTopicType() {
+        return poseTopicType;
+    }
+
+    public void setPoseTopicType(String poseTopicType) {
+        this.poseTopicType = poseTopicType;
+    }
+
+    public String getTfTopicType() {
+        return tfTopicType;
+    }
+
+    public void setTfTopicType(String tfTopicType) {
+        this.tfTopicType = tfTopicType;
+    }
+
+    public String getOdomTopicType() {
+        return odomTopicType;
+    }
+
+    public void setOdomTopicType(String odomTopicType) {
+        this.odomTopicType = odomTopicType;
+    }
+
+    public String getScanTopicType() {
+        return scanTopicType;
+    }
+
+    public void setScanTopicType(String scanTopicType) {
+        this.scanTopicType = scanTopicType;
+    }
+
+    public String getMapTopicType() {
+        return mapTopicType;
+    }
+
+    public void setMapTopicType(String mapTopicType) {
+        this.mapTopicType = mapTopicType;
     }
 
     public String getFollowEdgeAction() {

@@ -69,17 +69,19 @@ public class RosbridgeConfig {
                 return;
             }
             client.advertise(props.getInitialPoseTopic(), "geometry_msgs/msg/PoseWithCovarianceStamped");
-            client.subscribe(props.getStatusTopic(), 1000);
-            client.subscribe(props.getPoseTopic(), 0);
-            client.subscribe(props.getTfTopic(), props.getTfThrottleMs());
+            // 全部订阅带显式消息类型：连接早于机器人侧 advertise 时 rosbridge
+            // 类型推断失败不重试（/agv/status 失明 → 模式闸门误判），显式类型免疫该竞态
+            client.subscribe(props.getStatusTopic(), props.getStatusTopicType(), 1000, 0);
+            client.subscribe(props.getPoseTopic(), props.getPoseTopicType(), 0, 0);
+            client.subscribe(props.getTfTopic(), props.getTfTopicType(), props.getTfThrottleMs(), 0);
             if (props.isOdomEnabled()) {
-                client.subscribe(props.getOdomTopic(), 0);
+                client.subscribe(props.getOdomTopic(), props.getOdomTopicType(), 0, 0);
             }
             if (props.isScanEnabled()) {
-                client.subscribe(props.getScanTopic1(), props.getScanThrottleMs());
-                client.subscribe(props.getScanTopic2(), props.getScanThrottleMs());
+                client.subscribe(props.getScanTopic1(), props.getScanTopicType(), props.getScanThrottleMs(), 0);
+                client.subscribe(props.getScanTopic2(), props.getScanTopicType(), props.getScanThrottleMs(), 0);
                 // 雷达安装变换（base_link → laser，平移+旋转）：点云投影的优先来源，缺失时回退 yaml 安装角
-                client.subscribe(props.getTfStaticTopic(), 0);
+                client.subscribe(props.getTfStaticTopic(), props.getTfTopicType(), 0, 0);
             }
             if (props.isMapEnabled()) {
                 client.subscribe(props.getMapTopic(), props.getMapThrottleMs(), props.getMapFragmentSize());
