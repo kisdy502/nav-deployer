@@ -59,6 +59,19 @@ let lastFitMapId = 0
 let posePreview: THREE.Group | null = null
 let posePreviewArrow: THREE.Mesh | null = null
 
+/** 视图整体旋转 180°（对齐 RViz 观察方向），localStorage 持久化 */
+const viewRot180 = ref(localStorage.getItem('nd_view_rot180') === '1')
+
+function applyViewRot() {
+  scene?.setViewRot180(viewRot180.value)
+}
+
+function toggleViewRot() {
+  viewRot180.value = !viewRot180.value
+  localStorage.setItem('nd_view_rot180', viewRot180.value ? '1' : '0')
+  applyViewRot()
+}
+
 // ---------- 渲染数据 ----------
 const pathItems = computed<PathRenderItem[]>(() => {
   const byId = editor.pointsById
@@ -133,6 +146,7 @@ onMounted(() => {
   })
   scene.pickRoot.add(pointLayer.group, pathLayer.group, robotLayer.group, robotLayer.trailGroup)
   scene.scene.add(scanLayer.group)
+  applyViewRot()
 
   // 重定位模式的方向预览箭头
   posePreview = new THREE.Group()
@@ -446,8 +460,14 @@ async function onKey(ev: KeyboardEvent) {
       <span class="nd-chip">{{ coordsText || '0.00 , 0.00 m' }}</span>
       <span v-if="hint" class="nd-chip nd-chip--hint">{{ hint }}</span>
     </div>
-    <div v-if="editor.livePolling" class="nd-overlay nd-overlay--tr">
-      <span class="nd-chip nd-chip--live">● 建图实时预览中</span>
+    <div class="nd-overlay nd-overlay--tr">
+      <button
+        class="nd-chip nd-chip--btn"
+        :class="{ 'nd-chip--active': viewRot180 }"
+        title="画布整体旋转 180°，与 RViz 观察方向一致（地图/机器人/点云整体变换）"
+        @click="toggleViewRot"
+      >⟳ 旋转视图</button>
+      <span v-if="editor.livePolling" class="nd-chip nd-chip--live">● 建图实时预览中</span>
     </div>
   </div>
 </template>
@@ -495,5 +515,21 @@ async function onKey(ev: KeyboardEvent) {
 .nd-chip--live {
   color: #67c23a;
   font-weight: 600;
+}
+
+.nd-chip--btn {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nd-chip--btn:hover,
+.nd-chip--active {
+  color: #409eff;
+  border-color: #409eff;
+}
+
+.nd-chip--active {
+  background: #ecf5ff;
 }
 </style>

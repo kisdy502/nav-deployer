@@ -58,6 +58,9 @@ export class MapScene {
   private ro: ResizeObserver
   private pointer: { button: number; startX: number; startY: number; lastX: number; lastY: number; moved: boolean; downHit: PickResult | null; panning: boolean } | null = null
   private disposed = false
+  private viewRot180 = false
+  private tmpRight = new THREE.Vector3()
+  private tmpUp = new THREE.Vector3()
 
   // 测量
   private measureGroup = new THREE.Group()
@@ -154,6 +157,17 @@ export class MapScene {
   getZoomPct() {
     // viewHeight 相对默认 12m 的比例，供界面显示
     return Math.round((12 / this.viewHeight) * 100)
+  }
+
+  /** 视图整体旋转 180°（对齐 RViz 等外部工具的观察方向）：仅翻转相机 up，场景数据不动，地图/机器人/点云/轨迹整体一致 */
+  setViewRot180(on: boolean) {
+    this.viewRot180 = on
+    this.camera.up.set(0, on ? -1 : 1, 0)
+    this.camera.lookAt(this.camera.position.x, this.camera.position.y, 0)
+  }
+
+  getViewRot180() {
+    return this.viewRot180
   }
 
   screenToWorld(clientX: number, clientY: number): THREE.Vector3 {
@@ -337,8 +351,11 @@ export class MapScene {
     if (p.moved && canPan) {
       p.panning = true
       const wpp = this.viewHeight / (this.container.clientHeight || 1)
-      this.camera.position.x -= dx * wpp
-      this.camera.position.y += dy * wpp
+      // 沿相机屏幕轴平移：视图旋转 180°（up 翻转）后拖拽依然“内容跟手”
+      this.tmpRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion)
+      this.tmpUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion)
+      this.camera.position.addScaledVector(this.tmpRight, -dx * wpp)
+      this.camera.position.addScaledVector(this.tmpUp, dy * wpp)
       this.updateCamera()
     }
   }
