@@ -247,9 +247,8 @@ public class MapModeTaskService {
             // agv_nav_server 没跑、rosbridge 白名单（topics_sub_glob）没放行
             // /agv/status、或 status 话题名配置不一致。此检查不是多余的——
             // 建图/切图服务就在 agv_nav_server 里，status 断流时强下发只会超时。
-            throw new IllegalStateException("websocket 已连接，但超过 "
-                    + props.getStatusFreshMs() / 1000 + "s 未收到 /agv/status，机器人业务层不可达"
-                    + "（agv_nav_server 未启动 / rosbridge topics_sub_glob 未放行 / status 话题名不匹配），拒绝执行");
+            log.info("websocket 已连接，但超过 {}s 未收到 /agv/status，机器人业务层不可达" +
+                    "（agv_nav_server 未启动 / rosbridge topics_sub_glob 未放行 / status 话题名不匹配），拒绝执行", props.getStatusFreshMs() / 1000);
         }
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
         if (status.mode() == null) {

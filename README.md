@@ -52,3 +52,6 @@ kubectl delete -f k8s/ && kubectl apply -f k8s/                  # 重新部署�
 # 环境停止与恢复
 
 见 `docs/ops-stop-and-resume.md`。
+
+# 仿真机器人源码目录
+见 /virtual-agv/** 启动方式和接口对接说明，由于代码持续更新，文档没有及时更新，以代码实现为准

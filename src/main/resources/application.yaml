@@ -70,7 +70,7 @@ logging:
 # ============================================================
 sim_agv:
   enabled: ${SIM_AGV_ENABLED:true}
-  ws_url: ${SIM_AGV_WS_URL:ws://127.0.0.1:9090}
+  ws_url: ${SIM_AGV_WS_URL:ws://192.168.64.3:9090}
   status_topic: /agv/status
   tf_topic: /tf
   # 静态 TF：雷达安装关系（base_link → laser 的平移+旋转），点云安装变换优先来源；拿不到时回退 scan*_mount_yaw_deg
