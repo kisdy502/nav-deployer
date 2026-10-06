@@ -3,14 +3,24 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { angleDelta } from '@/utils/coords'
 
 const TRAIL_MAX = 2000
-/** 机器人矩形显示尺寸（实际车体 0.4m × 0.32m 的 4 倍左右，宽度略收窄避免与 AGV 标签重叠），长边沿 +x，即朝向方向 */
-const BODY_L = 1.6
-const BODY_W = 1.1
+/** 机器人矩形显示尺寸（实际车体 0.4m × 0.32m 的 2.5 倍左右），长边沿 +x，即朝向方向 */
+const BODY_L = 1.02
+const BODY_W = 0.7
 
-function triangleMesh(a: [number, number], b: [number, number], c: [number, number], color: number): THREE.Mesh {
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.Float32BufferAttribute([a[0], a[1], 0, b[0], b[1], 0, c[0], c[1], 0], 3))
-  return new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }))
+/** ">" V 形符号（空心，粗线条由外/内两条 V 边之间的填充区域构成） */
+function chevronMesh(x: number, size: number, halfH: number, thickness: number, color: number): THREE.Mesh {
+  const s = new THREE.Shape()
+  s.moveTo(x, halfH)
+  s.lineTo(x + size, 0)
+  s.lineTo(x, -halfH)
+  s.lineTo(x, -halfH + thickness)
+  s.lineTo(x + size - thickness * 1.8, 0)
+  s.lineTo(x, halfH - thickness)
+  s.closePath()
+  return new THREE.Mesh(
+    new THREE.ShapeGeometry(s),
+    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+  )
 }
 
 /** 机器人图层：蓝色矩形车体（整体随朝向旋转，长边即朝向）+ 车内「》」朝向符号 + 几何中心点（观察停靠对齐）+ 轨迹线 */
@@ -44,14 +54,14 @@ export class RobotLayer {
     )
     // 几何中心点：观察停靠对齐
     const centerDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.096, 16),
+      new THREE.CircleGeometry(0.077, 16),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     )
     centerDot.position.z = 0.03
-    // 「》」朝向符号（两个尖角，顶点按车体中心对称取值，随车体整体旋转）
+    // 「>>」朝向符号：两个空心 V 形，位于机器人前部（不与中心圆点重叠）
     this.chevron.add(
-      triangleMesh([-0.2, 0.18], [0, 0], [-0.2, -0.18], 0xffffff),
-      triangleMesh([0, 0.18], [0.2, 0], [0, -0.18], 0xffffff),
+      chevronMesh(0.10, 0.14, 0.11, 0.032, 0xffffff),
+      chevronMesh(0.30, 0.14, 0.11, 0.032, 0xffffff),
     )
     this.chevron.position.z = 0.04
 
@@ -62,6 +72,8 @@ export class RobotLayer {
     inner.textContent = 'AGV'
     el.appendChild(inner)
     const label = new CSS2DObject(el)
+    // 标签上移出车体（挂在 root 上不随车体旋转，世界系固定在机器人上方）
+    label.position.set(0, 0.55, 0)
 
     // 车体组：矩形、边框、朝向符号随 yaw 一起旋转；label 挂在 root 上保持文字不随车体转动
     this.bodyGroup.add(body, border, centerDot, this.chevron)

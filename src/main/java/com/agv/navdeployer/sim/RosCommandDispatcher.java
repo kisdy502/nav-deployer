@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -17,7 +18,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * rosbridge 下行通道：follow_edge action 下发/取消、set_control 服务调用、initialpose 发布。
+ * rosbridge 下行通道：follow_edge action 下发/取消、set_control 服务调用、initialpose 与 cmd_vel 发布。
  *
  * 关联模型：dispatchFollowEdge 返回 goalId，后续 action_feedback / action_result
  * 都携带同一 id，分派给注册的 listener；service_response 按调用 id 关联 Future。
@@ -189,31 +190,38 @@ public class RosCommandDispatcher implements RosbridgeHandler {
         return value.isMissingNode() || value.isNull() ? "" : value.asText();
     }
 
-    /** 发布重定位位姿（PoseWithCovarianceStamped，仅 x/y/yaw 协方差有效）。 */
-    public void publishInitialPose(double x, double y, double theta) {
+    /**
+     * /agv/relocalize：在指定地图坐标重启 Cartographer 定位轨迹（真·重定位）。
+     * 桥侧实现要停定位进程、加载 pbstream、调 /start_trajectory，耗时可达数十秒，
+     * 超时取 90s；完成语义看 /agv/status.mode（RELOCALIZING -> NAVIGATION）。
+     */
+    public CompletableFuture<RelocalizeResult> callRelocalize(String mapName, double x, double y, double yaw) {
+        ObjectNode args = MAPPER.createObjectNode();
+        args.put("map_name", mapName == null ? "" : mapName);
+        args.put("x", x);
+        args.put("y", y);
+        args.put("yaw", yaw);
+        return callService(props.getRelocalizeService(), args, 90_000L)
+                .thenApply(values -> new RelocalizeResult(
+                        values.path("success").asBoolean(false),
+                        values.path("message").asText(""),
+                        textOrEmpty(values, "map_name")));
+    }
+
+    /** 发布全向底盘车体坐标系速度，单位分别为 m/s、m/s、rad/s。 */
+    public void publishVelocity(double linearX, double linearY, double angularZ) {
         requireClient();
+        client.send(buildVelocityOp(props.getCmdVelTopic(), linearX, linearY, angularZ));
+    }
+
+    static ObjectNode buildVelocityOp(String topic, double linearX, double linearY, double angularZ) {
         ObjectNode operation = MAPPER.createObjectNode();
         operation.put("op", "publish");
-        operation.put("topic", props.getInitialPoseTopic());
+        operation.put("topic", topic);
         ObjectNode msg = operation.putObject("msg");
-        ObjectNode header = msg.putObject("header");
-        header.put("stamp", "now");
-        header.put("frame_id", "map");
-        ObjectNode poseWrapper = msg.putObject("pose");
-        ObjectNode pose = poseWrapper.putObject("pose");
-        pose.putObject("position").put("x", x).put("y", y).put("z", 0.0);
-        pose.putObject("orientation")
-                .put("x", 0.0).put("y", 0.0)
-                .put("z", Math.sin(theta / 2.0))
-                .put("w", Math.cos(theta / 2.0));
-        ArrayNode covariance = poseWrapper.putArray("covariance");
-        for (int i = 0; i < 36; i++) {
-            covariance.add(0.0);
-        }
-        covariance.set(0, DoubleNode.valueOf(0.25));          // x
-        covariance.set(7, DoubleNode.valueOf(0.25));          // y
-        covariance.set(35, DoubleNode.valueOf(0.0685));       // yaw
-        client.send(operation);
+        msg.putObject("linear").put("x", linearX).put("y", linearY).put("z", 0.0);
+        msg.putObject("angular").put("x", 0.0).put("y", 0.0).put("z", angularZ);
+        return operation;
     }
 
     @Override
@@ -327,6 +335,10 @@ public class RosCommandDispatcher implements RosbridgeHandler {
 
     /** set_control 服务响应。 */
     public record SetControlResult(boolean success, String message, String state) {
+    }
+
+    /** /agv/relocalize 服务响应。 */
+    public record RelocalizeResult(boolean success, String message, String mapName) {
     }
 
     /** /agv/list_maps 服务响应。 */

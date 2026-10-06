@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { connectAgvSse } from '@/sse/agv-sse'
-import { getRobotSnapshot, robotControl as robotControlApi, setInitialPose as setInitialPoseApi } from '@/api/robot'
+import { getRobotSnapshot, robotControl as robotControlApi, sendTeleop, setInitialPose as setInitialPoseApi } from '@/api/robot'
 import { useTasksStore } from './tasks'
 import type { ScanCloud, TelemetrySnapshot } from '@/types/api'
 
@@ -59,6 +59,10 @@ export const useRobotStore = defineStore('robot', () => {
     return setInitialPoseApi(x, y, theta)
   }
 
+  function teleop(linearX: number, linearY: number, angularZ: number) {
+    return sendTeleop(linearX, linearY, angularZ)
+  }
+
   function clearTrail() {
     trail.value = []
   }
@@ -75,6 +79,7 @@ export const useRobotStore = defineStore('robot', () => {
     start,
     control,
     setInitialPose,
+    teleop,
     clearTrail,
   }
 })

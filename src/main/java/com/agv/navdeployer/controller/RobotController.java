@@ -3,11 +3,13 @@ package com.agv.navdeployer.controller;
 import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.dto.InitialPoseDTO;
 import com.agv.navdeployer.dto.RobotControlDTO;
+import com.agv.navdeployer.dto.TeleopCommandDTO;
 import com.agv.navdeployer.service.MapModeTaskService;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.RosCommandDispatcher.SetControlResult;
 import com.agv.navdeployer.sim.RosbridgeClient;
 import com.agv.navdeployer.sim.SimAgvSsePublisher;
+import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,17 +33,20 @@ public class RobotController {
     private final RosbridgeClient rosbridgeClient;
     private final MapModeTaskService mapModeTaskService;
     private final ObjectMapper objectMapper;
+    private final SimAgvTelemetry telemetry;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
                            RosbridgeClient rosbridgeClient,
                            MapModeTaskService mapModeTaskService,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           SimAgvTelemetry telemetry) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
         this.mapModeTaskService = mapModeTaskService;
         this.objectMapper = objectMapper;
+        this.telemetry = telemetry;
     }
 
     @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数 / 地图对齐状态")
@@ -66,13 +71,40 @@ public class RobotController {
         }
     }
 
-    @Operation(summary = "重定位", description = "发布 /initialpose（PoseWithCovarianceStamped）纠正定位")
+    @Operation(summary = "重定位", description = "调机器人 /agv/relocalize 服务：在指定地图坐标重启 Cartographer 定位轨迹")
     @PostMapping("/api/v1/robot/initial-pose")
-    public ApiResponse<Void> initialPose(@Valid @RequestBody InitialPoseDTO dto) {
+    public ApiResponse<String> initialPose(@Valid @RequestBody InitialPoseDTO dto) {
         if (!rosbridgeClient.isConnected()) {
-            throw new IllegalStateException("rosbridge 未连接，无法发布 initialpose");
+            throw new IllegalStateException("rosbridge 未连接，无法重定位");
         }
-        dispatcher.publishInitialPose(dto.x(), dto.y(), dto.theta());
+        String mapName = dto.mapName() == null ? "" : dto.mapName().trim();
+        if (mapName.isEmpty()) {
+            var status = telemetry.getStatus();
+            mapName = status == null ? null : status.mapName();
+        }
+        if (mapName == null || mapName.isBlank()) {
+            throw new IllegalStateException("无法确定目标地图（请求未带 map_name 且 /agv/status 无当前地图），请稍后重试或显式指定 map_name");
+        }
+        RosCommandDispatcher.RelocalizeResult result;
+        try {
+            result = dispatcher.callRelocalize(mapName, dto.x(), dto.y(), dto.theta()).join();
+        } catch (java.util.concurrent.CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new IllegalStateException("重定位服务调用失败: " + cause.getMessage(), cause);
+        }
+        if (!result.success()) {
+            throw new IllegalStateException("重定位被拒绝: " + result.message());
+        }
+        return ApiResponse.ok(result.mapName());
+    }
+
+    @Operation(summary = "全向底盘遥控", description = "发布 /cmd_vel；linear_x 前进、linear_y 左移、angular_z 左转")
+    @PostMapping("/api/v1/robot/teleop")
+    public ApiResponse<Void> teleop(@Valid @RequestBody TeleopCommandDTO dto) {
+        if (!rosbridgeClient.isConnected()) {
+            throw new IllegalStateException("rosbridge 未连接，无法发布速度指令");
+        }
+        dispatcher.publishVelocity(dto.linearX(), dto.linearY(), dto.angularZ());
         return ApiResponse.ok();
     }
 

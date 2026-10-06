@@ -30,6 +30,52 @@ export interface MapSceneCallbacks {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
+/** GridHelper 默认在 XZ 平面（y 向上），旋转到本场景的 XY 平面（z 朝屏幕外） */
+function makeWorldGrid(size: number, divisions: number, centerColor: number, color: number, opacity: number) {
+  const g = new THREE.GridHelper(size, divisions, centerColor, color)
+  g.rotation.x = Math.PI / 2
+  g.frustumCulled = false
+  const m = g.material as THREE.LineBasicMaterial
+  m.transparent = true
+  m.opacity = opacity
+  m.depthWrite = false
+  return g
+}
+
+/** 坐标轴箭头（沿 +X 方向，长度 len）：线段 + 三角箭头；Y 轴由调用方旋转 90° */
+function makeAxisArrow(len: number, color: number) {
+  const g = new THREE.Group()
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(len, 0, 0),
+    ]),
+    new THREE.LineBasicMaterial({ color }),
+  )
+  line.frustumCulled = false
+  const headLen = Math.max(len * 0.2, 0.15)
+  const headW = headLen * 0.7
+  const shape = new THREE.Shape()
+  shape.moveTo(len, 0)
+  shape.lineTo(len - headLen, headW / 2)
+  shape.lineTo(len - headLen, -headW / 2)
+  shape.closePath()
+  const head = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color }))
+  head.frustumCulled = false
+  g.add(line, head)
+  return g
+}
+
+/** 坐标轴文字标签（CSS2D，屏幕像素大小恒定，位置锚定世界坐标） */
+function makeAxisLabel(text: string, color: number, pos: THREE.Vector3) {
+  const el = document.createElement('div')
+  el.textContent = text
+  el.style.cssText = `color:#${color.toString(16).padStart(6, '0')};font:600 14px/1 ui-monospace,monospace;user-select:none;white-space:nowrap;`
+  const label = new CSS2DObject(el)
+  label.position.copy(pos)
+  return label
+}
+
 /**
  * 俯视正交相机三维场景：世界单位 = 米，x 向右、y 向上、z 朝屏幕外。
  * 内置：栅格地图贴合、滚轮缩放（锚点）、拖拽平移（空白左键/中键/右键）、
@@ -44,6 +90,12 @@ export class MapScene {
   readonly pickRoot = new THREE.Group()
   /** 地图纹理所在组（含 origin 偏移与 origin_yaw 旋转） */
   readonly mapGroup = new THREE.Group()
+  /** RViz 风格世界系参考网格（1 格 = 1 米，正交相机下随缩放等比，始终 1 米） */
+  readonly gridGroup = new THREE.Group()
+  private gridMinor: THREE.GridHelper | null = null
+  private gridMajor: THREE.GridHelper | null = null
+  /** ROS 坐标系方向指示器（map 系原点：+X 红、+Y 绿） */
+  readonly axesGroup = new THREE.Group()
 
   mapBounds: MapSceneBounds | null = null
 
@@ -100,6 +152,27 @@ export class MapScene {
     this.scene.add(this.mapGroup)
     this.scene.add(this.pickRoot)
 
+    // 世界系网格：细网格 1m / 粗网格 10m（RViz 风格），位于地图之上、实体之下
+    this.gridMinor = makeWorldGrid(1000, 1000, 0xa8afbd, 0xdde1e8, 0.5)
+    this.gridMajor = makeWorldGrid(1000, 100, 0xa8afbd, 0xd2d7e0, 0.55)
+    this.gridGroup.add(this.gridMinor, this.gridMajor)
+    this.gridGroup.position.z = 0.06
+    this.scene.add(this.gridGroup)
+
+    // ROS 坐标系指示器：横线+竖线+两个箭头（X 红 / Y 绿），世界原点处
+    const AXES_LEN = 1.5
+    const axesX = makeAxisArrow(AXES_LEN, 0xd64545)
+    const axesY = makeAxisArrow(AXES_LEN, 0x3fa34d)
+    axesY.rotation.z = Math.PI / 2
+    this.axesGroup.add(axesX, axesY)
+    this.axesGroup.add(
+      makeAxisLabel('x', 0xd64545, new THREE.Vector3(AXES_LEN + 0.2, 0, 0)),
+      makeAxisLabel('y', 0x3fa34d, new THREE.Vector3(0, AXES_LEN + 0.2, 0)),
+      makeAxisLabel('0', 0x8a919e, new THREE.Vector3(-0.16, -0.16, 0)),
+    )
+    this.axesGroup.position.z = 0.08
+    this.scene.add(this.axesGroup)
+
     // 测量组件
     this.measureLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
@@ -143,6 +216,10 @@ export class MapScene {
     this.camera.top = this.viewHeight / 2
     this.camera.bottom = (-this.viewHeight) / 2
     this.camera.updateProjectionMatrix()
+    // 网格 LOD：1m 格不足 ~10px 时隐藏细网格防摩尔纹，10m 格不足 ~1.5px 时全部隐藏
+    const pxPerMeter = h / this.viewHeight
+    if (this.gridMinor) this.gridMinor.visible = pxPerMeter >= 10
+    if (this.gridMajor) this.gridMajor.visible = pxPerMeter >= 1.5
   }
 
   resize() {

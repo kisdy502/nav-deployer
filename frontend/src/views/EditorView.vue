@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Odometer, Position } from '@element-plus/icons-vue'
+import { Odometer, Operation, Position } from '@element-plus/icons-vue'
 import EditorToolbar from '@/components/editor/EditorToolbar.vue'
 import MapCanvas from '@/components/editor/MapCanvas.vue'
 import PointListPanel from '@/components/editor/PointListPanel.vue'
@@ -10,6 +10,7 @@ import PathListPanel from '@/components/editor/PathListPanel.vue'
 import PropertyPanel from '@/components/editor/PropertyPanel.vue'
 import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import MappingPanel from '@/components/editor/MappingPanel.vue'
+import TeleopPanel from '@/components/editor/TeleopPanel.vue'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
@@ -27,6 +28,7 @@ const tasks = useTasksStore()
 const mapCanvasRef = ref<InstanceType<typeof MapCanvas>>()
 const pointPanelRef = ref<InstanceType<typeof PointListPanel>>()
 const mappingVisible = ref(false)
+const teleopVisible = ref(false)
 const loadingLocal = ref(false)
 const activeTab = ref<'points' | 'paths'>('points')
 
@@ -222,6 +224,7 @@ onBeforeUnmount(() => {
 
     <!-- 建图抽屉 -->
     <MappingPanel v-if="mappingVisible" @close="mappingVisible = false" />
+    <TeleopPanel v-if="teleopVisible" @close="teleopVisible = false" />
 
     <!-- 点位落点确认 -->
     <el-dialog v-model="placeDialog.visible" title="创建点位" width="400px" :append-to-body="true">
@@ -256,6 +259,7 @@ onBeforeUnmount(() => {
     <div class="float-btns">
       <el-button circle :icon="Position" title="适应视图" @click="mapCanvasRef?.fitView()" />
       <el-button circle :icon="Odometer" title="建图" @click="mappingVisible = !mappingVisible" />
+      <el-button circle :icon="Operation" title="全向遥控器" @click="teleopVisible = true" />
     </div>
   </div>
 </template>

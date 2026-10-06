@@ -353,7 +353,7 @@ export const useEditorStore = defineStore('editor', () => {
       }
     }
     void tick()
-    liveTimer = window.setInterval(tick, 3000)
+    liveTimer = window.setInterval(tick, 1000)
   }
 
   function stopLivePolling() {

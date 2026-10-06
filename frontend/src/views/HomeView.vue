@@ -5,13 +5,16 @@ import { ElMessage } from 'element-plus'
 import {
   FolderOpened,
   FullScreen,
+  Aim,
   Odometer,
+  Operation,
   ScaleToOriginal,
   Share,
 } from '@element-plus/icons-vue'
 import MapCanvas from '@/components/editor/MapCanvas.vue'
 import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import MappingPanel from '@/components/editor/MappingPanel.vue'
+import TeleopPanel from '@/components/editor/TeleopPanel.vue'
 import MapsManageDialog from '@/components/editor/MapsManageDialog.vue'
 import BrowsePanel from '@/components/browse/BrowsePanel.vue'
 import { useEditorStore } from '@/stores/editor'
@@ -30,6 +33,7 @@ const tasks = useTasksStore()
 
 const mapCanvasRef = ref<InstanceType<typeof MapCanvas>>()
 const mappingVisible = ref(false)
+const teleopVisible = ref(false)
 const manageVisible = ref(false)
 const guide = reactive({ visible: false, starting: false })
 /** 用户手动切换过地图后，不再自动跟随机器人地图 */
@@ -110,6 +114,10 @@ function editMap() {
 
 function toggleMeasure() {
   editor.setMode(editor.mode === 'measure' ? 'idle' : 'measure')
+}
+
+function toggleInitialPose() {
+  editor.setMode(editor.mode === 'initialPose' ? 'idle' : 'initialPose')
 }
 
 async function startMappingNow() {
@@ -225,6 +233,7 @@ onBeforeUnmount(closeCtx)
       <div class="header-actions">
         <el-button type="primary" :icon="Share" @click="editMap">编辑地图</el-button>
         <el-button :icon="Odometer" @click="mappingVisible = true">建图</el-button>
+        <el-button :icon="Operation" @click="teleopVisible = true">遥控器</el-button>
         <el-button :icon="FolderOpened" @click="manageVisible = true">地图管理</el-button>
       </div>
     </header>
@@ -240,6 +249,16 @@ onBeforeUnmount(closeCtx)
         <el-tooltip content="建图 / 保存地图" placement="right">
           <button class="rail-btn" @click="mappingVisible = true">
             <el-icon :size="18"><Odometer /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="全向遥控器" placement="right">
+          <button class="rail-btn" @click="teleopVisible = true">
+            <el-icon :size="18"><Operation /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="重定位" placement="right">
+          <button class="rail-btn" :class="{ active: editor.mode === 'initialPose' }" @click="toggleInitialPose">
+            <el-icon :size="18"><Aim /></el-icon>
           </button>
         </el-tooltip>
         <el-tooltip content="地图管理" placement="right">
@@ -274,6 +293,7 @@ onBeforeUnmount(closeCtx)
     </footer>
 
     <MappingPanel v-if="mappingVisible" @close="mappingVisible = false" />
+    <TeleopPanel v-if="teleopVisible" @close="teleopVisible = false" />
     <MapsManageDialog v-model="manageVisible" @browse="(id: number) => selectMap(id)" />
 
     <!-- 浏览态右键菜单 -->

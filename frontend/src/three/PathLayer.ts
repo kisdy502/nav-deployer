@@ -29,8 +29,8 @@ const EDITING_COLOR = 0x409eff
 const SELECTED_COLOR = 0xf56c6c
 const CP_COLOR = 0xff9900
 /** 路线带宽（米）：加宽便于点选与拖拽 */
-const RIBBON_W = 0.09
-const RIBBON_W_EDITING = 0.11
+const RIBBON_W = 0.18
+const RIBBON_W_EDITING = 0.22
 
 /** 沿采样点生成有宽度的平面条带（俯视呈粗线），便于拾取 */
 function ribbonGeometry(pts: THREE.Vector3[], width: number): THREE.BufferGeometry {

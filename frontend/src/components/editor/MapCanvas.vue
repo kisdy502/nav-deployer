@@ -349,12 +349,13 @@ function onMove(world: THREE.Vector3, _ev: PointerEvent) {
 async function onUp(_hit: PickResult | null, world: THREE.Vector3) {
   // 重定位提交
   if (editor.mode === 'initialPose' && poseAnchor) {
+    const anchor = poseAnchor
     const dist = Math.hypot(world.x - poseAnchor.x, world.y - poseAnchor.y)
     const yaw = dist < 0.15 ? 0 : Math.atan2(world.y - poseAnchor.y, world.x - poseAnchor.x)
     hidePreviews()
     editor.setMode('idle')
     try {
-      await robot.setInitialPose(+poseAnchor.x.toFixed(4), +poseAnchor.y.toFixed(4), +yaw.toFixed(4))
+      await robot.setInitialPose(+anchor.x.toFixed(4), +anchor.y.toFixed(4), +yaw.toFixed(4))
       ElMessage.success('初始位姿已发送，等待重定位…')
     } catch {
       /* http 层已提示 */

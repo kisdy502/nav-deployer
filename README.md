@@ -55,3 +55,7 @@ kubectl delete -f k8s/ && kubectl apply -f k8s/                  # 重新部署�
 
 # 仿真机器人源码目录
 见 /virtual-agv/** 启动方式和接口对接说明，由于代码持续更新，文档没有及时更新，以代码实现为准
+
+
+# 日常调试
+docker compose up -d postgres redis minio

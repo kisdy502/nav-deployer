@@ -12,8 +12,11 @@ import java.time.Instant;
  */
 public final class SimAgvTelemetry {
 
-    /** map 坐标系下的位姿。yaw 为弧度，stamp 为本地接收时间。 */
-    public record PoseSnapshot(double x, double y, double yaw, Instant receivedAt) {
+    /**
+     * map 坐标系下的位姿。yaw 为弧度；stampSec 为 ROS 消息时间戳（秒，消息缺 stamp 时为 0），
+     * 供雷达帧按"扫描时刻"回溯位姿；receivedAt 为本地接收时间。
+     */
+    public record PoseSnapshot(double x, double y, double yaw, double stampSec, Instant receivedAt) {
     }
 
     /** /agv/status 业务状态。mode/map_name 为机器人 agv_bridge_v2 v0.3.0+ 字段，旧版本为 null。 */

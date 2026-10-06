@@ -8,6 +8,7 @@ import com.agv.navdeployer.mapper.NavMapMapper;
 import com.agv.navdeployer.mapper.NavPointMapper;
 import com.agv.navdeployer.mapper.NavPathMapper;
 import com.agv.navdeployer.sim.LiveMapCache;
+import com.agv.navdeployer.sim.MapSubscriptionGuard;
 import com.agv.navdeployer.vo.MapGridVO;
 import com.agv.navdeployer.vo.NavMapVO;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -49,6 +50,7 @@ public class NavMapService {
     private final NavPathMapper navPathMapper;
     private final MinioClient minioClient;
     private final LiveMapCache liveMapCache;
+    private final MapSubscriptionGuard mapSubscriptionGuard;
     private final ObjectMapper objectMapper;
     private final String mapsBucket;
 
@@ -57,6 +59,7 @@ public class NavMapService {
                          NavPathMapper navPathMapper,
                          MinioClient minioClient,
                          LiveMapCache liveMapCache,
+                         MapSubscriptionGuard mapSubscriptionGuard,
                          ObjectMapper objectMapper,
                          @Value("${minio.maps-bucket:nav-maps}") String mapsBucket) {
         this.navMapMapper = navMapMapper;
@@ -64,12 +67,15 @@ public class NavMapService {
         this.navPathMapper = navPathMapper;
         this.minioClient = minioClient;
         this.liveMapCache = liveMapCache;
+        this.mapSubscriptionGuard = mapSubscriptionGuard;
         this.objectMapper = objectMapper;
         this.mapsBucket = mapsBucket;
     }
 
     /** 实时栅格（/map 最新一帧）。 */
     public MapGridVO liveGrid() {
+        // 保活 /map 订阅（首次调用后最多 ~throttle+1s 才有数据，前端轮询自然覆盖）
+        mapSubscriptionGuard.touch();
         LiveMapCache.OccupancyGrid grid = liveMapCache.snapshot();
         if (grid == null) {
             throw new IllegalStateException("尚未收到 /map 数据，请确认仿真栈与 rosbridge 连接正常");
@@ -80,6 +86,7 @@ public class NavMapService {
     /** 从实时快照建图：栅格序列化（gzip）入 MinIO，元数据入库。 */
     @Transactional(rollbackFor = Exception.class)
     public NavMapVO createFromLive(String mapName) {
+        mapSubscriptionGuard.touch();
         LiveMapCache.OccupancyGrid grid = liveMapCache.snapshot();
         if (grid == null) {
             throw new IllegalStateException("尚未收到 /map 数据，请确认仿真栈与 rosbridge 连接正常");

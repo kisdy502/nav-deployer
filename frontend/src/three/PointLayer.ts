@@ -2,9 +2,8 @@ import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { NavPointVO, PointType } from '@/types/api'
 
-/** 点位半径 0.22m（直径 0.44，基础 0.11 的 2 倍便于观察），箭头高 = 半径，底面在圆心、尖端抵圆周 */
-const R = 0.22
-const ARROW_H = R
+/** 点位半径 0.4m，箭头 = 内接三角形（底=直径 2R，高=半径 R，尖端抵圆周、底为过圆心直径） */
+const R = 0.4
 
 const TYPE_COLORS: Record<PointType, number> = {
   NORMAL: 0x95d475, // 浅绿
@@ -62,22 +61,28 @@ export class PointLayer {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(R, 32), discMat)
     disc.position.z = 0.01
     disc.userData.pick = { type: 'point', id: p.id }
-    // 朝向箭头：高 = 半径，底面在圆心，尖端抵圆周
+    // 朝向箭头 = 内接三角形：底边=过圆心直径(2R)，高=R，尖端抵圆周
+    // 平面 Shape（+x 朝向）：tip(R,0)、base(0,±R)，旋转 yaw 后指向朝向
+    const arrowShape = new THREE.Shape()
+    arrowShape.moveTo(R, 0)
+    arrowShape.lineTo(0, R)
+    arrowShape.lineTo(0, -R)
+    arrowShape.closePath()
     const arrow = new THREE.Mesh(
-      new THREE.ConeGeometry(0.09, ARROW_H, 12),
-      new THREE.MeshBasicMaterial({ color: 0x2f6b3a }),
+      new THREE.ShapeGeometry(arrowShape),
+      new THREE.MeshBasicMaterial({ color: 0x2f6b3a, side: THREE.DoubleSide }),
     )
     arrow.position.z = 0.02
     arrow.userData.pick = { type: 'point', id: p.id }
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(R + 0.04, R + 0.14, 32),
+      new THREE.RingGeometry(R + 0.03, R + 0.09, 32),
       new THREE.MeshBasicMaterial({ color: 0xf56c6c, side: THREE.DoubleSide }),
     )
     ring.position.z = 0.005
     ring.visible = false
     // 路线编辑高亮环（选中的起终点）：蓝色，位于红色选中环外侧
     const halo = new THREE.Mesh(
-      new THREE.RingGeometry(R * 1.8, R * 2.2, 32),
+      new THREE.RingGeometry(R * 1.12, R * 1.28, 32),
       new THREE.MeshBasicMaterial({ color: 0x409eff, side: THREE.DoubleSide }),
     )
     halo.position.z = 0.006
@@ -117,10 +122,8 @@ export class PointLayer {
 
   private setArrow(v: PointVisual, yaw: number) {
     v.yaw = yaw
-    v.arrow.rotation.z = yaw - Math.PI / 2
-    // 底面在圆心：沿朝向偏移半个箭头高度
-    v.arrow.position.x = Math.cos(yaw) * (ARROW_H / 2)
-    v.arrow.position.y = Math.sin(yaw) * (ARROW_H / 2)
+    v.arrow.rotation.z = yaw
+    // 内接三角形以圆心为原点（底边过圆心，尖端沿朝向），无需偏移
     v.handle.position.x = Math.cos(yaw) * (R + 0.36)
     v.handle.position.y = Math.sin(yaw) * (R + 0.36)
   }

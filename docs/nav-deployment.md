@@ -15,7 +15,7 @@
 | 3 | 点位部署 | 在指定地图上创建/修改/删除点位；支持「把机器人当前位姿标记为点位」（无页面时的实操部署方式） |
 | 4 | 路线部署 | 路线 = 有序边序列（点到点，支持直线/贝塞尔曲线/倒车/限速）；整体替换边序列，带连续性校验；`deploy` 将路线置为已部署 |
 | 5 | 移动控制 | 创建移动任务并下发 `/agv/follow_edge` action：到点位（TO_POINT）、到任意坐标（GOAL）、按路线逐段执行（FOLLOW_PATH）；支持取消 |
-| 6 | 机器人控制 | `set_control` start/stop/reset；`/initialpose` 重定位 |
+| 6 | 机器人控制 | `set_control` start/stop/reset；重定位（调 `/agv/relocalize` 服务） |
 | 7 | 实时状态 | REST 快照 + SSE（`/sse/agv`：telemetry / heartbeat / task 事件） |
 | 8 | 任务对账 | 每条任务生成 `command_id` 落库，`action_result` 回来按 goal id 关联更新状态；feedback 更新实时位置与 AGV 状态 |
 
@@ -99,7 +99,7 @@ FOLLOW_PATH：逐段下发 follow_edge，end_point=true 仅最后一段；任一
 |---|---|---|
 | GET | `/snapshot` | 遥测快照：connected/status(state,battery,pose_initialized,active_command_id)/pose(x,y,yaw)/scan1/scan2/消息计数 |
 | POST | `/control` | `{action: start/stop/reset}` → `/agv/set_control`（同步等服务响应，5s 超时） |
-| POST | `/initial-pose` | `{x,y,theta}` → publish `/initialpose`（PoseWithCovarianceStamped） |
+| POST | `/initial-pose` | `{x,y,theta,map_name?}` → call_service `/agv/relocalize`（map_name 缺省取当前地图，同步可达数十秒） |
 
 ### 3.6 SSE `/sse/agv`（已有，扩展）
 
@@ -137,7 +137,7 @@ sim_agv:
   follow_edge_action: /agv/follow_edge
   follow_edge_action_type: agv_bridge_v2_interfaces/action/FollowEdge
   set_control_service: /agv/set_control
-  initial_pose_topic: /initialpose
+  relocalize_service: /agv/relocalize
   goal_timeout_s: 600        # 单任务看门狗
   default_max_speed: 0.6
   default_step: 0.1

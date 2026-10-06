@@ -100,7 +100,17 @@ public final class RosbridgeClient {
      * 会立即建订阅，发布者出现后数据自动流入，从根上消除启动竞态。
      */
     public void subscribe(String topic, String type, int throttleMs, int fragmentSize) {
-        Subscription subscription = new Subscription(topic, type, throttleMs, fragmentSize);
+        subscribe(topic, type, throttleMs, fragmentSize, false);
+    }
+
+    /**
+     * 订阅话题（可选 latched 接收）。transientLocal=true 时向 rosbridge 声明
+     * durability=transient_local——latched 话题（如 /tf_static，只发一次）必须如此，
+     * 否则 volatile 订阅收不到历史保留消息，机器人自描述的雷达安装变换就丢了
+     * （只能退回 yaml 硬编码回退，换机器人就得同步改上位机配置的根因）。
+     */
+    public void subscribe(String topic, String type, int throttleMs, int fragmentSize, boolean transientLocal) {
+        Subscription subscription = new Subscription(topic, type, throttleMs, fragmentSize, transientLocal);
         subscriptions.put(topic, subscription);
         if (isConnected()) {
             sendSubscribe(subscription);
@@ -112,6 +122,18 @@ public final class RosbridgeClient {
         advertisements.put(topic, new Advertisement(topic, type));
         if (isConnected()) {
             sendAdvertise(advertisements.get(topic));
+        }
+    }
+
+    /** 退订话题（从订阅表移除，重连后不再恢复），与 subscribe 对应。 */
+    public void unsubscribe(String topic) {
+        subscriptions.remove(topic);
+        InnerClient client = active.get();
+        if (client != null && client.isOpen()) {
+            ObjectNode operation = MAPPER.createObjectNode();
+            operation.put("op", "unsubscribe");
+            operation.put("topic", topic);
+            send(operation);
         }
     }
 
@@ -222,6 +244,11 @@ public final class RosbridgeClient {
         if (subscription.fragmentSize() > 0) {
             operation.put("fragment_size", subscription.fragmentSize());
         }
+        if (subscription.transientLocal()) {
+            ObjectNode qos = operation.putObject("qos");
+            qos.put("durability", "transient_local");
+            qos.put("reliability", "reliable");
+        }
         send(operation);
     }
 
@@ -270,7 +297,8 @@ public final class RosbridgeClient {
         }
     }
 
-    private record Subscription(String topic, String type, int throttleMs, int fragmentSize) {
+    private record Subscription(String topic, String type, int throttleMs, int fragmentSize,
+                                 boolean transientLocal) {
     }
 
     private record Advertisement(String topic, String type) {

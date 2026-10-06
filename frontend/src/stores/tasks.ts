@@ -3,6 +3,8 @@ import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { cancelMoveTask, createMoveTask, getActiveMoveTask, getCurrentMapTask } from '@/api/tasks'
 import { MAP_TASK_STATUS_TAG, MAP_TASK_TYPE_LABEL } from '@/utils/format'
+import { useEditorStore } from './editor'
+import { useMapListStore } from './mapList'
 import type { MapModeTaskVO, MapSyncEvent, MoveTaskCreateDTO, MoveTaskVO } from '@/types/api'
 
 const TERMINAL_MOVE: MoveTaskVO['status'][] = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMEOUT']
@@ -44,13 +46,28 @@ export const useTasksStore = defineStore('tasks', () => {
       const label = MAP_TASK_TYPE_LABEL[t.type]
       if (t.status === 'SUCCEEDED') ElMessage.success(`${label}成功`)
       else ElMessage.error(`${label}失败：${t.error_message ?? '未知原因'}`)
+      // 切图成功：激活状态变了，刷新地图列表让徽标同步
+      if (t.status === 'SUCCEEDED' && t.type === 'SWITCH_MAP') {
+        void useMapListStore().load()
+      }
     }
   }
 
   function onMapSync(e: MapSyncEvent) {
     lastMapSync.value = e
-    if (e.success) ElMessage.success(`机器人地图已入库并激活（nav_map_id=${e.navMapId ?? '-'}）`)
-    else ElMessage.error(`机器人地图入库失败：${e.message ?? '未知原因'}`)
+    if (e.success) {
+      ElMessage.success(`机器人地图已入库并激活（nav_map_id=${e.navMapId ?? '-'}）`)
+      // 界面同步：左侧列表刷新（新图变 ACTIVE）+ 编辑器加载新激活地图。
+      // 必须先停实时预览，否则 1s 轮询会把 loadMap 的结果再覆盖回实时帧
+      void useMapListStore().load()
+      if (e.navMapId) {
+        const editor = useEditorStore()
+        editor.stopLivePolling()
+        editor.loadMap(e.navMapId).catch(() => {})
+      }
+    } else {
+      ElMessage.error(`机器人地图入库失败：${e.message ?? '未知原因'}`)
+    }
   }
 
   async function refresh() {

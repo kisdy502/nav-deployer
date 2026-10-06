@@ -58,9 +58,63 @@ minio:
   maps-bucket: ${MINIO_MAPS_BUCKET:nav-maps}
 
 logging:
+  file:
+    name: ${LOG_FILE:logs/nav-deployer.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 50MB
   level:
-    com.agv.navdeployer: info
+    com.agv.navdeployer: ${LOG_LEVEL:info}
 
+
+
+# ============================================================
+# RMS (robot-management-service) 对接：默认关闭。
+# 启用后上位机以机器人身份经 zenoh 上报状态、接收 RMS 任务指令；
+# 移动类任务真实执行（委托 MoveTaskService -> follow_edge）。
+# ============================================================
+rms:
+  enabled: ${RMS_ENABLED:true}
+  zenoh:
+    # 连接配置走 zenoh 标准做法：classpath 的 config-json5.json（endpoints/scouting/namespace/TLS）
+    # 部署换端点不重打包时，用 config_file 指外部文件：
+    # config_file: ${RMS_ZENOH_CONFIG_FILE:}
+    query_timeout_ms: 5000
+    continue_without_register: false
+    # register_key 留空用默认；robot_key_prefix 是 legacy 心跳/状态的 key 前缀
+    # RMS 侧订阅的是 robot-management/robots/{code}/status/report（RobotZenohConstant）
+    robot_key_prefix: ${RMS_ROBOT_KEY_PREFIX:robot-management/robots}
+  robot:
+    # robot_code 留空 = RMS 注册时自动分配（推荐，与真机行为一致）
+    robot_code: ${RMS_ROBOT_CODE:}
+    # robot_sn 是 RMS 去重键（跨重启不变→更新而非新建），默认从固定种子生成 32 位 hex
+    robot_sn: ${RMS_ROBOT_SN:}
+    robot_name: ${RMS_ROBOT_NAME:仿真机器人}
+    robot_type: ${RMS_ROBOT_TYPE:qc-robot}
+    # 注册信息展示（RMS 机器人详情页）：型号 / 固件版本 / API 版本 / 厂商
+    model: ${RMS_ROBOT_MODEL:SIM-3W-2D}
+    hardware_version: ${RMS_ROBOT_HARDWARE_VERSION:sim-v2}
+    firmware_version: ${RMS_ROBOT_FIRMWARE_VERSION:nav-deployer-1.0.0}
+    # api_version（RMS 页面「API 版本」）复用 protocol_version 值
+    protocol_version: ${RMS_ROBOT_PROTOCOL_VERSION:v1}
+    # ip 留空 = 自动取本机 IP
+    ip: ${RMS_ROBOT_IP:}
+    manufacturer: ${RMS_ROBOT_MANUFACTURER:Zioneer}
+  report:
+    heartbeat_interval_ms: 5000
+    status_interval_ms: 5000
+    publish_legacy_status: true
+    publish_body_status: true
+  behavior:
+    # 质检占位（仿真机械臂接入前）：模拟执行时长与结果
+    inspection_duration_ms: 8000
+    inspection_result: OK
+    # charge / return_home 目标坐标（未配置且 RMS 未带 destination 时任务失败）
+    # charge_pose: { x: 0.0, y: 0.0, yaw: 0.0 }
+    # home_pose:   { x: 0.0, y: 0.0, yaw: 0.0 }
+    compatible_chargers: []
 
 # ============================================================
 # Simulated AGV (rosbridge) telemetry source.
@@ -70,37 +124,40 @@ logging:
 # ============================================================
 sim_agv:
   enabled: ${SIM_AGV_ENABLED:true}
-  ws_url: ${SIM_AGV_WS_URL:ws://192.168.64.3:9090}
+  ws_url: ${SIM_AGV_WS_URL:ws://localhost:9090}
   status_topic: /agv/status
   tf_topic: /tf
   # 静态 TF：雷达安装关系（base_link → laser 的平移+旋转），点云安装变换优先来源；拿不到时回退 scan*_mount_yaw_deg
   tf_static_topic: /tf_static
   # Must match the bridge agv_id (child_frame_id = <agv_id>/base_link).
   tf_child_frame: AGV001/base_link
-  tf_throttle_ms: 100
+  tf_throttle_ms: 0
   odom_enabled: false
   odom_topic: /odom
   reconnect_delay_ms: 3000
   scan_enabled: true
   pose_topic: /agv/pose
-  scan_throttle_ms: 333
+  scan_throttle_ms: 200
   scan_topic_1: /scan_1
   scan_topic_2: /scan_2
   # 雷达安装朝向偏移（度）：雷达自身坐标系相对 base_link 的固定旋转角。
   # 双雷达对装（背靠背）时，反装的那个通常为 180。若画面上某雷达点云与实际障碍方向相反，调整此值（0/90/180/270）。
-  scan1_mount_yaw_deg: 0
-  scan2_mount_yaw_deg: 180
+  # 雷达安装变换不在此配置：唯一来源是机器人自描述（/tf_static，URDF 发布）。
+  # 缺失时后端打 ERROR 并丢弃该雷达点云，绝不用猜测值兼容。
   summary_interval_ms: 5000
-  # 建图：/map 大消息订阅（分片重组在 RosbridgeClient 内完成）
+  # 建图：/map 大消息订阅（分片重组在 RosbridgeClient 内完成）。
+  # 按需订阅：仅 MAPPING 模式或 /live 被轮询时挂载（MapSubscriptionGuard），
+  # 平时 rosbridge 上没有 /map 压力，遥控 /cmd_vel 不再被周期性挤慢。
   map_enabled: true
   map_topic: /map
-  map_throttle_ms: 5000
+  map_throttle_ms: 1000
   map_fragment_size: 500000
   # 下行通道：follow_edge action / set_control 服务 / 重定位
   follow_edge_action: /agv/follow_edge
   follow_edge_action_type: agv_bridge_v2_interfaces/action/FollowEdge
   set_control_service: /agv/set_control
-  initial_pose_topic: /initialpose
+  # 三舵轮全向底盘遥控：geometry_msgs/Twist，linear.x 前进、linear.y 左移、angular.z 左转
+  cmd_vel_topic: /cmd_vel
   service_timeout_ms: 5000
   goal_timeout_s: 600
   default_max_speed: 0.6

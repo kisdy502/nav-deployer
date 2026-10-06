@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 仿真 AGV 对接配置（application.yaml 的 sim_agv 前缀，宽松绑定兼容 snake_case）。
- * 上行：遥测话题订阅；下行：follow_edge action / set_control 服务 / 重定位。
+ * 上行：遥测话题订阅；下行：follow_edge action / set_control 服务 / 重定位 / 遥控速度。
  */
 @ConfigurationProperties(prefix = "sim-agv")
 public class SimAgvProperties {
@@ -30,9 +30,7 @@ public class SimAgvProperties {
     private String scanTopic1 = "/scan_1";
     private String scanTopic2 = "/scan_2";
     private int scanThrottleMs = 333;
-    /** 雷达安装朝向偏移（度）：雷达自身坐标系相对 base_link 的旋转角。对装（背靠背）的反装雷达通常为 180。 */
-    private double scan1MountYawDeg = 0.0;
-    private double scan2MountYawDeg = 0.0;
+
 
     private boolean mapEnabled = true;
     private String mapTopic = "/map";
@@ -52,7 +50,8 @@ public class SimAgvProperties {
     private String followEdgeAction = "/agv/follow_edge";
     private String followEdgeActionType = "agv_bridge_v2_interfaces/action/FollowEdge";
     private String setControlService = "/agv/set_control";
-    private String initialPoseTopic = "/initialpose";
+    private String relocalizeService = "/agv/relocalize";
+    private String cmdVelTopic = "/cmd_vel";
     private long serviceTimeoutMs = 5000L;
     private long goalTimeoutSeconds = 600L;
     private double defaultMaxSpeed = 0.6;
@@ -211,21 +210,7 @@ public class SimAgvProperties {
         this.scanThrottleMs = scanThrottleMs;
     }
 
-    public double getScan1MountYawDeg() {
-        return scan1MountYawDeg;
-    }
 
-    public void setScan1MountYawDeg(double scan1MountYawDeg) {
-        this.scan1MountYawDeg = scan1MountYawDeg;
-    }
-
-    public double getScan2MountYawDeg() {
-        return scan2MountYawDeg;
-    }
-
-    public void setScan2MountYawDeg(double scan2MountYawDeg) {
-        this.scan2MountYawDeg = scan2MountYawDeg;
-    }
 
     public boolean isMapEnabled() {
         return mapEnabled;
@@ -327,16 +312,24 @@ public class SimAgvProperties {
         return setControlService;
     }
 
+    public String getRelocalizeService() {
+        return relocalizeService;
+    }
+
+    public void setRelocalizeService(String relocalizeService) {
+        this.relocalizeService = relocalizeService;
+    }
+
     public void setSetControlService(String setControlService) {
         this.setControlService = setControlService;
     }
 
-    public String getInitialPoseTopic() {
-        return initialPoseTopic;
+    public String getCmdVelTopic() {
+        return cmdVelTopic;
     }
 
-    public void setInitialPoseTopic(String initialPoseTopic) {
-        this.initialPoseTopic = initialPoseTopic;
+    public void setCmdVelTopic(String cmdVelTopic) {
+        this.cmdVelTopic = cmdVelTopic;
     }
 
     public long getServiceTimeoutMs() {

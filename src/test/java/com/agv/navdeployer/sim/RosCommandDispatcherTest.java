@@ -81,4 +81,16 @@ class RosCommandDispatcherTest {
         assertTrue(noArgs.path("args").isObject());
         assertEquals(0, noArgs.path("args").size());
     }
+
+    @Test
+    void buildVelocityOpMatchesOmnidirectionalTwistContract() {
+        JsonNode op = RosCommandDispatcher.buildVelocityOp("/cmd_vel", 0.3, -0.2, 0.6);
+
+        assertEquals("publish", op.path("op").asText());
+        assertEquals("/cmd_vel", op.path("topic").asText());
+        assertEquals(0.3, op.path("msg").path("linear").path("x").asDouble(), 1e-9);
+        assertEquals(-0.2, op.path("msg").path("linear").path("y").asDouble(), 1e-9);
+        assertEquals(0.0, op.path("msg").path("linear").path("z").asDouble(), 1e-9);
+        assertEquals(0.6, op.path("msg").path("angular").path("z").asDouble(), 1e-9);
+    }
 }

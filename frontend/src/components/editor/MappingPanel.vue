@@ -8,6 +8,7 @@ import { useMapListStore } from '@/stores/mapList'
 import { startMapping as startMappingApi, saveMapTask as saveMapTaskApi, getRecentMapTasks } from '@/api/tasks'
 import { importFromRobot, listRobotMaps } from '@/api/maps'
 import { fmtTime, MAP_TASK_STATUS_TAG, MAP_TASK_TYPE_LABEL } from '@/utils/format'
+import TeleopPanel from './TeleopPanel.vue'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -18,6 +19,7 @@ const mapList = useMapListStore()
 
 const recent = ref<Awaited<ReturnType<typeof getRecentMapTasks>>>([])
 const saving = ref(false)
+const teleopVisible = ref(false)
 const saveDialog = reactive({ visible: false, name: '' })
 const importing = ref(false)
 const importDialog = reactive({ visible: false, loading: false, name: '', options: [] as string[] })
@@ -151,6 +153,7 @@ async function reloadCurrentMap() {
 
         <div class="btns">
           <el-button type="primary" :disabled="inFlight || mappingMode" @click="onStartMapping">开始建图</el-button>
+          <el-button type="primary" plain @click="teleopVisible = true">打开遥控器</el-button>
           <el-button type="success" :disabled="inFlight" @click="openSaveDialog">保存并入库</el-button>
           <el-button v-if="mappingMode" type="danger" plain :disabled="inFlight" @click="onAbandonMapping">放弃建图</el-button>
         </div>
@@ -234,6 +237,7 @@ async function reloadCurrentMap() {
       </template>
     </el-dialog>
   </el-drawer>
+  <TeleopPanel v-if="teleopVisible" @close="teleopVisible = false" />
 </template>
 
 <style scoped>
