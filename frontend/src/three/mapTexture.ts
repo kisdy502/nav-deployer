@@ -20,9 +20,12 @@ const GREY_TABLE: number[] = (() => {
   return table
 })()
 
-export function makeGridTexture(grid: MapGridVO): THREE.DataTexture {
+/** 把栅格颜色写入已有 RGBA 缓冲；实时建图时复用缓冲，避免每秒分配数 MB。 */
+export function writeGridPixels(grid: MapGridVO, buf: Uint8Array) {
   const { width, height, data } = grid
-  const buf = new Uint8Array(width * height * 4)
+  if (buf.length !== width * height * 4) {
+    throw new Error(`grid texture buffer size mismatch: ${buf.length} != ${width * height * 4}`)
+  }
   for (let i = 0; i < width * height; i++) {
     const v = data[i]
     let r: number, g: number, b: number
@@ -47,6 +50,12 @@ export function makeGridTexture(grid: MapGridVO): THREE.DataTexture {
     buf[i * 4 + 2] = b
     buf[i * 4 + 3] = 255
   }
+}
+
+export function makeGridTexture(grid: MapGridVO): THREE.DataTexture {
+  const { width, height } = grid
+  const buf = new Uint8Array(width * height * 4)
+  writeGridPixels(grid, buf)
   const tex = new THREE.DataTexture(buf, width, height, THREE.RGBAFormat)
   tex.flipY = false
   tex.magFilter = THREE.NearestFilter
@@ -54,4 +63,14 @@ export function makeGridTexture(grid: MapGridVO): THREE.DataTexture {
   tex.generateMipmaps = false
   tex.needsUpdate = true
   return tex
+}
+
+/** 尺寸不变时原地更新纹理，保留 WebGL texture 对象，减少 GC 与 GPU 资源抖动。 */
+export function updateGridTexture(tex: THREE.DataTexture, grid: MapGridVO) {
+  const image = tex.image as { data: Uint8Array; width: number; height: number }
+  if (image.width !== grid.width || image.height !== grid.height) {
+    throw new Error(`grid texture dimensions changed: ${image.width}x${image.height} -> ${grid.width}x${grid.height}`)
+  }
+  writeGridPixels(grid, image.data)
+  tex.needsUpdate = true
 }

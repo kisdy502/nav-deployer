@@ -75,7 +75,8 @@ export class ScanLayer {
     const n = Math.min(Math.floor(flat.length / 2), MAX_POINTS)
     const cos = Math.cos(pose.yaw)
     const sin = Math.sin(pose.yaw)
-    // 本组挂在场景根（map 系）：机器人中心 = 该帧绑定的位姿
+    // 本组挂在场景根（map 系）：机器人中心 = 该帧绑定的位姿。
+    // 点和连线使用完全相同的捕获时位姿，连线只负责可视化，不参与坐标计算。
     const cx = pose.x
     const cy = pose.y
     for (let i = 0; i < n; i++) {

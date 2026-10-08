@@ -217,6 +217,8 @@ export interface ScanCloudEvent {
 export interface ScanCloud {
   frame_id: string
   range_count: number
+  /** ROS 捕获时间；用于识别 SSE 聚合事件中未变化的旧帧。旧后端可能不携带。 */
+  stamp_sec?: number
   /** 扁平 [x0,y0,x1,y1,...]，单位米，base_link 系 */
   points: number[]
   /** 该帧捕获时机器人的 map 系位姿；投影到地图必须用它。null = 当时位姿未知（无法正确绘制） */

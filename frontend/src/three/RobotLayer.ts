@@ -32,6 +32,10 @@ export class RobotLayer {
   private chevron = new THREE.Group()
   private target: { x: number; y: number; yaw: number } | null = null
   private shown: { x: number; y: number; yaw: number } | null = null
+  private segmentStart: { x: number; y: number; yaw: number } | null = null
+  private segmentStartedAtMs = 0
+  private segmentDurationMs = 200
+  private lastTargetAtMs = 0
   private trailLine: THREE.Line
   private trailAttr: THREE.BufferAttribute
 
@@ -99,21 +103,49 @@ export class RobotLayer {
   }
 
   setTarget(pose: { x: number; y: number; yaw: number } | null) {
-    this.target = pose
     this.group.visible = !!pose
-    if (pose && !this.shown) {
-      this.shown = { ...pose }
-      this.apply()
+    if (!pose) {
+      this.target = null
+      this.segmentStart = null
+      this.lastTargetAtMs = 0
+      return
     }
+
+    const now = performance.now()
+    const gapMs = this.lastTargetAtMs > 0 ? now - this.lastTargetAtMs : 0
+    const jumpDistance = this.shown ? Math.hypot(pose.x - this.shown.x, pose.y - this.shown.y) : 0
+    const jumpYaw = this.shown ? Math.abs(angleDelta(this.shown.yaw, pose.yaw)) : 0
+
+    // 首帧、长时间断流或重定位跳变直接落位；普通遥测样本按上一个到达周期匀速插值。
+    if (!this.shown || gapMs > 1000 || jumpDistance > 2 || jumpYaw > Math.PI / 2) {
+      this.shown = { ...pose }
+      this.segmentStart = { ...pose }
+      this.target = { ...pose }
+      this.segmentStartedAtMs = now
+      this.segmentDurationMs = 1
+      this.apply()
+    } else if (!this.target
+      || pose.x !== this.target.x
+      || pose.y !== this.target.y
+      || pose.yaw !== this.target.yaw) {
+      this.segmentStart = { ...this.shown }
+      this.target = { ...pose }
+      this.segmentStartedAtMs = now
+      // 当前观测到的消息周期，是下一段持续时间的最佳估计；限制范围抵抗偶发网络抖动。
+      this.segmentDurationMs = Math.min(350, Math.max(60, gapMs || 200))
+    }
+    this.lastTargetAtMs = now
   }
 
-  /** 每帧调用：向目标位姿指数趋近 */
-  tick(dt: number) {
-    if (!this.target || !this.shown) return
-    const k = 1 - Math.exp(-dt * 10)
-    this.shown.x += (this.target.x - this.shown.x) * k
-    this.shown.y += (this.target.y - this.shown.y) * k
-    this.shown.yaw += angleDelta(this.shown.yaw, this.target.yaw) * k
+  /** 每帧调用：沿相邻遥测样本做匀速时间插值，避免低频目标下的指数“追一下、停一下”。 */
+  tick(_dt: number) {
+    if (!this.target || !this.shown || !this.segmentStart) return
+    const t = Math.min(1, Math.max(0,
+      (performance.now() - this.segmentStartedAtMs) / this.segmentDurationMs,
+    ))
+    this.shown.x = this.segmentStart.x + (this.target.x - this.segmentStart.x) * t
+    this.shown.y = this.segmentStart.y + (this.target.y - this.segmentStart.y) * t
+    this.shown.yaw = this.segmentStart.yaw + angleDelta(this.segmentStart.yaw, this.target.yaw) * t
     this.apply()
   }
 

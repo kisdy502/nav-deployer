@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { Easing, Group, Tween } from '@tweenjs/tween.js'
-import { makeGridTexture } from './mapTexture'
+import { makeGridTexture, updateGridTexture } from './mapTexture'
 import type { MapGridVO } from '@/types/api'
 
 export interface PickResult {
@@ -90,6 +90,12 @@ export class MapScene {
   readonly pickRoot = new THREE.Group()
   /** 地图纹理所在组（含 origin 偏移与 origin_yaw 旋转） */
   readonly mapGroup = new THREE.Group()
+  private mapMesh: THREE.Mesh | null = null
+  private mapBorder: THREE.LineLoop | null = null
+  private mapTexture: THREE.DataTexture | null = null
+  private mapPixelWidth = 0
+  private mapPixelHeight = 0
+  private mapResolution = 0
   /** RViz 风格世界系参考网格（1 格 = 1 米，正交相机下随缩放等比，始终 1 米） */
   readonly gridGroup = new THREE.Group()
   private gridMinor: THREE.GridHelper | null = null
@@ -329,23 +335,38 @@ export class MapScene {
 
   // ---------- 地图 ----------
   setMap(grid: MapGridVO) {
-    this.mapGroup.clear()
     const w = grid.width * grid.resolution
     const h = grid.height * grid.resolution
-    const tex = makeGridTexture(grid)
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }))
-    mesh.position.set(w / 2, h / 2, 0)
-    this.mapGroup.add(mesh)
-    const border = new THREE.LineLoop(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0.02),
-        new THREE.Vector3(w, 0, 0.02),
-        new THREE.Vector3(w, h, 0.02),
-        new THREE.Vector3(0, h, 0.02),
-      ]),
-      new THREE.LineBasicMaterial({ color: 0xb9bdc7 }),
-    )
-    this.mapGroup.add(border)
+    const canReuse = this.mapMesh != null
+      && this.mapTexture != null
+      && this.mapPixelWidth === grid.width
+      && this.mapPixelHeight === grid.height
+      && this.mapResolution === grid.resolution
+
+    if (canReuse) {
+      updateGridTexture(this.mapTexture!, grid)
+    } else {
+      this.disposeMapResources()
+      this.mapTexture = makeGridTexture(grid)
+      this.mapMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({ map: this.mapTexture }),
+      )
+      this.mapMesh.position.set(w / 2, h / 2, 0)
+      this.mapBorder = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0.02),
+          new THREE.Vector3(w, 0, 0.02),
+          new THREE.Vector3(w, h, 0.02),
+          new THREE.Vector3(0, h, 0.02),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xb9bdc7 }),
+      )
+      this.mapGroup.add(this.mapMesh, this.mapBorder)
+      this.mapPixelWidth = grid.width
+      this.mapPixelHeight = grid.height
+      this.mapResolution = grid.resolution
+    }
     this.mapGroup.position.set(grid.origin_x, grid.origin_y, 0)
     this.mapGroup.rotation.z = grid.origin_yaw || 0
     this.mapGroup.visible = true
@@ -364,6 +385,26 @@ export class MapScene {
       maxX: Math.max(...corners.map((c) => c.x)),
       maxY: Math.max(...corners.map((c) => c.y)),
     }
+  }
+
+  /** Three.js 的 clear() 只解绑对象，不释放 geometry/material/texture，必须显式销毁。 */
+  private disposeMapResources() {
+    if (this.mapMesh) {
+      this.mapMesh.geometry.dispose()
+      ;(this.mapMesh.material as THREE.Material).dispose()
+    }
+    if (this.mapBorder) {
+      this.mapBorder.geometry.dispose()
+      ;(this.mapBorder.material as THREE.Material).dispose()
+    }
+    this.mapTexture?.dispose()
+    this.mapGroup.clear()
+    this.mapMesh = null
+    this.mapBorder = null
+    this.mapTexture = null
+    this.mapPixelWidth = 0
+    this.mapPixelHeight = 0
+    this.mapResolution = 0
   }
 
   hideMap() {
@@ -481,6 +522,7 @@ export class MapScene {
     this.disposed = true
     cancelAnimationFrame(this.rafId)
     this.ro.disconnect()
+    this.disposeMapResources()
     const el = this.renderer.domElement
     el.removeEventListener('pointerdown', this.onPointerDown)
     el.removeEventListener('pointermove', this.onPointerMove)

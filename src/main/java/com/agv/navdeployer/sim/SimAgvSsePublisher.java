@@ -24,8 +24,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * 事件：
  *   connected  —— 接入即回一条（含时间戳）
- *   telemetry  —— 每 200ms 一条聚合快照（5Hz，状态/位姿/双雷达/计数；遥控跟手的关键）
- *   scan       —— 收到新雷达帧时推送点云（base_link 系扁平 [x0,y0,x1,y1,...]，约 2~3Hz）
+ *   telemetry  —— 每 100ms 一条聚合快照（10Hz，状态/位姿/双雷达摘要/计数）
+ *   scan       —— 收到新雷达帧时推送点云（base_link 系扁平 [x0,y0,x1,y1,...]，约 4Hz）
  *   heartbeat  —— 每 30s 一条
  */
 @Component
@@ -60,7 +60,7 @@ public class SimAgvSsePublisher {
         return emitter;
     }
 
-    @Scheduled(fixedDelay = 200)
+    @Scheduled(fixedDelay = 100)
     public void pushTelemetry() {
         if (subscriptions.isEmpty()) {
             return;
@@ -177,6 +177,7 @@ public class SimAgvSsePublisher {
         node.put("range_count", scan.rangeCount());
         var pose = scan.pose();
         if (pose != null) {
+            node.put("stamp_sec", pose.stampSec());
             ObjectNode poseNode = node.putObject("pose");
             poseNode.put("x", pose.x());
             poseNode.put("y", pose.y());

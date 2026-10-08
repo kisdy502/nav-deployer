@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import * as mapsApi from '@/api/maps'
 import * as pointsApi from '@/api/points'
@@ -47,7 +47,8 @@ export const DEFAULT_MAX_SPEED = 0.6
 export const useEditorStore = defineStore('editor', () => {
   const mapId = ref(0)
   const mapInfo = ref<NavMapVO | null>(null)
-  const grid = ref<MapGridVO | null>(null)
+  // 栅格 data 可达百万元素，只按整帧替换；禁止 Vue 为每个数组元素建立深响应式代理。
+  const grid = shallowRef<MapGridVO | null>(null)
   const points = ref<NavPointVO[]>([])
   const paths = ref<NavPathVO[]>([])
   const pathDetails = ref<Record<number, PathEdgeVO[]>>({})
@@ -345,11 +346,18 @@ export const useEditorStore = defineStore('editor', () => {
     if (livePolling.value) return
     livePolling.value = true
     const tick = async () => {
+      if (liveRequestInFlight) return
+      liveRequestInFlight = true
       try {
         const g = await mapsApi.getLiveGrid()
-        grid.value = g
+        // 轮询可能连续拿到同一帧；不重复做 JSON→RGBA→GPU 上传。
+        if (!g.received_at || g.received_at !== grid.value?.received_at) {
+          grid.value = g
+        }
       } catch {
         /* 后端暂无实时图，忽略 */
+      } finally {
+        liveRequestInFlight = false
       }
     }
     void tick()
@@ -364,6 +372,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   let liveTimer: number | undefined
+  let liveRequestInFlight = false
   /** 本次预览是否由建图模式自动开启（退出建图时只关自动开启的） */
   const autoLive = ref(false)
 

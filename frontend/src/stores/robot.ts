@@ -42,8 +42,20 @@ export const useRobotStore = defineStore('robot', () => {
       onStatus: (s) => (connStatus.value = s),
       onTelemetry: (t) => applySnapshot(t),
       onScan: (t) => {
-        scan1Cloud.value = t.scan1
-        scan2Cloud.value = t.scan2
+        // 后端在任一雷达更新时会把双雷达当前快照一起放进事件。按捕获时间去重，
+        // 避免前后雷达异步到帧时反复触发未变化那一侧的 GPU Buffer 重写。
+        if (!t.scan1) {
+          scan1Cloud.value = null
+        } else if (!scan1Cloud.value || t.scan1.stamp_sec == null
+          || scan1Cloud.value.stamp_sec !== t.scan1.stamp_sec) {
+          scan1Cloud.value = t.scan1
+        }
+        if (!t.scan2) {
+          scan2Cloud.value = null
+        } else if (!scan2Cloud.value || t.scan2.stamp_sec == null
+          || scan2Cloud.value.stamp_sec !== t.scan2.stamp_sec) {
+          scan2Cloud.value = t.scan2
+        }
       },
       onMoveTask: (t) => useTasksStore().onMoveTask(t),
       onMapTask: (t) => useTasksStore().onMapTask(t),

@@ -246,12 +246,14 @@ watch(
 
 watch(pathItems, (items) => pathLayer?.render(items), { deep: true })
 
+// 两颗雷达独立到帧；分开监听，避免其中一颗更新时把另一颗未变化的 Buffer 也重写一遍。
 watch(
-  () => [robot.scan1Cloud, robot.scan2Cloud] as const,
-  ([s1, s2]) => {
-    scanLayer?.setScan(1, s1?.points ?? null, s1?.pose ?? null)
-    scanLayer?.setScan(2, s2?.points ?? null, s2?.pose ?? null)
-  },
+  () => robot.scan1Cloud,
+  (scan) => scanLayer?.setScan(1, scan?.points ?? null, scan?.pose ?? null),
+)
+watch(
+  () => robot.scan2Cloud,
+  (scan) => scanLayer?.setScan(2, scan?.points ?? null, scan?.pose ?? null),
 )
 
 watch(

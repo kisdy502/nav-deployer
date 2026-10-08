@@ -28,6 +28,10 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
     private record MountTransform(double dx, double dy, double yaw) {
     }
 
+    /** base_link 的静态父帧及其平面变换，例如 base_footprint → base_link。 */
+    private record BaseParentTransform(String parentFrame, MountTransform transform) {
+    }
+
     private final SimAgvProperties config;
     private final SimAgvTelemetry telemetry = new SimAgvTelemetry();
     private final String statusTopic;
@@ -54,6 +58,8 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
 
     /** /tf_static 缓存：child frame（雷达 frame_id）→ base_link 系安装变换 */
     private final ConcurrentHashMap<String, MountTransform> mountByFrame = new ConcurrentHashMap<>();
+    /** 底盘运动帧到 base_link 的静态关系；三舵轮模型中为 base_footprint → base_link。 */
+    private volatile BaseParentTransform baseParentTransform;
     /**
      * 安装变换缺失告警状态（frame → [首次缺失时刻, 上次告警时刻]）。
      * 启动竞态宽限：/tf_static 的 latched 消息常晚于首批扫描几十毫秒到达，
@@ -190,9 +196,14 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
             if (MAP_FRAME.equals(parentFrame) && "odom".equals(childFrame)) {
                 appendSample(mapOdomHistory, sample);
                 flushPendingScans();
-            } else if ("odom".equals(parentFrame) && "base_link".equals(childFrame)) {
-                appendSample(odomBaseHistory, sample);
-                flushPendingScans();
+            } else if (frameMatches(parentFrame, "odom")) {
+                // 实际三舵轮底盘发布 odom→base_footprint（100Hz），base_footprint→base_link
+                // 在 /tf_static。先复合到 base_link 再入环；也兼容直接发布 odom→base_link 的机器人。
+                SimAgvTelemetry.PoseSnapshot baseSample = odomSampleToBase(childFrame, sample);
+                if (baseSample != null) {
+                    appendSample(odomBaseHistory, baseSample);
+                    flushPendingScans();
+                }
             } else if (MAP_FRAME.equals(parentFrame) && config.getTfChildFrame().equals(childFrame)) {
                 // bridge 广播的复合帧（10Hz）：作为两段式不可用时的回退位姿源
                 telemetry.setMapPose(sample);
@@ -202,8 +213,8 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
     }
 
     /**
-     * /tf_static：静态安装关系。只关心 base_link → 雷达的变换（含平移+偏航），
-     * 按 child frame（即 scan 的 header.frame_id）缓存，供点云还原安装变换。
+     * /tf_static：缓存运动帧 → base_link，以及 base_link → 雷达的平面变换。
+     * 后者按 child frame（即 scan 的 header.frame_id）缓存，供点云还原安装变换。
      */
     private void handleTfStatic(JsonNode payload) {
         JsonNode transforms = payload.path("transforms");
@@ -217,8 +228,9 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
             if (childFrame.isEmpty() || parentFrame.isEmpty()) {
                 continue;
             }
-            boolean parentIsBase = parentFrame.equals(baseLink) || parentFrame.endsWith("/" + baseLink);
-            if (!parentIsBase) {
+            boolean parentIsBase = frameMatches(parentFrame, baseLink);
+            boolean childIsBase = frameMatches(childFrame, baseLink);
+            if (!parentIsBase && !childIsBase) {
                 continue;
             }
             JsonNode translation = transform.path("transform").path("translation");
@@ -234,6 +246,22 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                             rotation.path("y").asDouble(),
                             rotation.path("z").asDouble(),
                             rotation.path("w").asDouble()));
+
+            // 运动 TF 常止于 base_footprint；缓存其到 base_link 的静态末段，扫描时刻
+            // 才能使用 100Hz 底盘位姿，而不是退回 10Hz 的 map→AGV001/base_link。
+            if (frameMatches(childFrame, baseLink) && !frameMatches(parentFrame, baseLink)) {
+                BaseParentTransform previous = baseParentTransform;
+                baseParentTransform = new BaseParentTransform(parentFrame, mount);
+                if (previous == null) {
+                    log.info("base motion transform captured from {}: {} -> {}, d=({}, {}), yaw={} deg",
+                            tfStaticTopic, parentFrame, childFrame,
+                            String.format(Locale.ROOT, "%.3f", mount.dx()),
+                            String.format(Locale.ROOT, "%.3f", mount.dy()),
+                            String.format(Locale.ROOT, "%.1f", Math.toDegrees(mount.yaw())));
+                }
+                continue;
+            }
+
             mountMissingLastLog.remove(childFrame);
             if (mountByFrame.put(childFrame, mount) == null) {
                 log.info("scan mount transform captured from {}: frame={}, parent={}, d=({}, {}), yaw={} deg",
@@ -243,6 +271,44 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                         String.format(Locale.ROOT, "%.1f", Math.toDegrees(mount.yaw())));
             }
         }
+    }
+
+    /** 把 odom→运动帧复合成 odom→base_link；静态末段未到达时宁可等待，不猜安装关系。 */
+    private SimAgvTelemetry.PoseSnapshot odomSampleToBase(
+            String childFrame, SimAgvTelemetry.PoseSnapshot odomToChild) {
+        if (frameMatches(childFrame, baseLinkSuffix())) {
+            return odomToChild;
+        }
+        BaseParentTransform parentToBase = baseParentTransform;
+        if (parentToBase == null || !frameMatches(childFrame, parentToBase.parentFrame())) {
+            return null;
+        }
+        return compose(odomToChild, parentToBase.transform());
+    }
+
+    /** 二维刚体变换复合：parent→middle 与 middle→child 得到 parent→child。 */
+    private static SimAgvTelemetry.PoseSnapshot compose(
+            SimAgvTelemetry.PoseSnapshot parentToMiddle, MountTransform middleToChild) {
+        double cos = Math.cos(parentToMiddle.yaw());
+        double sin = Math.sin(parentToMiddle.yaw());
+        double yaw = parentToMiddle.yaw() + middleToChild.yaw();
+        yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+        return new SimAgvTelemetry.PoseSnapshot(
+                parentToMiddle.x() + cos * middleToChild.dx() - sin * middleToChild.dy(),
+                parentToMiddle.y() + sin * middleToChild.dx() + cos * middleToChild.dy(),
+                yaw,
+                parentToMiddle.stampSec(),
+                parentToMiddle.receivedAt());
+    }
+
+    /** 兼容 ROS 帧名前导斜杠和命名空间（robot/base_link 与 base_link 视为同一帧末段）。 */
+    private static boolean frameMatches(String actual, String expected) {
+        return actual.equals(expected) || frameLeaf(actual).equals(frameLeaf(expected));
+    }
+
+    private static String frameLeaf(String frame) {
+        int slash = frame.lastIndexOf('/');
+        return slash >= 0 ? frame.substring(slash + 1) : frame;
     }
 
     /** tf_child_frame（如 AGV001/base_link）的末段，用于匹配 /tf_static 里 base_link 的各种写法 */
@@ -303,12 +369,22 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                     orientation.path("y").asDouble(),
                     orientation.path("z").asDouble(),
                     orientation.path("w").asDouble());
-            telemetry.setOdomPose(new SimAgvTelemetry.PoseSnapshot(
+            SimAgvTelemetry.PoseSnapshot odomPose = new SimAgvTelemetry.PoseSnapshot(
                     position.path("x").asDouble(),
                     position.path("y").asDouble(),
                     yaw,
                     stampSec(payload.path("header")),
-                    Instant.now()));
+                    Instant.now());
+            telemetry.setOdomPose(odomPose);
+            String parentFrame = payload.path("header").path("frame_id").asText("");
+            String childFrame = payload.path("child_frame_id").asText("");
+            if (odomPose.stampSec() > 0.0 && frameMatches(parentFrame, "odom")) {
+                SimAgvTelemetry.PoseSnapshot baseSample = odomSampleToBase(childFrame, odomPose);
+                if (baseSample != null) {
+                    appendSample(odomBaseHistory, baseSample);
+                    flushPendingScans();
+                }
+            }
         }
         JsonNode twist = payload.path("twist").path("twist");
         if (!twist.isMissingNode()) {
@@ -405,27 +481,52 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                                double[] points, long enqueuedAtNanos) {
     }
 
-    /** 扫描时刻已被位姿源覆盖（可精确插值）：优先两段式，回退复合环。 */
+    /**
+     * 扫描时刻已被位姿源覆盖（可精确插值）。两段式 TF 一旦建立，后续扫描统一等待
+     * 两段式完整覆盖，不允许某帧临时退回 10Hz 复合位姿；否则双雷达异步到帧时会一颗
+     * 用高频 TF、另一颗用低频 TF，旋转中形成两层轮廓。
+     */
     private boolean poseRingCovers(double stampSec) {
-        return hopPoseAvailable(stampSec) || composedRingCovers(stampSec);
+        return splitPoseSourceEstablished()
+                ? hopPoseAvailable(stampSec)
+                : composedRingCovers(stampSec);
     }
 
     private boolean composedRingCovers(double stampSec) {
         synchronized (poseHistory) {
-            return !poseHistory.isEmpty() && poseHistory.getLast().stampSec() >= stampSec;
+            return ringCovers(poseHistory, stampSec);
         }
     }
 
-    /** 两段式可用：两环都非空且最新样本都不早于扫描时刻。 */
-    private boolean hopPoseAvailable(double stampSec) {
+    /** 两段式位姿源是否已经建立；建立后不再逐帧混用低频复合位姿。 */
+    private boolean splitPoseSourceEstablished() {
         synchronized (mapOdomHistory) {
-            if (mapOdomHistory.isEmpty() || mapOdomHistory.getLast().stampSec() < stampSec) {
+            if (mapOdomHistory.isEmpty()) {
                 return false;
             }
         }
         synchronized (odomBaseHistory) {
-            return !odomBaseHistory.isEmpty() && odomBaseHistory.getLast().stampSec() >= stampSec;
+            return !odomBaseHistory.isEmpty();
         }
+    }
+
+    /** 两段式可用：扫描时间必须同时落在两环的首尾样本范围内，禁止边界外钳位。 */
+    private boolean hopPoseAvailable(double stampSec) {
+        synchronized (mapOdomHistory) {
+            if (!ringCovers(mapOdomHistory, stampSec)) {
+                return false;
+            }
+        }
+        synchronized (odomBaseHistory) {
+            return ringCovers(odomBaseHistory, stampSec);
+        }
+    }
+
+    private static boolean ringCovers(
+            java.util.ArrayDeque<SimAgvTelemetry.PoseSnapshot> ring, double stampSec) {
+        return !ring.isEmpty()
+                && ring.getFirst().stampSec() <= stampSec
+                && ring.getLast().stampSec() >= stampSec;
     }
 
     /**
@@ -463,42 +564,24 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
 
     /** 位姿环前进后调用：把已覆盖时刻的挂起扫描插值绑定并发布，超时的丢弃。 */
     private void flushPendingScans() {
-        // 覆盖进度取两段式与复合环二者的最新时刻（谁新用谁）
-        double newest = 0.0;
-        synchronized (mapOdomHistory) {
-            if (!mapOdomHistory.isEmpty()) {
-                newest = Math.max(newest, mapOdomHistory.getLast().stampSec());
-            }
-        }
-        synchronized (odomBaseHistory) {
-            if (!odomBaseHistory.isEmpty()) {
-                newest = Math.max(newest, odomBaseHistory.getLast().stampSec());
-            }
-        }
-        synchronized (poseHistory) {
-            if (!poseHistory.isEmpty()) {
-                newest = Math.max(newest, poseHistory.getLast().stampSec());
-            }
-        }
-        if (newest <= 0.0) {
-            return;
-        }
-        flushPendingQueue(pendingScans1, newest, 1);
-        flushPendingQueue(pendingScans2, newest, 2);
+        flushPendingQueue(pendingScans1, 1);
+        flushPendingQueue(pendingScans2, 2);
     }
 
-    /** 扫描绑定位姿：两段式可用用两段式（RViz 复合数学），否则回退复合环。 */
+    /** 扫描绑定位姿：两段式建立后固定使用两段式；仅启动阶段允许复合环兜底。 */
     private SimAgvTelemetry.PoseSnapshot bindPoseForScan(double stampSec) {
-        if (hopPoseAvailable(stampSec)) {
+        if (splitPoseSourceEstablished()) {
             return hopPoseAt(stampSec);
         }
         return poseAt(stampSec);
     }
 
-    private void flushPendingQueue(java.util.ArrayDeque<PendingScan> queue, double newestStamp, int which) {
+    private void flushPendingQueue(java.util.ArrayDeque<PendingScan> queue, int which) {
         while (!queue.isEmpty()) {
             PendingScan scan = queue.peekFirst();
-            if (newestStamp >= scan.stampSec()) {
+            // 不能用各环“最新时间的最大值”：只到了一段 TF 时会提前发布，并退回低频
+            // 复合位姿。必须像 tf2 MessageFilter 一样确认某一条完整变换链覆盖扫描时刻。
+            if (poseRingCovers(scan.stampSec())) {
                 queue.pollFirst();
                 publishScan(which, scan, bindPoseForScan(scan.stampSec()));
             } else if (System.nanoTime() - scan.enqueuedAtNanos() > PENDING_SCAN_TIMEOUT_NANOS) {

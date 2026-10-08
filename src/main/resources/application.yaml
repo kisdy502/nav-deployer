@@ -150,7 +150,7 @@ sim_agv:
   # 平时 rosbridge 上没有 /map 压力，遥控 /cmd_vel 不再被周期性挤慢。
   map_enabled: true
   map_topic: /map
-  map_throttle_ms: 1000
+  map_throttle_ms: 5000
   map_fragment_size: 500000
   # 下行通道：follow_edge action / set_control 服务 / 重定位
   follow_edge_action: /agv/follow_edge
