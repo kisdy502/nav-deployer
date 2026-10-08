@@ -1,8 +1,11 @@
 package com.agv.navdeployer.rms.config;
 
+import com.agv.navdeployer.mapper.NavMapMapper;
 import com.agv.navdeployer.rms.gateway.RmsCommandGateway;
 import com.agv.navdeployer.rms.gateway.RmsReportGateway;
 import com.agv.navdeployer.rms.gateway.RmsServiceGateway;
+import com.agv.navdeployer.rms.map.RmsMapService;
+import com.agv.navdeployer.rms.map.RmsMapState;
 import com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys;
 import com.agv.navdeployer.rms.protocol.keys.RmsReportKeys;
 import com.agv.navdeployer.rms.protocol.keys.RmsServiceKeys;
@@ -10,6 +13,10 @@ import com.agv.navdeployer.rms.session.RmsRobotSession;
 import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.rms.task.RmsResultReporter;
 import com.agv.navdeployer.rms.task.RmsTaskService;
+import com.agv.navdeployer.service.MapModeTaskService;
+import com.agv.navdeployer.service.NavMapService;
+import com.agv.navdeployer.sim.RosCommandDispatcher;
+import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,9 +71,20 @@ public class RmsConfig {
     }
 
     @Bean
-    public RmsCommandGateway rmsCommandGateway(RmsTaskService taskService, ObjectMapper mapper,
-                                               RmsCommandKeys keys) {
-        return new RmsCommandGateway(taskService, mapper, keys);
+    public RmsCommandGateway rmsCommandGateway(RmsMapService mapService, RmsTaskService taskService,
+                                               ObjectMapper mapper, RmsCommandKeys keys) {
+        return new RmsCommandGateway(taskService, mapService, mapper, keys);
+    }
+
+    @Bean
+    public RmsMapService rmsMapService(MapModeTaskService mapTaskService,
+                                       NavMapService navMapService,
+                                       NavMapMapper navMapMapper,
+                                       RosCommandDispatcher dispatcher,
+                                       SimAgvTelemetry telemetry,
+                                       RmsMapState mapState) {
+        return new RmsMapService(mapTaskService, navMapService, navMapMapper,
+                dispatcher, telemetry, mapState);
     }
 
     @Bean(destroyMethod = "shutdown")

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { DataLine, Refresh } from '@element-plus/icons-vue'
+import { DataLine, Download, Refresh } from '@element-plus/icons-vue'
 import { useMapListStore } from '@/stores/mapList'
 import { useTasksStore } from '@/stores/tasks'
 import { useRobotStore } from '@/stores/robot'
@@ -96,6 +96,11 @@ function browse(id: number) {
   visible.value = false
   emit('browse', id)
 }
+
+function onExportZip(id: number, mapName: string) {
+  window.open(`/api/v1/nav-maps/${id}/schedule-zip`, '_blank')
+  ElMessage.info(`正在导出「${mapName}」调度 zip 包…`)
+}
 </script>
 
 <template>
@@ -137,11 +142,12 @@ function browse(id: number) {
       <el-table-column label="更新时间" width="150">
         <template #default="{ row }">{{ fmtTime(row.updated_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="270" fixed="right">
+      <el-table-column label="操作" width="330" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" link @click="browse(row.id)">浏览</el-button>
           <el-button size="small" link :disabled="row.status === 'ACTIVE'" @click="onActivate(row.id)">设为部署图</el-button>
           <el-button size="small" link type="success" :disabled="!!switchTask" @click="onSwitch(row)">切换到机器人</el-button>
+          <el-button size="small" link :icon="Download" @click="onExportZip(row.id, row.map_name)">导出zip</el-button>
           <el-button size="small" link @click="onRename(row.id, row.map_name)">重命名</el-button>
           <el-button size="small" link type="danger" @click="onDelete(row.id, row.map_name)">删除</el-button>
         </template>

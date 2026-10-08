@@ -1,8 +1,11 @@
 package com.agv.navdeployer.rms.gateway;
 
+import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.protocol.keys.BodySegment;
 import com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
+import com.agv.navdeployer.rms.protocol.dto.command.MapNameRequest;
+import com.agv.navdeployer.rms.protocol.dto.command.RelocateRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.TaskCommandRequest;
 import com.agv.navdeployer.rms.task.RmsTaskService;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
@@ -23,11 +26,14 @@ public class RmsCommandGateway {
     private static final Logger log = LoggerFactory.getLogger(RmsCommandGateway.class);
 
     private final RmsTaskService taskService;
+    private final RmsMapService mapService;
     private final ObjectMapper mapper;
     private volatile RmsCommandKeys keys;
 
-    public RmsCommandGateway(RmsTaskService taskService, ObjectMapper mapper, RmsCommandKeys keys) {
+    public RmsCommandGateway(RmsTaskService taskService, RmsMapService mapService,
+                             ObjectMapper mapper, RmsCommandKeys keys) {
         this.taskService = taskService;
+        this.mapService = mapService;
         this.mapper = mapper;
         this.keys = keys;
     }
@@ -94,6 +100,11 @@ public class RmsCommandGateway {
         if (!bodySegment.supported()) {
             return BodyReply.failure(501, "segment not supported by nav-deployer: " + segment);
         }
+        // 地图/模式段走独立的 payload 结构，先于任务 DTO 解析
+        BodyReply mapReply = dispatchMap(bodySegment, rawPayload);
+        if (mapReply != null) {
+            return mapReply;
+        }
         TaskCommandRequest request = parseRequest(rawPayload);
         return switch (bodySegment) {
             case STATUS_QUERY -> taskService.statusQuery();
@@ -107,6 +118,23 @@ public class RmsCommandGateway {
             case TASK_STOP -> taskService.stopTask(request.taskId());
             case TASK_STATUS -> taskService.taskStatus(request.taskId());
             default -> BodyReply.failure(501, "segment not supported: " + segment);
+        };
+    }
+
+    /** 地图/模式段分发；非地图段返回 null 走原有任务链路。 */
+    private BodyReply dispatchMap(BodySegment bodySegment, String rawPayload) {
+        return switch (bodySegment) {
+            case START_MAPPING -> mapService.startMapping(parseMapNameRequest(rawPayload));
+            case STOP_MAPPING -> mapService.stopMapping(parseMapNameRequest(rawPayload));
+            case MAPPING_STATUS -> mapService.mappingStatus();
+            case MAPPING_LIST -> mapService.listMaps();
+            case MAPPING_CHANGE -> mapService.changeMap(parseMapNameRequest(rawPayload));
+            case MAPPING_GET_CURRENT -> mapService.getCurrentMap();
+            case MAPPING_DELETE -> mapService.deleteMap(parseMapNameRequest(rawPayload));
+            case AGV_RELOCATE -> mapService.relocate(parseRelocateRequest(rawPayload));
+            case MODE_SET -> mapService.modeSet();
+            case MODE_GET -> mapService.modeGet();
+            default -> null;
         };
     }
 
@@ -128,6 +156,30 @@ public class RmsCommandGateway {
         } catch (Exception exception) {
             log.warn("failed to parse RMS request payload={} msg={}", rawPayload, exception.getMessage());
             return new TaskCommandRequest(null, null, null, null, null, null, null, null);
+        }
+    }
+
+    private MapNameRequest parseMapNameRequest(String rawPayload) {
+        if (rawPayload == null || rawPayload.isBlank()) {
+            return new MapNameRequest(null);
+        }
+        try {
+            return mapper.readValue(rawPayload, MapNameRequest.class);
+        } catch (Exception exception) {
+            log.warn("failed to parse RMS map-name payload={} msg={}", rawPayload, exception.getMessage());
+            return new MapNameRequest(null);
+        }
+    }
+
+    private RelocateRequest parseRelocateRequest(String rawPayload) {
+        if (rawPayload == null || rawPayload.isBlank()) {
+            return new RelocateRequest(null, null, null);
+        }
+        try {
+            return mapper.readValue(rawPayload, RelocateRequest.class);
+        } catch (Exception exception) {
+            log.warn("failed to parse RMS relocate payload={} msg={}", rawPayload, exception.getMessage());
+            return new RelocateRequest(null, null, null);
         }
     }
 }

@@ -11,6 +11,10 @@ import com.agv.navdeployer.rms.task.RmsTaskRegistry;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -52,8 +56,9 @@ public class RobotStateView {
     private final RmsProperties props;
     private final HostStats hostStats;
 
-    /** RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值） */
+    /** RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值）。落盘持久化。 */
     private volatile String effectiveRobotCode;
+    private final Path codeStoreFile;
 
     public RobotStateView(SimAgvTelemetry telemetry, RmsTaskRegistry taskRegistry,
                           RmsProperties props, HostStats hostStats) {
@@ -61,15 +66,45 @@ public class RobotStateView {
         this.taskRegistry = taskRegistry;
         this.props = props;
         this.hostStats = hostStats;
+        this.codeStoreFile = Path.of(System.getProperty("user.home"),
+                ".nav-deployer", "rms-robot-code");
+        this.effectiveRobotCode = loadPersistedCode();
     }
 
     public void setEffectiveRobotCode(String code) {
         this.effectiveRobotCode = code;
+        persistCode(code);
     }
 
-    private String robotCode() {
+    /** RMS 分配的 robot_code（优先）或配置值；给注册重试/状态上报/心跳统一取用。 */
+    public String robotCode() {
         return (effectiveRobotCode != null && !effectiveRobotCode.isBlank())
                 ? effectiveRobotCode : props.getRobot().getRobotCode();
+    }
+
+    private String loadPersistedCode() {
+        try {
+            if (!Files.exists(codeStoreFile)) {
+                return null;
+            }
+            String code = Files.readString(codeStoreFile, StandardCharsets.UTF_8).trim();
+            return code.isEmpty() ? null : code;
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    private void persistCode(String code) {
+        try {
+            if (code == null || code.isBlank()) {
+                Files.deleteIfExists(codeStoreFile);
+            } else {
+                Files.createDirectories(codeStoreFile.getParent());
+                Files.writeString(codeStoreFile, code, StandardCharsets.UTF_8);
+            }
+        } catch (IOException exception) {
+            // 落盘失败不阻断：本次进程内 effectiveRobotCode 仍可用
+        }
     }
 
     /** 心跳 / 状态上报共用一份报文（心跳再加 heartbeat_at）。 */

@@ -361,7 +361,10 @@ export const useEditorStore = defineStore('editor', () => {
       }
     }
     void tick()
-    liveTimer = window.setInterval(tick, 1000)
+    // 3s：数据源(机器人侧 /map)每 5s 一帧，1s 轮询会让 5/6 的请求
+    // 拉到同一帧 1.5MB 的全量栅格——白白烧序列化/传输/解析。
+    // 3s 轮询对 5s 数据源最多多等 3s 显示，无重复帧浪费。
+    liveTimer = window.setInterval(tick, 3000)
   }
 
   function stopLivePolling() {

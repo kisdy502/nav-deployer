@@ -179,8 +179,10 @@ public class RmsRobotSession {
     }
 
     private RegisterRequest buildRegisterRequest(RmsProperties.Robot robot) {
+        // robot_code 取 effective（首次注册 RMS 分配后由 stateView 持有），
+        // 空则回退配置值（首次注册）。这样 RMS 重注册时能按 code 匹配更新而非新建。
         return new RegisterRequest(
-                robot.getRobotCode(), robot.getRobotSn(), robot.getRobotSn(), robot.getRobotName(),
+                stateView.robotCode(), robot.getRobotSn(), robot.getRobotSn(), robot.getRobotName(),
                 robot.getIp(), robot.getModel(), robot.getHardwareVersion(), robot.getFirmwareVersion(),
                 robot.getClientVersion(),
                 robot.getManufacturer(), null, null, robot.getRobotType(), null, null,
