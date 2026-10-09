@@ -35,6 +35,9 @@ class ScheduleMapAdapterTest {
         assertThat(first.x()).isEqualTo(3.884);
         assertThat(first.y()).isEqualTo(4.528);
         assertThat(first.yaw()).isEqualTo(3.1206);
+        assertThat(first.pointType()).isEqualTo("NORMAL");
+        assertThat(parsed.points().stream().filter(p -> p.pointType().equals("CHARGER"))).hasSize(1);
+        assertThat(parsed.points().stream().filter(p -> p.pointType().equals("HOME"))).hasSize(2);
 
         // 样例 Route 引用的点位坐标必须与 Goal 一致
         assertThat(parsed.routes()).isNotEmpty();
@@ -51,8 +54,8 @@ class ScheduleMapAdapterTest {
                 new int[]{-1, 0, 0, 100, 0, 0, 100, 100, 0, 0, 0, 100, 100, 100, 100, -1},
                 java.time.Instant.now());
 
-        com.agv.navdeployer.vo.NavPointVO a = point(1L, "P1", 1.0, 2.0, 0.5);
-        com.agv.navdeployer.vo.NavPointVO b = point(2L, "P2", 3.0, 4.0, -0.5);
+        com.agv.navdeployer.vo.NavPointVO a = point(1L, "P1", "CHARGER", 1.0, 2.0, 0.5);
+        com.agv.navdeployer.vo.NavPointVO b = point(2L, "P2", "HOME", 3.0, 4.0, -0.5);
         com.agv.navdeployer.vo.PathEdgeVO edge = new com.agv.navdeployer.vo.PathEdgeVO(
                 10L, 1, 1L, "P1", 2L, "P2", "STRAIGHT", List.of(), 0.8, false, true);
         com.agv.navdeployer.vo.NavPathVO path = new com.agv.navdeployer.vo.NavPathVO();
@@ -79,6 +82,8 @@ class ScheduleMapAdapterTest {
         assertThat(back.points().get(0).code()).isEqualTo("P1");
         assertThat(back.points().get(0).x()).isEqualTo(1.0);
         assertThat(back.points().get(0).yaw()).isEqualTo(0.5);
+        assertThat(back.points().get(0).pointType()).isEqualTo("CHARGER");
+        assertThat(back.points().get(1).pointType()).isEqualTo("HOME");
         assertThat(back.routes()).hasSize(1);
         ScheduleMapAdapter.ImportedRoute r = back.routes().get(0);
         assertThat(r.sourceCode()).isEqualTo("P1");
@@ -89,9 +94,47 @@ class ScheduleMapAdapterTest {
         assertThat(back.data()[3]).isEqualTo(100);
         assertThat(back.data()[0]).isEqualTo(-1);
         assertThat(back.data()[1]).isEqualTo(0);
+
+        String lxmap = zipEntry(zip, ".yaml.lxmap");
+        assertThat(lxmap).contains("Cairn: Goal 1 P1 \"\" \"\" 1.0 2.0 0.5 2 ");
+        assertThat(lxmap).contains("Cairn: Goal 2 P2 \"\" \"\" 3.0 4.0 -0.5 3 ");
+        // Goal 与 Route 各自独立编号；路线属性必须位于服务端会解析的根 JSON。
+        assertThat(lxmap).contains("Cairn: Route 1 1 2 ");
+        assertThat(lxmap).contains("{\"shelf_posture\":0,\"path_width\":100,\"cost\":1,\"empty_cost\":1,\"full_cost\":1}");
+        assertThat(lxmap).doesNotContain("\"navdeployer\"");
     }
 
-    private static com.agv.navdeployer.vo.NavPointVO point(Long id, String code, double x, double y, double yaw) {
-        return new com.agv.navdeployer.vo.NavPointVO(id, 1L, code, "NORMAL", x, y, yaw, null, null, null);
+    @Test
+    void refusesToSilentlyDropRouteReferencingMissingPoint() {
+        com.agv.navdeployer.vo.MapGridVO grid = new com.agv.navdeployer.vo.MapGridVO(
+                "map", 0.05, 1, 1, 0.0, 0.0, 0.0, new int[]{0}, java.time.Instant.now());
+        com.agv.navdeployer.vo.NavPointVO a = point(1L, "P1", "NORMAL", 0, 0, 0);
+        com.agv.navdeployer.vo.PathEdgeVO badEdge = new com.agv.navdeployer.vo.PathEdgeVO(
+                10L, 1, 1L, "P1", 99L, "MISSING", "STRAIGHT", List.of(), 0.6, false, false);
+        com.agv.navdeployer.vo.NavPathVO path = new com.agv.navdeployer.vo.NavPathVO();
+        path.setId(7L);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                        adapter.exportZip("bad", grid, List.of(a), List.of(path), Map.of(7L, List.of(badEdge))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("拒绝生成残缺地图");
+    }
+
+    private static String zipEntry(byte[] zip, String suffix) throws Exception {
+        try (java.util.zip.ZipInputStream zin = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(zip), java.nio.charset.StandardCharsets.UTF_8)) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zin.getNextEntry()) != null) {
+                if (entry.getName().endsWith(suffix)) {
+                    return new String(zin.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                }
+            }
+        }
+        throw new AssertionError("zip entry not found: " + suffix);
+    }
+
+    private static com.agv.navdeployer.vo.NavPointVO point(
+            Long id, String code, String type, double x, double y, double yaw) {
+        return new com.agv.navdeployer.vo.NavPointVO(id, 1L, code, type, x, y, yaw, null, null, null);
     }
 }

@@ -36,10 +36,9 @@ import java.util.zip.ZipOutputStream;
  *   <name>.json         点位/路线属性 schema 模板（调度工具链定义，与地图无关）
  * </pre>
  *
- * <p>lxmap 的 Cairn 行是空格分隔的自定义文本（非 JSON/标准 YAML），字段语义没有公开文档：
- * 导出时未知字段照抄样例默认值，我方专有数据（点位类型、贝塞尔控制点、边类型等）
- * 全部放进行尾的 JSON 扩展段（样例本身就有该机制，如 {"path_width":100,...}），
- * 保证 zip 往返导入导出无损。导入解析只读取已知前缀字段，宽松容错。
+ * <p>lxmap 的 Cairn 行是空格分隔的自定义文本（非 JSON/标准 YAML）。固定字段及
+ * 行尾属性严格按调度系统样例生成；尤其 Goal 的 function_ 数值是服务端识别点位语义的
+ * 唯一依据，不能只把类型写进自定义 JSON。导入解析读取固定字段并宽松容错。
  */
 @Component
 public class ScheduleMapAdapter {
@@ -49,6 +48,13 @@ public class ScheduleMapAdapter {
     private static final String FEATURES_RESOURCE = "schedule/schedule-map-features.json";
     /** Route 行第 10 字段（样例值 0.6，推断为限速 m/s）缺省值 */
     private static final double DEFAULT_ROUTE_SPEED = 0.6;
+    private static final int GOAL_TYPE_PATH_MARKER = 0;
+    private static final int GOAL_TYPE_CHARGING = 2;
+    private static final int GOAL_TYPE_REST = 3;
+    private static final String DEFAULT_GOAL_ATTRIBUTES =
+            "{\"quadrant_divide_angle\":\"0,90,180,270\"}";
+    private static final String DEFAULT_ROUTE_ATTRIBUTES =
+            "{\"shelf_posture\":0,\"path_width\":100,\"cost\":1,\"empty_cost\":1,\"full_cost\":1}";
 
     // ==================== 导出：我方数据 → 调度 zip ====================
 
@@ -147,7 +153,8 @@ public class ScheduleMapAdapter {
      * Cairn: Goal <id> <code> "" "" <x> <y> <theta> <type> 0 7 0 "" "0,0,0" "0,0,0" "0" "1" 0 0 0 0 0 0 {扩展}
      * Cairn: Route <id> <src> <dst> <sx> <sy> <dx> <dy> <back> <speed> 0 1 0 0 0 "" "0" "1" "" "0" 0 0 0 {扩展}
      * </pre>
-     * Goal 的 type 字段语义未知 → 恒写 1，真实类型放扩展 JSON（导入时还原）。
+     * Goal 的 type/function_：0=路径标点，2=充电点，3=休息/待命点。
+     * 分别对应我方 NORMAL、CHARGER、HOME。
      */
     private byte[] buildLxmap(MapGridVO grid,
                               List<NavPointVO> points,
@@ -164,19 +171,19 @@ public class ScheduleMapAdapter {
 
         // 点位 id 映射（lxmap 用数字 id，我方用数据库自增）
         Map<Long, Integer> pointIds = new LinkedHashMap<>();
-        int nextId = 1;
+        int nextGoalId = 1;
         for (NavPointVO point : points) {
-            pointIds.put(point.getId(), nextId);
-            String ext = "{\"navdeployer\":{\"point_id\":" + point.getId()
-                    + ",\"point_type\":\"" + point.getPointType() + "\"}}";
-            sb.append("Cairn: Goal ").append(nextId++)
+            pointIds.put(point.getId(), nextGoalId);
+            sb.append("Cairn: Goal ").append(nextGoalId++)
                     .append(' ').append(point.getPointCode())
                     .append(" \"\" \"\" ")
                     .append(point.getX()).append(' ').append(point.getY()).append(' ').append(point.getYaw())
-                    .append(" 1 0 7 0 \"\" \"0,0,0\" \"0,0,0\" \"0\" \"1\" 0 0 0 0 0 0 ")
-                    .append(ext).append('\n');
+                    .append(' ').append(scheduleGoalType(point.getPointType()))
+                    .append(" 0 7 0 \"\" \"0,0,0\" \"0,0,0\" \"0\" \"1\" 0 0 0 0 0 0 ")
+                    .append(DEFAULT_GOAL_ATTRIBUTES).append('\n');
         }
         // 路线边：一条边一行 Route（src/dst 用点位 id，坐标取点位坐标）
+        int nextRouteId = 1;
         for (NavPathVO path : paths) {
             List<PathEdgeVO> edges = edgesByPath.getOrDefault(path.getId(), List.of());
             for (PathEdgeVO edge : edges) {
@@ -185,42 +192,43 @@ public class ScheduleMapAdapter {
                 NavPointVO source = findPoint(points, edge.getSourcePointId());
                 NavPointVO target = findPoint(points, edge.getTargetPointId());
                 if (src == null || dst == null || source == null || target == null) {
-                    log.warn("skip edge {} referencing missing point, path={}", edge.getId(), path.getId());
-                    continue;
+                    throw new IllegalArgumentException("路线边引用了当前地图不存在的点位，拒绝生成残缺地图: path="
+                            + path.getId() + ", edge=" + edge.getId() + ", source="
+                            + edge.getSourcePointId() + ", target=" + edge.getTargetPointId());
                 }
                 double speed = edge.getMaxSpeed() != null ? edge.getMaxSpeed() : DEFAULT_ROUTE_SPEED;
-                String ext = "{\"navdeployer\":{\"path_id\":" + path.getId()
-                        + ",\"edge_id\":" + edge.getId()
-                        + ",\"edge_type\":\"" + edge.getEdgeType() + "\""
-                        + ",\"control_points\":" + controlPointsJson(edge)
-                        + ",\"back_up\":" + (Boolean.TRUE.equals(edge.getBackUp()) ? 1 : 0)
-                        + ",\"reverse\":" + (Boolean.TRUE.equals(edge.getReverse()) ? 1 : 0)
-                        + "}}";
-                sb.append("Cairn: Route ").append(nextId++)
+                sb.append("Cairn: Route ").append(nextRouteId++)
                         .append(' ').append(src).append(' ').append(dst)
                         .append(' ').append(source.getX()).append(' ').append(source.getY())
                         .append(' ').append(target.getX()).append(' ').append(target.getY())
                         .append(' ').append(Boolean.TRUE.equals(edge.getReverse()) ? 1 : 0)
                         .append(' ').append(speed)
                         .append(" 0 1 0 0 0 \"\" \"0\" \"1\" \"\" \"0\" 0 0 0 ")
-                        .append(ext).append('\n');
+                        .append(DEFAULT_ROUTE_ATTRIBUTES).append('\n');
             }
         }
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static String controlPointsJson(PathEdgeVO edge) {
-        if (edge.getControlPoints() == null || edge.getControlPoints().isEmpty()) {
-            return "[]";
+    private static int scheduleGoalType(String pointType) {
+        if (pointType == null || pointType.isBlank() || "NORMAL".equalsIgnoreCase(pointType)) {
+            return GOAL_TYPE_PATH_MARKER;
         }
-        StringBuilder sb = new StringBuilder("[");
-        for (var cp : edge.getControlPoints()) {
-            if (sb.length() > 1) {
-                sb.append(',');
-            }
-            sb.append('[').append(cp.getX()).append(',').append(cp.getY()).append(']');
+        if ("CHARGER".equalsIgnoreCase(pointType)) {
+            return GOAL_TYPE_CHARGING;
         }
-        return sb.append(']').toString();
+        if ("HOME".equalsIgnoreCase(pointType)) {
+            return GOAL_TYPE_REST;
+        }
+        throw new IllegalArgumentException("不支持的点位类型，无法生成调度地图: " + pointType);
+    }
+
+    private static String navPointType(int scheduleGoalType) {
+        return switch (scheduleGoalType) {
+            case GOAL_TYPE_CHARGING -> "CHARGER";
+            case GOAL_TYPE_REST -> "HOME";
+            default -> "NORMAL";
+        };
     }
 
     private static NavPointVO findPoint(List<NavPointVO> points, Long id) {
@@ -355,6 +363,7 @@ public class ScheduleMapAdapter {
     private void parseLxmap(String lxmap, List<ImportedPoint> points, List<ImportedRoute> routes) {
         Map<Integer, String> goalIdToCode = new LinkedHashMap<>();
         Map<Integer, double[]> goalIdToPose = new LinkedHashMap<>();
+        Map<Integer, String> goalIdToType = new LinkedHashMap<>();
         List<String[]> routeRows = new ArrayList<>();
         for (String line : lxmap.split("\\R")) {
             if (line.startsWith("Cairn: Goal ")) {
@@ -367,14 +376,16 @@ public class ScheduleMapAdapter {
                 // 字段序：id code "" "" x y theta → f[4]/f[5]/f[6]（空引号占 f[2]/f[3]）
                 goalIdToPose.put(id, new double[]{
                         Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6])});
+                goalIdToType.put(id, navPointType(Integer.parseInt(f[7])));
             } else if (line.startsWith("Cairn: Route ")) {
                 routeRows.add(line.substring("Cairn: Route ".length()).split("\\s+"));
             }
         }
-        // 先 Goal（扩展段里有 point_type）
+        // 点位类型来自调度格式固定的 function_ 字段。
         for (var entry : goalIdToCode.entrySet()) {
             double[] pose = goalIdToPose.get(entry.getKey());
-            points.add(new ImportedPoint(entry.getValue(), pose[0], pose[1], pose[2], null));
+            points.add(new ImportedPoint(entry.getValue(), pose[0], pose[1], pose[2],
+                    goalIdToType.get(entry.getKey())));
         }
         for (String[] f : routeRows) {
             if (f.length < 10) {
@@ -400,29 +411,6 @@ public class ScheduleMapAdapter {
             routes.add(new ImportedRoute(goalIdToCode.get(src), goalIdToCode.get(dst),
                     sp[0], sp[1], dp[0], dp[1], speed, reverse, null));
         }
-        // 扩展段（{...} 内 JSON）还原 point_type / edge_type —— 简易提取，避免引号内空格歧义
-        String[] lines = lxmap.split("\\R");
-        int pointIdx = 0;
-        for (String line : lines) {
-            if (line.startsWith("Cairn: Goal ")) {
-                String type = extractJsonStringField(line, "point_type");
-                if (type != null && pointIdx < points.size()) {
-                    ImportedPoint old = points.get(pointIdx);
-                    points.set(pointIdx, new ImportedPoint(old.code(), old.x(), old.y(), old.yaw(), type));
-                }
-                pointIdx++;
-            }
-        }
-    }
-
-    private static String extractJsonStringField(String line, String field) {
-        int idx = line.indexOf("\"" + field + "\":\"");
-        if (idx < 0) {
-            return null;
-        }
-        int start = idx + field.length() + 4;
-        int end = line.indexOf('"', start);
-        return end > start ? line.substring(start, end) : null;
     }
 
     // ==================== 通用工具 ====================

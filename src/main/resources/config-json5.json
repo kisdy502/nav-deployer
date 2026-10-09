@@ -4,6 +4,7 @@
       "tcp/10.5.66.110:31981"
     ]
   },
+  "mode": "client",
   "scouting": {
     "multicast": {
       "enabled": false
