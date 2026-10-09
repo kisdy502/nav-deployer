@@ -21,7 +21,7 @@ public final class MapReplyData {
 
     /** mapping/list：本体侧地图名列表。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record MapNamesData(@JsonProperty("map_names") List<String> mapNames) {
+    public record MapNamesData(@JsonProperty("map_name") List<String> mapNames) {
     }
 
     /** mapping/get_current：当前地图名。 */

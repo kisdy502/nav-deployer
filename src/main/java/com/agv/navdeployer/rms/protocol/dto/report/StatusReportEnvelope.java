@@ -10,7 +10,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record StatusReportEnvelope(
         Object data,
-        long serialNum,
+        String serialNum,
         String timestamp
 ) {
 }

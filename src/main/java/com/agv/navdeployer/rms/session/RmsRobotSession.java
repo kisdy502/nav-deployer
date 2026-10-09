@@ -16,10 +16,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import java.time.OffsetDateTime;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 /**
  * RMS 会话编排（只管生命周期，不管任何一方向的通信细节）：
@@ -38,17 +39,27 @@ public class RmsRobotSession {
     private final RmsCommandGateway commandGateway;
     private final RmsResultReporter resultReporter;
     private final ObjectMapper mapper;
+    private final Function<RmsProperties.Zenoh, ZenohChannel> channelFactory;
 
     private final AtomicBoolean building = new AtomicBoolean(false);
-    private final ScheduledExecutorService scheduler =
-            Executors.newScheduledThreadPool(1, runnable -> {
-                Thread thread = new Thread(runnable, "rms-report-scheduler");
-                thread.setDaemon(true);
-                return thread;
-            });
+    private final ScheduledThreadPoolExecutor scheduler = createReportScheduler();
 
     private volatile ZenohChannel channel;
     private volatile boolean registered;
+    private ScheduledFuture<?> heartbeatTask;
+    private ScheduledFuture<?> statusTask;
+
+    private static ScheduledThreadPoolExecutor createReportScheduler() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
+            Thread thread = new Thread(runnable, "rms-report-scheduler");
+            thread.setDaemon(true);
+            return thread;
+        });
+        // 重连时被取消的周期任务立即从队列移除，避免长周期配置下仍暂时占用资源。
+        executor.setRemoveOnCancelPolicy(true);
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return executor;
+    }
 
     public RmsRobotSession(RmsProperties props,
                            RobotStateView stateView,
@@ -57,6 +68,18 @@ public class RmsRobotSession {
                            RmsCommandGateway commandGateway,
                            RmsResultReporter resultReporter,
                            ObjectMapper mapper) {
+        this(props, stateView, reportGateway, serviceGateway, commandGateway,
+                resultReporter, mapper, ZenohChannel::new);
+    }
+
+    RmsRobotSession(RmsProperties props,
+                    RobotStateView stateView,
+                    RmsReportGateway reportGateway,
+                    RmsServiceGateway serviceGateway,
+                    RmsCommandGateway commandGateway,
+                    RmsResultReporter resultReporter,
+                    ObjectMapper mapper,
+                    Function<RmsProperties.Zenoh, ZenohChannel> channelFactory) {
         this.props = props;
         this.stateView = stateView;
         this.reportGateway = reportGateway;
@@ -64,6 +87,7 @@ public class RmsRobotSession {
         this.commandGateway = commandGateway;
         this.resultReporter = resultReporter;
         this.mapper = mapper;
+        this.channelFactory = channelFactory;
     }
 
     public void start() {
@@ -98,47 +122,59 @@ public class RmsRobotSession {
         closeChannel();
         RmsProperties.Robot robot = props.getRobot();
 
-        ZenohChannel fresh = new ZenohChannel(props.getZenoh());
-        fresh.open();
-        channel = fresh;
-        reportGateway.attach(fresh);
-        serviceGateway.attach(fresh);
+        ZenohChannel fresh = channelFactory.apply(props.getZenoh());
+        boolean ownershipTransferred = false;
+        try {
+            fresh.open();
+            reportGateway.attach(fresh);
+            serviceGateway.attach(fresh);
 
-        // B：注册（失败策略按 continue_without_register）
-        RmsServiceGateway.RegisterResult result =
-                serviceGateway.register(buildRegisterRequest(robot),
-                        props.getZenoh().getQueryTimeoutMs());
-        registered = result.success();
-        if (!registered && !props.getZenoh().isContinueWithoutRegister()) {
-            throw new IllegalStateException("RMS registration failed (robot_code=" + robot.getRobotCode() + ")");
+            // B：注册（失败策略按 continue_without_register）
+            RmsServiceGateway.RegisterResult result =
+                    serviceGateway.register(buildRegisterRequest(robot),
+                            props.getZenoh().getQueryTimeoutMs());
+            registered = result.success();
+            if (!registered && !props.getZenoh().isContinueWithoutRegister()) {
+                throw new IllegalStateException("RMS registration failed (robot_code=" + robot.getRobotCode() + ")");
+            }
+
+            // 关键：RMS 分配的 robot_code 可能与配置不同（首次注册 RMS 自动生成新 code）。
+            // 后续心跳/状态/任务必须用分配值，否则 RMS 按 code 查不到机器人 → 永远离线。
+            // 与 mock 的 applyRegistrationReply 同语义。
+            String effectiveCode = (result.assignedRobotCode() != null && !result.assignedRobotCode().isBlank())
+                    ? result.assignedRobotCode() : robot.getRobotCode();
+            if (!effectiveCode.equals(robot.getRobotCode())) {
+                log.info("RMS assigned robot_code: config={} -> effective={}",
+                        robot.getRobotCode(), effectiveCode);
+                stateView.setEffectiveRobotCode(effectiveCode);
+                // 用 effective code 重建三个 key 集
+                String prefix = props.getZenoh().getRobotKeyPrefix();
+                reportGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsReportKeys(
+                        prefix, robot.getRobotType(), effectiveCode));
+                serviceGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsServiceKeys(
+                        prefix, robot.getRobotType(), effectiveCode, props.getZenoh().getRegisterKey()));
+                commandGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys(
+                        prefix, robot.getRobotType(), effectiveCode));
+            }
+
+            reportGateway.declarePublishers();
+
+            // C：声明全部指令端点（queryable key 已用 effective code）
+            commandGateway.attach(fresh);
+
+            // 完整建链成功后才把 Session 交给实例持有；此前任一步失败都由 finally 关闭 fresh。
+            channel = fresh;
+            ownershipTransferred = true;
+
+            // A+B：心跳/状态定时调度（payload 已用 effective code）
+            scheduleReports();
+            log.info("RMS session ready: effective_robot_code={} robot_type={} registered={}",
+                    effectiveCode, robot.getRobotType(), registered);
+        } finally {
+            if (!ownershipTransferred) {
+                fresh.close();
+            }
         }
-
-        // 关键：RMS 分配的 robot_code 可能与配置不同（首次注册 RMS 自动生成新 code）。
-        // 后续心跳/状态/任务必须用分配值，否则 RMS 按 code 查不到机器人 → 永远离线。
-        // 与 mock 的 applyRegistrationReply 同语义。
-        String effectiveCode = (result.assignedRobotCode() != null && !result.assignedRobotCode().isBlank())
-                ? result.assignedRobotCode() : robot.getRobotCode();
-        if (!effectiveCode.equals(robot.getRobotCode())) {
-            log.info("RMS assigned robot_code: config={} -> effective={}",
-                    robot.getRobotCode(), effectiveCode);
-            stateView.setEffectiveRobotCode(effectiveCode);
-            // 用 effective code 重建三个 key 集
-            String prefix = props.getZenoh().getRobotKeyPrefix();
-            reportGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsReportKeys(
-                    prefix, robot.getRobotType(), effectiveCode));
-            serviceGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsServiceKeys(
-                    prefix, robot.getRobotType(), effectiveCode, props.getZenoh().getRegisterKey()));
-            commandGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys(
-                    prefix, robot.getRobotType(), effectiveCode));
-        }
-
-        // C：声明全部指令端点（queryable key 已用 effective code）
-        commandGateway.attach(fresh);
-
-        // A+B：心跳/状态定时调度（payload 已用 effective code）
-        scheduleReports();
-        log.info("RMS session ready: effective_robot_code={} robot_type={} registered={}",
-                effectiveCode, robot.getRobotType(), registered);
     }
 
     /** 心跳 = A 网关 legacy put + B 网关 body query，同一份报文双通道。 */
@@ -193,12 +229,36 @@ public class RmsRobotSession {
                 OffsetDateTime.now());
     }
 
-    private void scheduleReports() {
+    private synchronized void scheduleReports() {
+        cancelReports();
         RmsProperties.Report report = props.getReport();
         long heartbeatMs = Math.max(1000L, report.getHeartbeatIntervalMs());
         long statusMs = Math.max(1000L, report.getStatusIntervalMs());
-        scheduler.scheduleAtFixedRate(this::heartbeatSafe, heartbeatMs, heartbeatMs, TimeUnit.MILLISECONDS);
-        scheduler.scheduleAtFixedRate(this::statusReportSafe, statusMs, statusMs, TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> newHeartbeat = null;
+        try {
+            newHeartbeat = scheduler.scheduleAtFixedRate(
+                    this::heartbeatSafe, heartbeatMs, heartbeatMs, TimeUnit.MILLISECONDS);
+            ScheduledFuture<?> newStatus = scheduler.scheduleAtFixedRate(
+                    this::statusReportSafe, statusMs, statusMs, TimeUnit.MILLISECONDS);
+            heartbeatTask = newHeartbeat;
+            statusTask = newStatus;
+        } catch (RuntimeException exception) {
+            if (newHeartbeat != null) {
+                newHeartbeat.cancel(false);
+            }
+            throw exception;
+        }
+    }
+
+    private synchronized void cancelReports() {
+        if (heartbeatTask != null) {
+            heartbeatTask.cancel(false);
+            heartbeatTask = null;
+        }
+        if (statusTask != null) {
+            statusTask.cancel(false);
+            statusTask = null;
+        }
     }
 
     private void markChannelBroken() {
@@ -209,6 +269,7 @@ public class RmsRobotSession {
     }
 
     private void closeChannel() {
+        cancelReports();
         ZenohChannel current = channel;
         channel = null;
         registered = false;

@@ -44,6 +44,10 @@ public class RmsTaskService {
                 return thread;
             });
 
+    /** task_template/add 注册的自定义模板（template_code → 元数据）。 */
+    private final java.util.concurrent.ConcurrentHashMap<String, Map<String, Object>> customTemplates =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public RmsTaskService(RmsTaskRegistry registry,
                           RmsResultReporter resultReporter,
                           RobotStateView stateView,
@@ -72,7 +76,50 @@ public class RmsTaskService {
     }
 
     public BodyReply templateQuery() {
-        List<Map<String, String>> templates = List.of(
+        return BodyReply.success("success", allTemplates());
+    }
+
+    /** task_template/add：注册自定义模板（template_code 唯一键）。 */
+    public BodyReply addTemplate(TaskCommandRequest request) {
+        String code = request.templateCode() != null ? request.templateCode()
+                : request.parameterText("template_code");
+        if (code == null || code.isBlank()) {
+            return BodyReply.failure(400, "template_code must not be blank");
+        }
+        customTemplates.put(code, Map.of(
+                "templates_id", request.templateId() != null ? request.templateId() : code,
+                "template_code", code,
+                "template_description", request.parameterText("template_description") == null
+                        ? "" : request.parameterText("template_description"),
+                "template_add_time", java.time.OffsetDateTime.now().toString()));
+        log.info("RMS task_template/add: code={}", code);
+        return BodyReply.success("template add success", Map.of("template_code", code));
+    }
+
+    /** task_template/delete：按 template_code 或 template_id 删除（信息从 Base Key 传递）。 */
+    public BodyReply deleteTemplate(String templateCode) {
+        if (templateCode == null || templateCode.isBlank()) {
+            return BodyReply.failure(400, "template_code must not be blank");
+        }
+        boolean removed = customTemplates.remove(templateCode) != null;
+        log.info("RMS task_template/delete: code={} removed={}", templateCode, removed);
+        return BodyReply.success("template delete " + (removed ? "success" : "not found"),
+                Map.of("template_code", templateCode));
+    }
+
+    /** 覆盖后的模板查询：自定义模板 + 内置模板。 */
+    private List<Map<String, String>> allTemplates() {
+        List<Map<String, String>> all = new java.util.ArrayList<>(builtinTemplates());
+        customTemplates.values().forEach(template -> {
+            Map<String, String> entry = new java.util.LinkedHashMap<>();
+            template.forEach((key, value) -> entry.put(key, String.valueOf(value)));
+            all.add(entry);
+        });
+        return all;
+    }
+
+    private List<Map<String, String>> builtinTemplates() {
+        return List.of(
                 template("rmf_navigate", "navigate"),
                 template("quality_inspection", "action"),
                 template("charge", "action"),
@@ -80,7 +127,11 @@ public class RmsTaskService {
                 template("return_home", "action"),
                 template("pause_task", "action"),
                 template("resume_task", "action"));
-        return BodyReply.success("success", templates);
+    }
+
+    private static Map<String, String> template(String code, String type) {
+        return Map.of("templates_id", code, "template_code", code,
+                "template_type", type, "template_description", code);
     }
 
     public BodyReply addTask(TaskCommandRequest request) {
@@ -306,14 +357,7 @@ public class RmsTaskService {
     private void logRmsCommand(String command, RmsTask task) {
         log.info("RMS 指令 {} task_id={} action_id={} template={} type={} parameters={}",
                 command, task.taskId(), task.actionId(),
-                task.taskTemplateType(), task.taskType(), task.parameters());
-    }
-
-    private static Map<String, String> template(String templateType, String taskType) {
-        return Map.of(
-                "template_id", templateType,
-                "template_type", templateType,
-                "task_type", taskType);
+                 task.taskTemplateType(), task.taskType(), task.parameters());
     }
 
 }

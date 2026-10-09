@@ -1,9 +1,10 @@
 {
   "connect": {
     "endpoints": [
-      "tcp/10.5.66.110:31981"
+      "tcp/10.8.2.107:30586"
     ]
   },
+  "mode": "client",
   "scouting": {
     "multicast": {
       "enabled": false
@@ -12,5 +13,5 @@
       "enabled": false
     }
   },
-  "namespace": "cc_qc"
+  "namespace": "bj_qc"
 }

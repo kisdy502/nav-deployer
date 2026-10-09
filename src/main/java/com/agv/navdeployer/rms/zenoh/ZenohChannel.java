@@ -24,8 +24,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -52,7 +54,9 @@ public final class ZenohChannel implements AutoCloseable {
         this.configJson5 = loadConfigJson5(props);
     }
 
-    /** 加载 zenoh 连接配置：外部文件（rms.zenoh.config-file）优先，否则 classpath config-json5.json。 */
+    /**
+     * 加载 zenoh 连接配置：外部文件（rms.zenoh.config-file）优先，否则 classpath config-json5.json。
+     */
     public static String loadConfigJson5(RmsProperties.Zenoh props) {
         String external = props.getConfigFile();
         if (external != null && !external.isBlank()) {
@@ -81,10 +85,10 @@ public final class ZenohChannel implements AutoCloseable {
         if (open) {
             return;
         }
-        session = Zenoh.open(Config.fromJson5(configJson5));
-        resources.add(session);
+        Session fresh = Zenoh.open(Config.fromJson5(configJson5));
+        session = fresh;
         open = true;
-        log.info("rms zenoh session opened");
+        log.info("rms zenoh local session opened; router connectivity awaits registration reply");
     }
 
     public boolean isOpen() {
@@ -98,28 +102,50 @@ public final class ZenohChannel implements AutoCloseable {
     @Override
     public synchronized void close() {
         open = false;
+        int childResourceCount = resources.size();
         for (int i = resources.size() - 1; i >= 0; i--) {
             try {
                 resources.get(i).close();
-            } catch (Exception ignored) {
-                // 关闭失败无需处理
+            } catch (Exception exception) {
+                // 单个 publisher/queryable 关闭失败不能阻止底层 Session 继续关闭。
+                log.warn("failed to close rms zenoh child resource: {}", exception.getMessage());
             }
         }
         resources.clear();
+        Session current = session;
         session = null;
+        if (current != null) {
+            try {
+                current.close();
+            } catch (Exception exception) {
+                log.warn("failed to close rms zenoh session: {}", exception.getMessage());
+            }
+        }
+        log.debug("rms zenoh session closed, child_resources={}", childResourceCount);
     }
 
-    /** 声明 publisher（资源纳入生命周期管理）。 */
-    public synchronized void declarePublisher(String key) throws Exception {
+    /**
+     * 声明 publisher（资源纳入生命周期管理）。
+     */
+    public synchronized Publisher declarePublisher(String key) throws Exception {
         requireOpen();
         KeyExpr expr = KeyExpr.autocanonize(key);
-        resources.add(expr);
-        Publisher publisher = session.declarePublisher(expr);
-        resources.add(publisher);
-        log.debug("declared rms publisher key={}", key);
+        try {
+            resources.add(expr);
+            Publisher publisher = session.declarePublisher(expr);
+            resources.add(publisher);
+            log.info("declared rms publisher key={}", key);
+            return publisher;
+        } catch (Exception e) {
+            expr.close();
+            throw e;
+        }
+
     }
 
-    /** put 一条文本消息（每次声明临时 publisher，适合低频事件如 result_report）。 */
+    /**
+     * put 一条文本消息（每次声明临时 publisher，适合低频事件如 result_report）。
+     */
     public void putOnce(String key, String payload) throws Exception {
         requireOpen();
         try (KeyExpr expr = KeyExpr.autocanonize(key);
@@ -128,7 +154,9 @@ public final class ZenohChannel implements AutoCloseable {
         }
     }
 
-    /** 声明 queryable（资源纳入生命周期管理）。 */
+    /**
+     * 声明 queryable（资源纳入生命周期管理）。
+     */
     public synchronized void declareQueryable(String key, Consumer<Query> handler) throws Exception {
         requireOpen();
         KeyExpr expr = KeyExpr.autocanonize(key);
@@ -139,7 +167,9 @@ public final class ZenohChannel implements AutoCloseable {
         log.info("declared rms queryable key={}", key);
     }
 
-    /** query-reply：发送 payload，取第一条成功回复文本。 */
+    /**
+     * query-reply：发送 payload，取第一条成功回复文本。
+     */
     public Optional<String> query(String key, String payload, long timeoutMs) throws Exception {
         requireOpen();
         GetOptions options = new GetOptions();
@@ -164,7 +194,9 @@ public final class ZenohChannel implements AutoCloseable {
         return Optional.empty();
     }
 
-    /** query 回复（JSON 编码）。 */
+    /**
+     * query 回复（JSON 编码）。
+     */
     public static void replyJson(Query query, String json) {
         try {
             ReplyOptions options = new ReplyOptions();
@@ -175,7 +207,9 @@ public final class ZenohChannel implements AutoCloseable {
         }
     }
 
-    /** query 错误回复。 */
+    /**
+     * query 错误回复。
+     */
     public static void replyError(Query query, String message) {
         try {
             query.replyErr(message);

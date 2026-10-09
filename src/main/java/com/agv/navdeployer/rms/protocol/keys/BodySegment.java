@@ -13,6 +13,9 @@ public enum BodySegment {
     STATUS_QUERY("status/query", true),
     LOG("log", false),
     CONFIG("config", true),
+    CONFIG_GET("config/get", true),
+    CONFIG_EDIT("config/edit", true),
+    POSE_QUERY("pose/query", true),
     MODE_SET("mode/set", true),
     MODE_GET("mode/get", true),
     JOINT_STATES("joint-states", false),
@@ -27,10 +30,11 @@ public enum BodySegment {
     MAPPING_CHANGE("mapping/change", true),
     MAPPING_GET_CURRENT("mapping/get_current", true),
     MAPPING_DELETE("mapping/delete", true),
+    MAPPING_GET("mapping/get", true),
 
-    TASK_TEMPLATE_ADD("task_template/add", false),
+    TASK_TEMPLATE_ADD("task_template/add", true),
     TASK_TEMPLATE_QUERY("task_template/query", true),
-    TASK_TEMPLATE_DELETE("task_template/delete", false),
+    TASK_TEMPLATE_DELETE("task_template/delete", true),
 
     TASK_ADD("task/add", true),
     TASK_DELETE("task/delete", true),
@@ -42,7 +46,7 @@ public enum BodySegment {
     TASK_STOP("task/stop", true),
     TASK_STATUS("task/status", true),
 
-    RESULT_FILES_UPLOAD_START("task/result_files_upload_start", false);
+    RESULT_FILES_UPLOAD_START("task/result_files_upload_start", true);
 
     private final String segment;
     private final boolean supported;

@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -27,16 +28,25 @@ import java.util.Map;
 @Component
 public class RobotStateView {
 
-    /** 仿真双电池包共用 ID（对齐真机报文样式） */
+    /**
+     * 仿真双电池包共用 ID（对齐真机报文样式）
+     */
     private static final String SIM_BATTERY_ID = "313536302D363033313";
-    /** 满电容量 mAh（capacity 按百分比折算） */
+    /**
+     * 满电容量 mAh（capacity 按百分比折算）
+     */
     private static final double FULL_CAPACITY_MAH = 40000.0;
-    /** 电压线性模型 mV：45000 + 120*pct（21% ≈ 47.5V，满电 ≈ 57V） */
+
+    /**
+     * 电压线性模型 mV：45000 + 120*pct（21% ≈ 47.5V，满电 ≈ 57V）
+     */
     private static double voltageMv(double pct) {
         return 45000.0 + 120.0 * pct;
     }
 
-    /** 开机自检静态报告（真机格式，RMS 不解析、原样透传） */
+    /**
+     * 开机自检静态报告（真机格式，RMS 不解析、原样透传）
+     */
     private static final Map<String, Object> INSPECTION_REPORT = Map.ofEntries(
             Map.entry("end_time_ms", 0),
             Map.entry("format", "inspection_report_v2"),
@@ -56,7 +66,9 @@ public class RobotStateView {
     private final RmsProperties props;
     private final HostStats hostStats;
 
-    /** RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值）。落盘持久化。 */
+    /**
+     * RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值）。落盘持久化。
+     */
     private volatile String effectiveRobotCode;
     private final Path codeStoreFile;
 
@@ -76,7 +88,9 @@ public class RobotStateView {
         persistCode(code);
     }
 
-    /** RMS 分配的 robot_code（优先）或配置值；给注册重试/状态上报/心跳统一取用。 */
+    /**
+     * RMS 分配的 robot_code（优先）或配置值；给注册重试/状态上报/心跳统一取用。
+     */
     public String robotCode() {
         return (effectiveRobotCode != null && !effectiveRobotCode.isBlank())
                 ? effectiveRobotCode : props.getRobot().getRobotCode();
@@ -107,7 +121,9 @@ public class RobotStateView {
         }
     }
 
-    /** 心跳 / 状态上报共用一份报文（心跳再加 heartbeat_at）。 */
+    /**
+     * 心跳 / 状态上报共用一份报文（心跳再加 heartbeat_at）。
+     */
     public RobotStatusReport snapshot() {
         RmsProperties.Robot identity = props.getRobot();
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
@@ -154,7 +170,9 @@ public class RobotStateView {
         );
     }
 
-    /** status/query 的 data（默认模块集：agv_status + position + battery + serial_num）。 */
+    /**
+     * status/query 的 data（默认模块集：agv_status + position + battery + serial_num）。
+     */
     public BodyStatusData bodyStatusData() {
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
@@ -186,7 +204,9 @@ public class RobotStateView {
     private final java.util.concurrent.atomic.AtomicLong statusSequence =
             new java.util.concurrent.atomic.AtomicLong(0);
 
-    /** 心跳 payload：简单身份信息（对齐 RMS 真机格式，不是完整状态报告） */
+    /**
+     * 心跳 payload：简单身份信息（对齐 RMS 真机格式，不是完整状态报告）
+     */
     public HeartbeatPayload buildHeartbeatPayload() {
         RmsProperties.Robot robot = props.getRobot();
         return new HeartbeatPayload(
@@ -198,7 +218,9 @@ public class RobotStateView {
                 robot.getIp());
     }
 
-    /** 状态上报信封：{data: {真机模块集}, serial_num, timestamp}（对齐真机 status/report 报文） */
+    /**
+     * 状态上报信封：{data: {真机模块集}, serial_num, timestamp}（对齐真机 status/report 报文）
+     */
     public StatusReportEnvelope buildStatusEnvelope() {
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
@@ -241,7 +263,7 @@ public class RobotStateView {
                         odom == null ? 0.0 : round(odom.x()),
                         odom == null ? 0.0 : round(odom.y()))),
                 new BodyFullStatusData.Position(
-                        mapName,
+                        "L1",
                         round(Math.cos(yaw / 2.0)), 0.0, 0.0, round(Math.sin(yaw / 2.0)),
                         now,
                         round(x), round(y), 0.0, round(yaw)),
@@ -254,10 +276,10 @@ public class RobotStateView {
                 List.of(
                         new BodyFullStatusData.Temperature(SIM_BATTERY_ID, "battery", 31.0, now),
                         new BodyFullStatusData.Temperature(SIM_BATTERY_ID, "battery", 31.0, now)));
-
+        RmsProperties.Robot robot = props.getRobot();
         return new StatusReportEnvelope(
                 data,
-                statusSequence.incrementAndGet(),
+                robot.getRobotSn(),
                 String.valueOf(System.currentTimeMillis()));
     }
 

@@ -1,6 +1,8 @@
 package com.agv.navdeployer.rms.gateway;
 
+import com.agv.navdeployer.rms.map.RmsInspectionUploader;
 import com.agv.navdeployer.rms.map.RmsMapService;
+import com.agv.navdeployer.rms.map.RmsTelemetryService;
 import com.agv.navdeployer.rms.protocol.keys.BodySegment;
 import com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
@@ -27,13 +29,29 @@ public class RmsCommandGateway {
 
     private final RmsTaskService taskService;
     private final RmsMapService mapService;
+    private final RmsTelemetryService telemetryService;
+    private final RmsInspectionUploader inspectionUploader;
+    private final com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter;
+    private final com.agv.navdeployer.service.NavPointService navPointService;
+    private final com.agv.navdeployer.service.NavPathService navPathService;
     private final ObjectMapper mapper;
     private volatile RmsCommandKeys keys;
+    private volatile ZenohChannel currentChannel;
 
     public RmsCommandGateway(RmsTaskService taskService, RmsMapService mapService,
+                             RmsTelemetryService telemetryService,
+                             RmsInspectionUploader inspectionUploader,
+                             com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
+                             com.agv.navdeployer.service.NavPointService navPointService,
+                             com.agv.navdeployer.service.NavPathService navPathService,
                              ObjectMapper mapper, RmsCommandKeys keys) {
         this.taskService = taskService;
         this.mapService = mapService;
+        this.telemetryService = telemetryService;
+        this.inspectionUploader = inspectionUploader;
+        this.scheduleAdapter = scheduleAdapter;
+        this.navPointService = navPointService;
+        this.navPathService = navPathService;
         this.mapper = mapper;
         this.keys = keys;
     }
@@ -45,6 +63,7 @@ public class RmsCommandGateway {
 
     /** 会话建立后声明全部指令端点（exact + 通配；重建时重调）。 */
     public void attach(ZenohChannel channel) throws Exception {
+        this.currentChannel = channel;
         for (String segment : RmsCommandKeys.exactSegments()) {
             channel.declareQueryable(keys.bodyKey(segment), query -> dispatch(query, segment));
         }
@@ -110,7 +129,11 @@ public class RmsCommandGateway {
             case STATUS_QUERY -> taskService.statusQuery();
             case CONFIG -> taskService.configQuery();
             case TASK_TEMPLATE_QUERY -> taskService.templateQuery();
+            case TASK_TEMPLATE_ADD -> taskService.addTemplate(request);
+            case TASK_TEMPLATE_DELETE -> taskService.deleteTemplate(request.templateCode());
             case TASK_ADD -> taskService.addTask(request);
+            case RESULT_FILES_UPLOAD_START -> inspectionUploader.handleUploadStart(
+                    rawPayload, currentChannel, keys.bodyKeyBase());
             case TASK_START -> taskService.startTask(request);
             case TASK_DELETE -> taskService.deleteTask(request.taskId());
             case TASK_PAUSE, TASK_PAUSE_TYPO -> taskService.pauseTask(request.taskId());
@@ -131,9 +154,13 @@ public class RmsCommandGateway {
             case MAPPING_CHANGE -> mapService.changeMap(parseMapNameRequest(rawPayload));
             case MAPPING_GET_CURRENT -> mapService.getCurrentMap();
             case MAPPING_DELETE -> mapService.deleteMap(parseMapNameRequest(rawPayload));
+            case MAPPING_GET -> mapService.exportMap(rawPayload, mapper, scheduleAdapter, navPointService, navPathService);
             case AGV_RELOCATE -> mapService.relocate(parseRelocateRequest(rawPayload));
             case MODE_SET -> mapService.modeSet();
             case MODE_GET -> mapService.modeGet();
+            case POSE_QUERY -> telemetryService.poseQuery();
+            case CONFIG_GET -> telemetryService.configGet();
+            case CONFIG_EDIT -> telemetryService.configEdit(rawPayload);
             default -> null;
         };
     }

@@ -4,8 +4,10 @@ import com.agv.navdeployer.mapper.NavMapMapper;
 import com.agv.navdeployer.rms.gateway.RmsCommandGateway;
 import com.agv.navdeployer.rms.gateway.RmsReportGateway;
 import com.agv.navdeployer.rms.gateway.RmsServiceGateway;
+import com.agv.navdeployer.rms.map.RmsInspectionUploader;
 import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.map.RmsMapState;
+import com.agv.navdeployer.rms.map.RmsTelemetryService;
 import com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys;
 import com.agv.navdeployer.rms.protocol.keys.RmsReportKeys;
 import com.agv.navdeployer.rms.protocol.keys.RmsServiceKeys;
@@ -71,9 +73,28 @@ public class RmsConfig {
     }
 
     @Bean
-    public RmsCommandGateway rmsCommandGateway(RmsMapService mapService, RmsTaskService taskService,
+    public RmsCommandGateway rmsCommandGateway(RmsMapService mapService,
+                                               RmsTelemetryService telemetryService,
+                                               RmsInspectionUploader inspectionUploader,
+                                               com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
+                                               com.agv.navdeployer.service.NavPointService navPointService,
+                                               com.agv.navdeployer.service.NavPathService navPathService,
+                                               RmsTaskService taskService,
                                                ObjectMapper mapper, RmsCommandKeys keys) {
-        return new RmsCommandGateway(taskService, mapService, mapper, keys);
+        return new RmsCommandGateway(taskService, mapService, telemetryService,
+                inspectionUploader, scheduleAdapter, navPointService, navPathService,
+                mapper, keys);
+    }
+
+    @Bean
+    public RmsInspectionUploader rmsInspectionUploader(ObjectMapper mapper) {
+        return new RmsInspectionUploader(mapper);
+    }
+
+    @Bean
+    public RmsTelemetryService rmsTelemetryService(SimAgvTelemetry telemetry,
+                                                   RmsProperties props, ObjectMapper mapper) {
+        return new RmsTelemetryService(telemetry, props, mapper);
     }
 
     @Bean

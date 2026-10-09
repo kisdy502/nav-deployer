@@ -7,6 +7,7 @@ import { PointLayer } from '@/three/PointLayer'
 import { PathLayer, type PathRenderItem } from '@/three/PathLayer'
 import { RobotLayer } from '@/three/RobotLayer'
 import { ScanLayer } from '@/three/ScanLayer'
+import Map3DViewer from './Map3DViewer.vue'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 
@@ -23,6 +24,8 @@ const robot = useRobotStore()
 
 const containerRef = ref<HTMLDivElement>()
 const coordsText = ref('')
+const show3d = ref(false)
+const map3dName = computed(() => editor.mapInfo?.robot_map_name || editor.mapInfo?.map_name || '')
 const hint = computed(() => {
   switch (editor.mode) {
     case 'placePoint':
@@ -428,6 +431,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {
 }
 
 async function onKey(ev: KeyboardEvent) {
+  if (show3d.value) return
   if (ev.key === 'Escape') {
     if (drag) {
       const d = drag
@@ -464,6 +468,7 @@ async function onKey(ev: KeyboardEvent) {
       <span v-if="hint" class="nd-chip nd-chip--hint">{{ hint }}</span>
     </div>
     <div class="nd-overlay nd-overlay--tr">
+      <button class="nd-chip nd-chip--btn" :disabled="!map3dName" @click="show3d = true">三维地图</button>
       <button
         class="nd-chip nd-chip--btn"
         :class="{ 'nd-chip--active': viewRot180 }"
@@ -472,6 +477,9 @@ async function onKey(ev: KeyboardEvent) {
       >⟳ 旋转视图</button>
       <span v-if="editor.livePolling" class="nd-chip nd-chip--live">● 建图实时预览中</span>
     </div>
+    <el-dialog v-model="show3d" :title="`三维地图 · ${map3dName}`" width="90%" destroy-on-close append-to-body>
+      <Map3DViewer v-if="show3d && map3dName" :key="map3dName" :map-name="map3dName" />
+    </el-dialog>
   </div>
 </template>
 

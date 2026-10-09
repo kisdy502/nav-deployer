@@ -122,6 +122,10 @@ rms:
 # through agv_bridge_v2: /agv/status (1Hz), /tf (map->AGV001/base_link, 10Hz).
 # Prerequisite: `docker compose --profile navigation up -d` on the sim host.
 # ============================================================
+map3d:
+  # 空值时从 sim_agv.ws_url 推导机器人主机，使用 HTTP 8089。
+  base-url: ${MAP3D_BASE_URL:}
+
 sim_agv:
   enabled: ${SIM_AGV_ENABLED:true}
   ws_url: ${SIM_AGV_WS_URL:ws://localhost:9090}

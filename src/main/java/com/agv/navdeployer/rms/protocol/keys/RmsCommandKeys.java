@@ -18,6 +18,11 @@ public final class RmsCommandKeys {
         return ctx.bodyApiBase() + "/" + KeyStrings.require(KeyStrings.normalize(segment, null), "segment");
     }
 
+    /** key 基部（.../api/v1），供 task-result-files-uploaded 等 pub 键派生。 */
+    public String bodyKeyBase() {
+        return ctx.bodyApiBase();
+    }
+
     /** 需要声明的全量 exact 段（保持与 RMS 探测行为兼容）。 */
     public static String[] exactSegments() {
         return BodySegment.allExactSegments();

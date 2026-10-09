@@ -211,6 +211,83 @@ public class RmsMapService {
         return BodyReply.success("auto mode", new MapReplyData.ModeData("auto"));
     }
 
+    /**
+     * mapping/get：从本体导出地图（云端给 upload_url，机器人打包地图上传）。
+     * payload: {"map_name": "xxx", "upload_url": "https://...", "method": "POST"}
+     */
+    public BodyReply exportMap(String rawPayload,
+                               com.fasterxml.jackson.databind.ObjectMapper mapper,
+                               com.agv.navdeployer.exchange.ScheduleMapAdapter adapter,
+                               com.agv.navdeployer.service.NavPointService navPointService,
+                               com.agv.navdeployer.service.NavPathService navPathService) {
+        try {
+            var root = mapper.readTree(rawPayload == null || rawPayload.isBlank() ? "{}" : rawPayload);
+            String mapName = text(root, "map_name");
+            String uploadUrl = text(root, "upload_url");
+            if (mapName == null || uploadUrl == null) {
+                return BodyReply.failure(400, "map_name 和 upload_url 必填");
+            }
+
+            NavMap map = findMapByName(mapName);
+            if (map == null) {
+                return BodyReply.failure(404, "地图不存在: " + mapName);
+            }
+
+            // 从 DB 取栅格数据，用 ScheduleMapAdapter 打包
+            var grid = mapper.readValue(navMapService.getGridData(map.getId()).json(),
+                    com.agv.navdeployer.vo.MapGridVO.class);
+            var points = navPointService.list(map.getId());
+            var paths = navPathService.list(map.getId());
+            var edgesByPath = new java.util.LinkedHashMap<Long, java.util.List<com.agv.navdeployer.vo.PathEdgeVO>>();
+            for (var path : paths) {
+                edgesByPath.put(path.getId(), navPathService.loadEdgeVOs(path.getId()));
+            }
+            byte[] zip = adapter.exportZip(map.getMapName(), grid, points, paths, edgesByPath);
+
+            // HTTP POST zip 到云端提供的 URL（multipart: map_name + file）
+            uploadZipToUrl(uploadUrl, map.getMapName(), zip);
+
+            log.info("RMS mapping/get 上传成功: map={} url={} size={}bytes", mapName, uploadUrl, zip.length);
+            return BodyReply.success("map exported: " + mapName, null);
+        } catch (Exception exception) {
+            log.warn("RMS mapping/get 失败: {}", exception.getMessage());
+            return BodyReply.failure(500, "map export failed: " + exception.getMessage());
+        }
+    }
+
+    private void uploadZipToUrl(String url, String mapName, byte[] body) throws Exception {
+        String boundary = "----NavDeployerBoundary" + System.currentTimeMillis();
+        var output = new java.io.ByteArrayOutputStream();
+        // 表单字段 1：map_name（服务端 import-zip 要求，curl -F "map_name=xxx" 等价）
+        output.writeBytes(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"map_name\"\r\n\r\n"
+                + mapName + "\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        // 表单字段 2：file（zip 二进制，curl -F "file=@test.zip" 等价）
+        output.writeBytes(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; filename=\"" + mapName + ".zip\"\r\n"
+                + "Content-Type: application/zip\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        output.write(body);
+        output.writeBytes(("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        var request = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(url))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(output.toByteArray()))
+                .timeout(java.time.Duration.ofSeconds(30))
+                .build();
+        var response = java.net.http.HttpClient.newHttpClient().send(
+                request, java.net.http.HttpResponse.BodyHandlers.ofString());
+        log.info("mapping/get 上传响应: status={}\nbody={}", response.statusCode(), response.body());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("HTTP " + response.statusCode() + ": " + response.body());
+        }
+    }
+
+    private String text(com.fasterxml.jackson.databind.JsonNode node, String field) {
+        String value = node.path(field).asText(null);
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     /** 优先 robot_map_name 精确匹配，其次 map_name。 */
     private NavMap findMapByName(String mapName) {
         NavMap byRobotName = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
