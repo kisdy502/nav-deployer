@@ -20,7 +20,8 @@ const tasks = useTasksStore()
 
 const keyword = ref('')
 
-const colorOf = (t: string): string => (t === 'CHARGER' ? '#e6a23c' : '#95d475')
+const colorOf = (t: string): string =>
+  t === 'WORK' ? '#409eff' : t === 'CHARGER' ? '#e6a23c' : '#95d475'
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase()
@@ -199,6 +200,7 @@ defineExpose({ openManual })
         <el-form-item label="类型">
           <el-radio-group v-model="manualDialog.point_type">
             <el-radio-button value="NORMAL">普通点</el-radio-button>
+            <el-radio-button value="WORK">作业点</el-radio-button>
             <el-radio-button value="CHARGER">充电点</el-radio-button>
             <el-radio-button value="HOME">待命点</el-radio-button>
           </el-radio-group>
@@ -228,6 +230,7 @@ defineExpose({ openManual })
         <el-form-item label="类型">
           <el-radio-group v-model="robotDialog.point_type">
             <el-radio-button value="NORMAL">普通点</el-radio-button>
+            <el-radio-button value="WORK">作业点</el-radio-button>
             <el-radio-button value="CHARGER">充电点</el-radio-button>
             <el-radio-button value="HOME">待命点</el-radio-button>
           </el-radio-group>

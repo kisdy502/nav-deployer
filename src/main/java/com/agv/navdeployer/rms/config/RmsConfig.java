@@ -87,8 +87,10 @@ public class RmsConfig {
     }
 
     @Bean
-    public RmsInspectionUploader rmsInspectionUploader(ObjectMapper mapper) {
-        return new RmsInspectionUploader(mapper);
+    public RmsInspectionUploader rmsInspectionUploader(ObjectMapper mapper,
+                                                        RmsProperties properties,
+                                                        com.agv.navdeployer.rms.task.RmsTaskRegistry taskRegistry) {
+        return new RmsInspectionUploader(mapper, properties, taskRegistry);
     }
 
     @Bean

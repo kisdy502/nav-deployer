@@ -68,7 +68,7 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
 
             // body 通道：{data: {...}, serial_num, timestamp}（对齐 RMS 真机格式）
             String reportStatus = mapper.writeValueAsString(stateView.buildStatusEnvelope());
-            log.info("上报状态:{}", keys.bodyStatusReport());
+//            log.info("上报状态:{},内容:{}", keys.bodyStatusReport(),reportStatus);
             publisher.put(reportStatus);
         }
         if (reportProps.isPublishLegacyStatus()) {
@@ -78,7 +78,7 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             }
             // legacy 通道：平铺格式（兼容旧版 RMS）
             String reportOldStatus = mapper.writeValueAsString(stateView.snapshot());
-            log.info("上报旧格式状态:{}", reportOldStatus);
+//            log.info("上报旧格式状态:{}", reportOldStatus);
             publisher.put(reportOldStatus);
         }
     }
@@ -110,9 +110,11 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
         if (current == null || !current.isOpen()) {
             throw new IllegalStateException("rms channel not open");
         }
-        current.putOnce(keys.taskResultReport(taskId), mapper.writeValueAsString(envelope));
-        log.info("RMS result_report published: task_id={} action_status={}",
-                taskId, envelope.data().actionStatus());
+        String key = keys.taskResultReport(taskId);
+        String result=mapper.writeValueAsString(envelope);
+        current.putOnce(key, result);
+        log.info("RMS result_report published: key={} result={}",
+                key, result);
     }
 
     public void declarePublishers() throws Exception {

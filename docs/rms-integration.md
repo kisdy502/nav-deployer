@@ -39,16 +39,20 @@
 - **任务指令请求**：task_id / action_id / task_type / task_template_type /
   template_code / template_id / parameters（内含 navigate 的 destination{x,y,yaw}、
   charge 的 charger 名等）
-- **任务状态码映射**（action_status）：
-  accepted=1，running/paused=2，completed/success=3，failed=4，aborted=5，canceled/stopped=6
+- **任务状态码映射**（action_status，严格对齐机器人本体 `TaskStatus`）：
+  idle/accepted=0，running=1，paused=2，completed=3，failed=4，canceled=5，
+  行为树加载失败=6，拍照/机械臂/结果上传/AGV/音频/升降杆/大模型节点失败=10～16。
 - **result_report 信封**：`{status:0, data:{task 报告}, timestamp:epoch_ms}`
+- **质检结果语义**：任务执行成功仍上报 `action_status=3`；质检业务结论放在
+  `data.result_report.inspection_result`，值为 `OK` 或 `NG`。`NG` 不等价于任务执行失败，
+  具体测试项位于 `result_report.points[].items[]`。
 
 ### 1.3 任务生命周期（RMS 视角）
 
 ```
-task/add → accepted ── task/start → running ──→ completed ──→ result_report(put)
+task/add → idle(0) ── task/start → running(1) ──→ completed(3) ──→ result_report(put)
                          │  ↑                    ├─→ failed ────→ result_report
-                pause ───┘  └── resume           └─→ canceled(stopped)
+                pause(2) ┘  └── resume           └─→ canceled(5)
 ```
 
 多阶段作业（同 task_id 复用）：RMS 的质检作业先发 navigate 阶段、到达后再发

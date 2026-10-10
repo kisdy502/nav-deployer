@@ -1,6 +1,9 @@
 package com.agv.navdeployer.rms.map;
 
+import com.agv.navdeployer.rms.config.RmsProperties;
+import com.agv.navdeployer.rms.inspection.RmsInspectionResultFactory;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
+import com.agv.navdeployer.rms.task.RmsTaskRegistry;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +12,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.Color;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,10 +21,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import javax.imageio.ImageIO;
 
 /**
  * RMS 质检结果文件上传：收到云端 task/result_files_upload_start 指令后，
@@ -37,10 +42,16 @@ public class RmsInspectionUploader {
     private static final long HTTP_TIMEOUT_SEC = 30;
 
     private final ObjectMapper mapper;
+    private final RmsProperties properties;
+    private final RmsTaskRegistry taskRegistry;
     private final HttpClient httpClient;
 
-    public RmsInspectionUploader(ObjectMapper mapper) {
+    public RmsInspectionUploader(ObjectMapper mapper,
+                                 RmsProperties properties,
+                                 RmsTaskRegistry taskRegistry) {
         this.mapper = mapper;
+        this.properties = properties;
+        this.taskRegistry = taskRegistry;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -75,23 +86,19 @@ public class RmsInspectionUploader {
         }
     }
 
-    /** 生成仿真质检结果 ZIP（report.json + summary.txt）。 */
+    /** 生成仿真质检结果 ZIP（真机结构 report.json + 两张占位图 + summary.txt）。 */
     byte[] buildInspectionZip(String taskId) throws Exception {
-        Map<String, Object> report = new LinkedHashMap<>();
-        report.put("task_id", taskId);
-        report.put("format", "inspection_report_v2");
-        report.put("schema_version", "1.0");
-        report.put("overall_result", "pass");
-        report.put("overall_message", "simulation inspection: all modules passed");
-        report.put("modules", java.util.List.of(
-                Map.of("module_id", "sim_chassis", "result", "pass", "message", "chassis ok"),
-                Map.of("module_id", "sim_lidar", "result", "pass", "message", "lidar ok")));
-        report.put("generated_at", java.time.Instant.now().toString());
+        Map<String, Object> parameters = taskRegistry.find(taskId)
+                .map(task -> task.parameters())
+                .orElseGet(Map::of);
+        Map<String, Object> report = RmsInspectionResultFactory.create(
+                taskId, properties.getBehavior().getInspectionResult(), parameters);
+        String inspectionResult = String.valueOf(report.get("inspection_result"));
 
         String reportJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report);
         String summary = "Simulation Inspection Report\n"
                 + "Task ID: " + taskId + "\n"
-                + "Result: PASS\n"
+                + "Result: " + inspectionResult + "\n"
                 + "Generated: " + java.time.Instant.now() + "\n";
 
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -102,8 +109,28 @@ public class RmsInspectionUploader {
             zip.putNextEntry(new ZipEntry("summary.txt"));
             zip.write(summary.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
+            writePlaceholderImage(zip, taskId + "_left_3D.jpg", true);
+            writePlaceholderImage(zip, taskId + "_right_3D.jpg", "OK".equals(inspectionResult));
         }
         return buffer.toByteArray();
+    }
+
+    private static void writePlaceholderImage(ZipOutputStream zip,
+                                              String fileName,
+                                              boolean passed) throws Exception {
+        BufferedImage image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D graphics = image.createGraphics();
+        try {
+            graphics.setColor(passed ? new Color(46, 160, 67) : new Color(218, 54, 51));
+            graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        } finally {
+            graphics.dispose();
+        }
+        ByteArrayOutputStream imageBytes = new ByteArrayOutputStream();
+        ImageIO.write(image, "jpg", imageBytes);
+        zip.putNextEntry(new ZipEntry(fileName));
+        zip.write(imageBytes.toByteArray());
+        zip.closeEntry();
     }
 
     /** HTTP PUT 二进制到预签名 URL。 */

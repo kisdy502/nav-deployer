@@ -16,7 +16,8 @@ const editor = useEditorStore()
 const robot = useRobotStore()
 const tasks = useTasksStore()
 
-const colorOf = (t: string): string => (t === 'CHARGER' ? '#e6a23c' : '#95d475')
+const colorOf = (t: string): string =>
+  t === 'WORK' ? '#409eff' : t === 'CHARGER' ? '#e6a23c' : '#95d475'
 
 async function navigateToPoint() {
   const p = editor.selectedPoint

@@ -21,13 +21,15 @@ public final class RmsTask {
     private final Map<String, Object> parameters;
     private final Instant createdAt = Instant.now();
 
-    private RmsTaskStatus status = RmsTaskStatus.ACCEPTED;
+    private RmsTaskStatus status = RmsTaskStatus.IDLE;
     private Instant startedAt;
     private Instant finishedAt;
     /** navigate 类目标快照（pause 后 resume 重发用） */
     private TaskCommandRequest.Destination destination;
     /** 内部 MoveTask id（导航执行期间） */
     private Long internalMoveTaskId;
+    /** 终态的可读原因，随 result_report 上报。 */
+    private String message;
 
     public RmsTask(TaskCommandRequest request) {
         this.taskId = request.taskId();
@@ -98,6 +100,14 @@ public final class RmsTask {
         this.internalMoveTaskId = internalMoveTaskId;
     }
 
+    public String message() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
     /** charge / replace_battery 执行中 → 状态报文 is_charging=true */
     public boolean isChargingBehavior() {
         return status == RmsTaskStatus.RUNNING
@@ -117,6 +127,11 @@ public final class RmsTask {
     public boolean isNavigation() {
         return isTemplate("rmf_navigate") || isTemplate("navigate")
                 || "navigate".equalsIgnoreCase(taskType);
+    }
+
+    /** 模板可包含导航步骤；只有当前 action 步骤才执行并上报质检。 */
+    public boolean isInspectionAction() {
+        return isTemplate("quality_inspection") && "action".equalsIgnoreCase(taskType);
     }
 
     public TaskInfoReport toInfoReport() {

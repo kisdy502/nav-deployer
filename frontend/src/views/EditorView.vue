@@ -16,6 +16,7 @@ import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { nextAutoCode } from '@/utils/format'
 import type { PickResult } from '@/three/MapScene'
+import type { PointType } from '@/types/api'
 
 const props = defineProps<{ id: string }>()
 
@@ -114,7 +115,7 @@ const placeDialog = reactive({
   visible: false,
   saving: false,
   code: '',
-  type: 'NORMAL' as 'NORMAL' | 'CHARGER' | 'HOME',
+  type: 'NORMAL' as PointType,
   x: 0,
   y: 0,
   yawDeg: 0,
@@ -238,6 +239,7 @@ onBeforeUnmount(() => {
         <el-form-item label="类型">
           <el-radio-group v-model="placeDialog.type">
             <el-radio-button value="NORMAL">普通点</el-radio-button>
+            <el-radio-button value="WORK">作业点</el-radio-button>
             <el-radio-button value="CHARGER">充电点</el-radio-button>
             <el-radio-button value="HOME">待命点</el-radio-button>
           </el-radio-group>

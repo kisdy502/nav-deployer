@@ -6,7 +6,7 @@ export interface ApiResponse<T> {
 }
 
 export type NavMapStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
-export type PointType = 'NORMAL' | 'CHARGER' | 'HOME'
+export type PointType = 'NORMAL' | 'WORK' | 'CHARGER' | 'HOME'
 export type PathStatus = 'DRAFT' | 'DEPLOYED' | 'DISABLED'
 export type EdgeType = 'STRAIGHT' | 'CURVE'
 export type MapTaskType = 'SWITCH_MAP' | 'START_MAPPING' | 'SAVE_MAP'

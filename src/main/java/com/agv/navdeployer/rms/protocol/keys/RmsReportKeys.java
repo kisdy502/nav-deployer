@@ -29,6 +29,6 @@ public final class RmsReportKeys {
 
     /** 任务结果上报：.../api/v1/task/{task_id}/result_report（任务终态时一次）。 */
     public String taskResultReport(String taskId) {
-        return ctx.bodyApiBase() + "/task/" + KeyStrings.require(taskId, "taskId") + "/result_report";
+        return ctx.bodyApiBase() + "/task/result_report";
     }
 }

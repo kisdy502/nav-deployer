@@ -19,6 +19,7 @@ import java.time.LocalDateTime;
 public class NavPoint {
 
     public static final String TYPE_NORMAL = "NORMAL";
+    public static final String TYPE_WORK = "WORK";
     public static final String TYPE_CHARGER = "CHARGER";
     public static final String TYPE_HOME = "HOME";
 

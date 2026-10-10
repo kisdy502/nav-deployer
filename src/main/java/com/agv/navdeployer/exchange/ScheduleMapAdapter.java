@@ -17,8 +17,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -49,6 +51,7 @@ public class ScheduleMapAdapter {
     /** Route 行第 10 字段（样例值 0.6，推断为限速 m/s）缺省值 */
     private static final double DEFAULT_ROUTE_SPEED = 0.6;
     private static final int GOAL_TYPE_PATH_MARKER = 0;
+    private static final int GOAL_TYPE_WORKSTATION = 1;
     private static final int GOAL_TYPE_CHARGING = 2;
     private static final int GOAL_TYPE_REST = 3;
     private static final String DEFAULT_GOAL_ATTRIBUTES =
@@ -153,8 +156,8 @@ public class ScheduleMapAdapter {
      * Cairn: Goal <id> <code> "" "" <x> <y> <theta> <type> 0 7 0 "" "0,0,0" "0,0,0" "0" "1" 0 0 0 0 0 0 {扩展}
      * Cairn: Route <id> <src> <dst> <sx> <sy> <dx> <dy> <back> <speed> 0 1 0 0 0 "" "0" "1" "" "0" 0 0 0 {扩展}
      * </pre>
-     * Goal 的 type/function_：0=路径标点，2=充电点，3=休息/待命点。
-     * 分别对应我方 NORMAL、CHARGER、HOME。
+     * Goal 的 type/function_：0=路径标点，1=作业/质检点，2=充电点，3=休息/待命点。
+     * 分别对应我方 NORMAL、WORK、CHARGER、HOME。
      */
     private byte[] buildLxmap(MapGridVO grid,
                               List<NavPointVO> points,
@@ -182,8 +185,10 @@ public class ScheduleMapAdapter {
                     .append(" 0 7 0 \"\" \"0,0,0\" \"0,0,0\" \"0\" \"1\" 0 0 0 0 0 0 ")
                     .append(DEFAULT_GOAL_ATTRIBUTES).append('\n');
         }
-        // 路线边：一条边一行 Route（src/dst 用点位 id，坐标取点位坐标）
+        // 调度服务器把每行 Route 当作单向边；每条通道必须输出 A→B 和 B→A 才会识别为双向。
+        // 按无向点对去重，避免已经同时存在正反边的导入地图再导出时变成四条 Route。
         int nextRouteId = 1;
+        Set<String> emittedConnections = new LinkedHashSet<>();
         for (NavPathVO path : paths) {
             List<PathEdgeVO> edges = edgesByPath.getOrDefault(path.getId(), List.of());
             for (PathEdgeVO edge : edges) {
@@ -196,18 +201,38 @@ public class ScheduleMapAdapter {
                             + path.getId() + ", edge=" + edge.getId() + ", source="
                             + edge.getSourcePointId() + ", target=" + edge.getTargetPointId());
                 }
+                String connectionKey = Math.min(src, dst) + ":" + Math.max(src, dst);
+                if (!emittedConnections.add(connectionKey)) {
+                    continue;
+                }
                 double speed = edge.getMaxSpeed() != null ? edge.getMaxSpeed() : DEFAULT_ROUTE_SPEED;
-                sb.append("Cairn: Route ").append(nextRouteId++)
-                        .append(' ').append(src).append(' ').append(dst)
-                        .append(' ').append(source.getX()).append(' ').append(source.getY())
-                        .append(' ').append(target.getX()).append(' ').append(target.getY())
-                        .append(' ').append(Boolean.TRUE.equals(edge.getReverse()) ? 1 : 0)
-                        .append(' ').append(speed)
-                        .append(" 0 1 0 0 0 \"\" \"0\" \"1\" \"\" \"0\" 0 0 0 ")
-                        .append(DEFAULT_ROUTE_ATTRIBUTES).append('\n');
+                boolean reverseDriving = Boolean.TRUE.equals(edge.getReverse());
+                nextRouteId = appendRoute(sb, nextRouteId, src, dst, source, target, speed, reverseDriving);
+                if (!src.equals(dst)) {
+                    nextRouteId = appendRoute(sb, nextRouteId, dst, src, target, source, speed, reverseDriving);
+                }
             }
         }
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static int appendRoute(StringBuilder sb,
+                                   int routeId,
+                                   int src,
+                                   int dst,
+                                   NavPointVO source,
+                                   NavPointVO target,
+                                   double speed,
+                                   boolean reverseDriving) {
+        sb.append("Cairn: Route ").append(routeId)
+                .append(' ').append(src).append(' ').append(dst)
+                .append(' ').append(source.getX()).append(' ').append(source.getY())
+                .append(' ').append(target.getX()).append(' ').append(target.getY())
+                .append(' ').append(reverseDriving ? 1 : 0)
+                .append(' ').append(speed)
+                .append(" 0 1 0 0 0 \"\" \"0\" \"1\" \"\" \"0\" 0 0 0 ")
+                .append(DEFAULT_ROUTE_ATTRIBUTES).append('\n');
+        return routeId + 1;
     }
 
     private static int scheduleGoalType(String pointType) {
@@ -217,6 +242,9 @@ public class ScheduleMapAdapter {
         if ("CHARGER".equalsIgnoreCase(pointType)) {
             return GOAL_TYPE_CHARGING;
         }
+        if ("WORK".equalsIgnoreCase(pointType)) {
+            return GOAL_TYPE_WORKSTATION;
+        }
         if ("HOME".equalsIgnoreCase(pointType)) {
             return GOAL_TYPE_REST;
         }
@@ -225,6 +253,7 @@ public class ScheduleMapAdapter {
 
     private static String navPointType(int scheduleGoalType) {
         return switch (scheduleGoalType) {
+            case GOAL_TYPE_WORKSTATION -> "WORK";
             case GOAL_TYPE_CHARGING -> "CHARGER";
             case GOAL_TYPE_REST -> "HOME";
             default -> "NORMAL";

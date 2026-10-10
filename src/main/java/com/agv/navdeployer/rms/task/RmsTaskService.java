@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * RMS 任务指令处理（防烂铁律③：只编排，不执行——移动全部委托 MoveTaskService）。
  *
- * <p>生命周期：accepted →(start) running →(完成/失败) completed/failed → result_report；
+ * <p>生命周期：idle →(start) running →(完成/失败) completed/failed → result_report；
  * pause = 取消内部移动并置 paused；resume = 按任务目标快照重新下发移动（降级语义，
  * 见 docs/rms-integration.md §3.3）；stop = 取消并置 canceled。
  */
@@ -219,6 +219,7 @@ public class RmsTaskService {
         }
         logRmsCommand("task/stop", task);
         registry.transition(taskId, RmsTaskStatus.CANCELED);
+        task.setMessage("task cancelled");
         cancelInternalMove(task);
         resultReporter.report(task);
         return BodyReply.success("stopped", task.toInfoReport());
@@ -251,14 +252,14 @@ public class RmsTaskService {
         if (task == null || task.status() != RmsTaskStatus.RUNNING) {
             return;
         }
-        if (task.isTemplate("quality_inspection")) {
+        if (task.isInspectionAction()) {
             simulateInspection(task);
             return;
         }
         // navigate / charge / replace_battery / return_home 统一走移动
         TaskCommandRequest.Destination destination = resolveDestination(task);
         if (destination == null) {
-            fail(task, "no destination for task (template=" + task.taskTemplateType()
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, "no destination for task (template=" + task.taskTemplateType()
                     + ", charge/home pose 未配置且 parameters.destination 缺失)");
             return;
         }
@@ -274,11 +275,14 @@ public class RmsTaskService {
             scheduleMovePoll(taskId, moveTask.getId());
         } catch (Exception exception) {
             // MoveTaskService 的闸门（连接/定位/模式/占用）在这里拦截
-            fail(task, exception.getMessage());
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());
         }
     }
 
     private TaskCommandRequest.Destination resolveDestination(RmsTask task) {
+        if (task.isNavigation()) {
+            return task.destination();
+        }
         if (task.isTemplate("charge") || task.isTemplate("replace_battery")) {
             RmsProperties.Pose pose = props.getBehavior().getChargePose();
             return pose == null ? task.destination()
@@ -299,12 +303,16 @@ public class RmsTaskService {
     private void pollMoveTask(String taskId, Long moveTaskId) {
         RmsTask task = registry.find(taskId).orElse(null);
         // 任务被 pause/stop/删除：静默停止轮询（终态迁移由指令入口完成）
-        if (task == null || task.status() != RmsTaskStatus.RUNNING) {
+        if (task == null || task.status() != RmsTaskStatus.RUNNING
+                || !java.util.Objects.equals(task.internalMoveTaskId(), moveTaskId)) {
             return;
         }
         String moveStatus;
+        String moveError;
         try {
-            moveStatus = moveTaskService.get(moveTaskId).getStatus();
+            MoveTaskVO moveTask = moveTaskService.get(moveTaskId);
+            moveStatus = moveTask.getStatus();
+            moveError = moveTask.getErrorMessage();
         } catch (Exception exception) {
             log.warn("rms task {} poll move task {} failed: {}", taskId, moveTaskId, exception.getMessage());
             scheduleMovePoll(taskId, moveTaskId);
@@ -315,7 +323,9 @@ public class RmsTaskService {
                 registry.transition(taskId, RmsTaskStatus.COMPLETED);
                 resultReporter.report(registry.find(taskId).orElse(task));
             }
-            case "FAILED", "TIMEOUT" -> fail(task, "move task " + moveStatus.toLowerCase());
+            case "FAILED", "TIMEOUT" -> fail(task, RmsTaskStatus.AGV_NODE_FAILED,
+                    moveError != null && !moveError.isBlank()
+                            ? moveError : "move task " + moveStatus.toLowerCase());
             default -> scheduleMovePoll(taskId, moveTaskId);
         }
     }
@@ -334,9 +344,13 @@ public class RmsTaskService {
         }, durationMs, TimeUnit.MILLISECONDS);
     }
 
-    private void fail(RmsTask task, String message) {
-        log.warn("rms task {} failed: {}", task.taskId(), message);
-        registry.transition(task.taskId(), RmsTaskStatus.FAILED);
+    private void fail(RmsTask task, RmsTaskStatus failureStatus, String message) {
+        RmsTaskStatus status = failureStatus == null || !failureStatus.failed()
+                ? RmsTaskStatus.FAILED : failureStatus;
+        log.warn("rms task {} failed: status={} code={} msg={}",
+                task.taskId(), status, status.actionStatusCode(), message);
+        task.setMessage(message);
+        registry.transition(task.taskId(), status);
         resultReporter.report(registry.find(task.taskId()).orElse(task));
     }
 

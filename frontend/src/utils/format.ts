@@ -33,6 +33,7 @@ export const PATH_STATUS_TAG: Record<PathStatus, { label: string; type: 'success
 
 export const POINT_TYPE_LABEL: Record<PointType, string> = {
   NORMAL: '普通点',
+  WORK: '作业点',
   CHARGER: '充电点',
   HOME: '待命点',
 }

@@ -63,7 +63,7 @@ FOLLOW_PATH：逐段下发 follow_edge，end_point=true 仅最后一段；任一
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `` | 创建：`{map_id, point_code, point_type(NORMAL/CHARGER/HOME), x, y, yaw, remark?}` |
+| POST | `` | 创建：`{map_id, point_code, point_type(NORMAL/WORK/CHARGER/HOME), x, y, yaw, remark?}` |
 | POST | `/from-current-pose` | 标记机器人当前位姿为点位：`{map_id, point_code, point_type?, remark?}`（读 /tf→map 位姿） |
 | GET | `?map_id=` | 按地图列点位（map_id 必填） |
 | GET/PUT/DELETE | `/{id}` | 详情 / 更新（x,y,yaw,point_type,remark,point_code）/ 删除（被路线引用时拒绝） |
@@ -75,6 +75,8 @@ FOLLOW_PATH：逐段下发 follow_edge，end_point=true 仅最后一段；任一
 | POST | `` | 创建：`{map_id, path_code, path_name?}` |
 | PUT | `/{id}` | 更新：`{path_name?, status?}` |
 | PUT | `/{id}/edges` | 整体替换边序列：`{edges:[{source_point_id,target_point_id,edge_type(STRAIGHT/CURVE),control_points?[{x,y}](1~2),max_speed?,back_up?,reverse?}]}`；自动编号 seq；校验：点属于该地图、CURVE 必须带 1~2 个控制点、第 i 条 source 必须等于第 i-1 条 target（连续性） |
+
+> 调度 `.lxmap` 中每行 Route 是单向边。导出时每条上位机通道会自动生成 `A→B` 和 `B→A` 两行，并按无向点对去重，使调度服务器识别为双向通道。`reverse` 表示行驶方式，不表示通道双向性。
 | GET | `?map_id=` / `/{id}` | 列表（不含边）/ 详情（含有序边） |
 | POST | `/{id}/deploy` | 置为 DEPLOYED（要求已配置至少一条边；状态回到 DRAFT 需重新替换边） |
 | DELETE | `/{id}` | 删除（连带边） |

@@ -1,5 +1,7 @@
 package com.agv.navdeployer.rms.task;
 
+import com.agv.navdeployer.rms.config.RmsProperties;
+import com.agv.navdeployer.rms.inspection.RmsInspectionResultFactory;
 import com.agv.navdeployer.rms.protocol.dto.report.TaskResultEnvelope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,12 +16,17 @@ import org.springframework.stereotype.Component;
 public class RmsResultReporter {
 
     private static final Logger log = LoggerFactory.getLogger(RmsResultReporter.class);
+    private final RmsProperties properties;
 
     public interface Sink {
         void publish(TaskResultEnvelope envelope, String taskId) throws Exception;
     }
 
     private volatile Sink sink;
+
+    public RmsResultReporter(RmsProperties properties) {
+        this.properties = properties;
+    }
 
     public void attach(Sink sink) {
         this.sink = sink;
@@ -35,8 +42,9 @@ public class RmsResultReporter {
                 task.actionId(),
                 task.taskType(),
                 task.status().actionStatusCode(),
-                task.status() == RmsTaskStatus.FAILED ? "task failed!" : "task success!",
-                task.isTemplate("quality_inspection") ? simulatedInspectionResult(task) : null
+                resultMessage(task),
+                task.isInspectionAction() && task.status() == RmsTaskStatus.COMPLETED
+                        ? inspectionResult(task) : null
         ));
         Sink current = sink;
         if (current == null) {
@@ -52,12 +60,21 @@ public class RmsResultReporter {
         }
     }
 
-    /** 质检占位结果（仿真机械臂接入前的模拟数据结构，对齐 mock 的 result_report 字段）。 */
-    private java.util.Map<String, Object> simulatedInspectionResult(RmsTask task) {
-        java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("task_id", task.taskId());
-        result.put("inspection_result", "PENDING_SIMULATED_ARM");
-        result.put("note", "仿真机械臂未接入，占位结果");
-        return result;
+    private java.util.Map<String, Object> inspectionResult(RmsTask task) {
+        return RmsInspectionResultFactory.create(
+                task.taskId(), properties.getBehavior().getInspectionResult(), task.parameters());
+    }
+
+    private static String resultMessage(RmsTask task) {
+        if (task.message() != null && !task.message().isBlank()) {
+            return task.message();
+        }
+        if (task.status() == RmsTaskStatus.COMPLETED) {
+            return "task successed";
+        }
+        if (task.status() == RmsTaskStatus.CANCELED) {
+            return "task cancelled";
+        }
+        return task.status().failed() ? task.status().wireName() : "task finished";
     }
 }

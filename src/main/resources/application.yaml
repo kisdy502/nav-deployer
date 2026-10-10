@@ -108,7 +108,7 @@ rms:
     publish_legacy_status: true
     publish_body_status: true
   behavior:
-    # 质检占位（仿真机械臂接入前）：模拟执行时长与结果
+    # 仿真质检：任务正常完成时 action_status=3，业务质检结果独立为 OK / NG
     inspection_duration_ms: 8000
     inspection_result: OK
     # charge / return_home 目标坐标（未配置且 RMS 未带 destination 时任务失败）

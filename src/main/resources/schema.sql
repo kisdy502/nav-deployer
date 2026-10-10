@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS nav_point (
     id          BIGSERIAL PRIMARY KEY,
     map_id      BIGINT            NOT NULL REFERENCES nav_map(id),
     point_code  VARCHAR(64)       NOT NULL,
-    point_type  VARCHAR(16)       NOT NULL DEFAULT 'NORMAL', -- NORMAL / CHARGER / HOME
+    point_type  VARCHAR(16)       NOT NULL DEFAULT 'NORMAL', -- NORMAL / WORK / CHARGER / HOME
     x           DOUBLE PRECISION  NOT NULL,
     y           DOUBLE PRECISION  NOT NULL,
     yaw         DOUBLE PRECISION  NOT NULL,

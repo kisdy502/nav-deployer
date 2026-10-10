@@ -7,6 +7,7 @@ const R = 0.4
 
 const TYPE_COLORS: Record<PointType, number> = {
   NORMAL: 0x95d475, // 浅绿
+  WORK: 0x409eff, // 作业点用蓝色区分
   HOME: 0x95d475, // 浅绿
   CHARGER: 0xe6a23c, // 充电点保留橙色便于辨识
 }
