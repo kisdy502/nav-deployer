@@ -11,8 +11,8 @@ public final class RmsInspectionResultFactory {
     }
 
     public static Map<String, Object> create(String taskId,
-                                             String configuredResult,
-                                             Map<String, Object> parameters) {
+                                              String configuredResult,
+                                              Map<String, Object> parameters) {
         String result = "NG".equalsIgnoreCase(configuredResult) ? "NG" : "OK";
         String errorReason = "NG".equals(result) ? "QR/DM code not decoded" : "";
         String barcode = parameterText(parameters, "wireharness_barcode", "");

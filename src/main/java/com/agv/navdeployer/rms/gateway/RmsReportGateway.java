@@ -6,6 +6,7 @@ import com.agv.navdeployer.rms.protocol.dto.report.TaskResultEnvelope;
 import com.agv.navdeployer.rms.protocol.keys.RmsReportKeys;
 import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.rms.task.RmsResultReporter;
+import com.agv.navdeployer.rms.zenoh.RmsMessageLog;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.zenoh.pubsub.Publisher;
@@ -67,8 +68,8 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             }
 
             // body 通道：{data: {...}, serial_num, timestamp}（对齐 RMS 真机格式）
+            // 周期性状态上报不打高亮日志（刷屏），异常时上方 warn 兜底
             String reportStatus = mapper.writeValueAsString(stateView.buildStatusEnvelope());
-//            log.info("上报状态:{},内容:{}", keys.bodyStatusReport(),reportStatus);
             publisher.put(reportStatus);
         }
         if (reportProps.isPublishLegacyStatus()) {
@@ -111,10 +112,9 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             throw new IllegalStateException("rms channel not open");
         }
         String key = keys.taskResultReport(taskId);
-        String result=mapper.writeValueAsString(envelope);
+        String result = mapper.writeValueAsString(envelope);
         current.putOnce(key, result);
-        log.info("RMS result_report published: key={} result={}",
-                key, result);
+        RmsMessageLog.outboundPublish(key, result);
     }
 
     public void declarePublishers() throws Exception {

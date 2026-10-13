@@ -10,6 +10,7 @@ import com.agv.navdeployer.rms.protocol.dto.command.MapNameRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.RelocateRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.TaskCommandRequest;
 import com.agv.navdeployer.rms.task.RmsTaskService;
+import com.agv.navdeployer.rms.zenoh.RmsMessageLog;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.zenoh.query.Query;
@@ -72,6 +73,19 @@ public class RmsCommandGateway {
         }
     }
 
+    /**
+     * 周期轮询类段：RMS 定时重复查询（心跳/状态/配置等），不打高亮日志防刷屏，
+     * 只保留一次性指令（task/add、task/start、建图、上传等）的完整报文。
+     */
+    private static final java.util.Set<String> PERIODIC_SEGMENTS = java.util.Set.of(
+            BodySegment.STATUS_QUERY.segment(),
+            BodySegment.POSE_QUERY.segment(),
+            BodySegment.CONFIG_GET.segment(),
+            BodySegment.MODE_GET.segment(),
+            BodySegment.MAPPING_STATUS.segment(),
+            BodySegment.TASK_STATUS.segment(),
+            BodySegment.TASK_TEMPLATE_QUERY.segment());
+
     /** 统一入口（exact 与通配 queryable 都走这里）。 */
     void dispatch(Query query, String declaredSegment) {
         String rawPayload = "{}";
@@ -82,16 +96,29 @@ public class RmsCommandGateway {
             if (actualSegment.isBlank() || actualSegment.contains("*")) {
                 actualSegment = declaredSegment;
             }
+            boolean periodic = PERIODIC_SEGMENTS.contains(actualSegment);
+            if (!periodic) {
+                RmsMessageLog.inboundQuery(String.valueOf(query.getKeyExpr()), rawPayload);
+            }
             reply = handle(actualSegment, rawPayload);
-            log.info("RMS query key={} segment={} reply_status={} reply_msg={}",
-                    query.getKeyExpr(), actualSegment, reply.status(), reply.msg());
+            if (periodic) {
+                log.debug("RMS periodic query segment={} reply_status={}", actualSegment, reply.status());
+            } else {
+                log.info("RMS query key={} segment={} reply_status={} reply_msg={}",
+                        query.getKeyExpr(), actualSegment, reply.status(), reply.msg());
+            }
         } catch (Exception exception) {
             log.warn("RMS query failed key={} payload={} msg={}",
                     query.getKeyExpr(), rawPayload, exception.getMessage(), exception);
             reply = BodyReply.failure(500, "nav-deployer failed: " + exception.getMessage());
         }
         try {
-            ZenohChannel.replyJson(query, mapper.writeValueAsString(reply));
+            String replyJson = mapper.writeValueAsString(reply);
+            if (!PERIODIC_SEGMENTS.contains(
+                    RmsCommandKeys.extractBodySegment(String.valueOf(query.getKeyExpr())))) {
+                RmsMessageLog.outboundReply(String.valueOf(query.getKeyExpr()), replyJson);
+            }
+            ZenohChannel.replyJson(query, replyJson);
         } catch (Exception serializeFailure) {
             ZenohChannel.replyError(query, "serialize reply failed");
         } finally {

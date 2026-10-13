@@ -2,6 +2,7 @@ package com.agv.navdeployer.rms.gateway;
 
 import com.agv.navdeployer.rms.protocol.dto.service.RegisterRequest;
 import com.agv.navdeployer.rms.protocol.keys.RmsServiceKeys;
+import com.agv.navdeployer.rms.zenoh.RmsMessageLog;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,12 +53,14 @@ public class RmsServiceGateway {
             return new RegisterResult(false, null);
         }
         try {
-            Optional<String> reply = current.query(keys.register(),
-                    mapper.writeValueAsString(request), timeoutMs);
+            String requestJson = mapper.writeValueAsString(request);
+            RmsMessageLog.outboundQuery(keys.register(), requestJson);
+            Optional<String> reply = current.query(keys.register(), requestJson, timeoutMs);
             if (reply.isEmpty()) {
                 log.warn("RMS registration no reply, key={}", keys.register());
                 return new RegisterResult(false, null);
             }
+            RmsMessageLog.inboundReply(keys.register(), reply.get());
             JsonNode root = mapper.readTree(reply.get());
             int status = root.path("status").asInt(0);
             if (status != 0) {

@@ -206,7 +206,7 @@ public class RmsRobotSession {
             long now = System.currentTimeMillis();
             if (now - lastStatusLogMs > 30_000) {
                 lastStatusLogMs = now;
-                log.info("rms status report sent (body_put + legacy_put)");
+                log.debug("rms status report sent (body_put + legacy_put)");
             }
         } catch (Exception exception) {
             log.warn("rms status report failed: {}", exception.getMessage());

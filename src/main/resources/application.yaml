@@ -8,6 +8,10 @@ server:
 spring:
   application:
     name: nav-deployer
+  # IDEA 控制台 ANSI 探测常失败导致日志全白，强制开启彩色输出（logback %clr 与消息内嵌色码都依赖它）
+  output:
+    ansi:
+      enabled: always
   datasource:
     # 本地开发用默认值，Docker 部署时由环境变量覆盖
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nav_deployer}
@@ -111,6 +115,8 @@ rms:
     # 仿真质检：任务正常完成时 action_status=3，业务质检结果独立为 OK / NG
     inspection_duration_ms: 8000
     inspection_result: OK
+    # 仿真质检图片目录（含子目录）：打 zip 时随机取 2~3 张真实图片；为空或无图时回退占位图
+    inspection_image_dir: ${RMS_INSPECTION_IMAGE_DIR:C:/Users/think/Pictures}
     # charge / return_home 目标坐标（未配置且 RMS 未带 destination 时任务失败）
     # charge_pose: { x: 0.0, y: 0.0, yaw: 0.0 }
     # home_pose:   { x: 0.0, y: 0.0, yaw: 0.0 }

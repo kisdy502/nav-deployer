@@ -733,7 +733,7 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
     /** 周期性 INFO 摘要：限流可见，证明每个话题都有数据进来。 */
     private void maybeLogSummary() {
         long now = System.nanoTime();
-        if (now - lastSummaryAtNanos < summaryIntervalMs * 1_000_000L) {
+        if (now - lastSummaryAtNanos < summaryIntervalMs * 2_000_000L) {
             return;
         }
         lastSummaryAtNanos = now;

@@ -4,6 +4,7 @@ import com.agv.navdeployer.rms.config.RmsProperties;
 import com.agv.navdeployer.rms.inspection.RmsInspectionResultFactory;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.rms.task.RmsTaskRegistry;
+import com.agv.navdeployer.rms.zenoh.RmsMessageLog;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,7 +21,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -45,6 +51,13 @@ public class RmsInspectionUploader {
     private final RmsProperties properties;
     private final RmsTaskRegistry taskRegistry;
     private final HttpClient httpClient;
+    /** 上传异步执行器：云端 query 等待窗口仅 ~5s，zip 生成+HTTP 上传必须放后台，收到指令立即应答 */
+    private final java.util.concurrent.ExecutorService uploadWorker =
+            java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "rms-inspection-upload");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     public RmsInspectionUploader(ObjectMapper mapper,
                                  RmsProperties properties,
@@ -60,11 +73,11 @@ public class RmsInspectionUploader {
     /**
      * 处理云端 task/result_files_upload_start 指令。
      * payload: {"task_id": "xxx", "path_url": "https://s3.../presigned"}
-     * 同步生成 ZIP → 上传 → 回复 BodyReply → 异步 pub task-result-files-uploaded。
+     * 立即应答（云端 query 只等 ~5s），zip 生成+上传+通知全部异步执行。
      */
     public BodyReply handleUploadStart(String rawPayload, ZenohChannel channel, String publishKeyBase) {
-        String taskId = null;
-        String pathUrl = null;
+        String taskId;
+        String pathUrl;
         try {
             JsonNode root = mapper.readTree(rawPayload == null || rawPayload.isBlank() ? "{}" : rawPayload);
             taskId = text(root, "task_id");
@@ -72,21 +85,27 @@ public class RmsInspectionUploader {
             if (taskId == null || pathUrl == null) {
                 return BodyReply.failure(400, "task_id 和 path_url 必填");
             }
-
-            byte[] zip = buildInspectionZip(taskId);
-            uploadToUrl(pathUrl, zip);
-
-            log.info("质检结果文件上传成功: task_id={} url={} size={}bytes", taskId, pathUrl, zip.length);
-
-            publishUploadedNotification(channel, publishKeyBase, taskId, "inspection_result.zip");
-            return BodyReply.success("upload completed", null);
         } catch (Exception exception) {
-            log.warn("质检结果文件上传失败: task_id={} msg={}", taskId, exception.getMessage());
-            return BodyReply.failure(500, "upload failed: " + exception.getMessage());
+            return BodyReply.failure(400, "payload 解析失败: " + exception.getMessage());
         }
+
+        String finalTaskId = taskId;
+        String finalPathUrl = pathUrl;
+        uploadWorker.execute(() -> {
+            try {
+                byte[] zip = buildInspectionZip(finalTaskId);
+                uploadToUrl(finalPathUrl, zip);
+                log.info("质检结果文件上传成功: task_id={} url={} size={}bytes", finalTaskId, finalPathUrl, zip.length);
+                publishUploadedNotification(channel, publishKeyBase, finalTaskId, "inspection_result.zip");
+            } catch (Exception exception) {
+                log.warn("质检结果文件上传失败: task_id={} pathUrl={} msg={}", finalTaskId, finalPathUrl, exception.getMessage());
+                publishUploadFailedNotification(channel, publishKeyBase, finalTaskId, exception.getMessage());
+            }
+        });
+        return BodyReply.success("upload accepted", null);
     }
 
-    /** 生成仿真质检结果 ZIP（真机结构 report.json + 两张占位图 + summary.txt）。 */
+    /** 仿真质检结果 ZIP：report.json + summary.txt + 随机 2~3 张本机真实图片（无图时回退占位图）。 */
     byte[] buildInspectionZip(String taskId) throws Exception {
         Map<String, Object> parameters = taskRegistry.find(taskId)
                 .map(task -> task.parameters())
@@ -109,10 +128,89 @@ public class RmsInspectionUploader {
             zip.putNextEntry(new ZipEntry("summary.txt"));
             zip.write(summary.getBytes(StandardCharsets.UTF_8));
             zip.closeEntry();
-            writePlaceholderImage(zip, taskId + "_left_3D.jpg", true);
-            writePlaceholderImage(zip, taskId + "_right_3D.jpg", "OK".equals(inspectionResult));
+
+            List<PickedImage> images = pickRandomImages();
+            if (images.isEmpty()) {
+                log.warn("质检 zip 未取到本机图片（dir={}），回退占位图", properties.getBehavior().getInspectionImageDir());
+                writePlaceholderImage(zip, taskId + "_left_3D.jpg", true);
+                writePlaceholderImage(zip, taskId + "_right_3D.jpg", "OK".equals(inspectionResult));
+            } else {
+                for (PickedImage image : images) {
+                    zip.putNextEntry(new ZipEntry(image.entryName()));
+                    zip.write(image.bytes());
+                    zip.closeEntry();
+                }
+                log.info("质检 zip 已打包 {} 张本机图片: {}",
+                        images.size(), images.stream().map(PickedImage::sourceName).toList());
+            }
         }
         return buffer.toByteArray();
+    }
+
+    private record PickedImage(String entryName, String sourceName, byte[] bytes) {
+    }
+
+    private static final String[] IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "gif", "webp"};
+
+    /** 从配置目录（含子目录）随机取 2~3 张图片；目录不存在/无图/读取失败时返回空列表。 */
+    private List<PickedImage> pickRandomImages() {
+        String dir = properties.getBehavior().getInspectionImageDir();
+        if (dir == null || dir.isBlank()) {
+            return List.of();
+        }
+        Path root = Path.of(dir);
+        if (!Files.isDirectory(root)) {
+            log.warn("质检图片目录不存在: {}", root);
+            return List.of();
+        }
+        List<Path> candidates;
+        try (var stream = Files.walk(root)) {
+            candidates = stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> isImageFile(path.getFileName().toString()))
+                    .collect(java.util.stream.Collectors.toList());
+        } catch (Exception exception) {
+            log.warn("扫描质检图片目录失败: {} msg={}", root, exception.getMessage());
+            return List.of();
+        }
+        if (candidates.isEmpty()) {
+            log.warn("质检图片目录及其子目录没有图片: {}", root);
+            return List.of();
+        }
+        java.util.Collections.shuffle(candidates);
+        // 随机 2~3 张，且不超过候选数
+        int count = Math.min(2 + java.util.concurrent.ThreadLocalRandom.current().nextInt(2), candidates.size());
+        List<PickedImage> picked = new ArrayList<>(count);
+        for (Path path : candidates) {
+            if (picked.size() >= count) {
+                break;
+            }
+            try {
+                String fileName = path.getFileName().toString();
+                String ext = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
+                picked.add(new PickedImage(
+                        "inspection_image_%d.%s".formatted(picked.size() + 1, ext),
+                        fileName,
+                        Files.readAllBytes(path)));
+            } catch (Exception exception) {
+                log.warn("读取质检图片失败，跳过: {} msg={}", path, exception.getMessage());
+            }
+        }
+        return picked;
+    }
+
+    private static boolean isImageFile(String fileName) {
+        int dot = fileName.lastIndexOf('.');
+        if (dot < 0) {
+            return false;
+        }
+        String ext = fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
+        for (String candidate : IMAGE_EXTENSIONS) {
+            if (candidate.equals(ext)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void writePlaceholderImage(ZipOutputStream zip,
@@ -133,18 +231,55 @@ public class RmsInspectionUploader {
         zip.closeEntry();
     }
 
-    /** HTTP PUT 二进制到预签名 URL。 */
+    /**
+     * HTTP PUT 二进制到预签名 URL。
+     *
+     * <p>云端预签名把 content-type 计入了签名（X-Amz-SignedHeaders=content-type;host），
+     * PUT 的 Content-Type 必须与云端签名时的值完全一致，否则 MinIO 返回 403 SignatureDoesNotMatch。
+     * 云端指令未告知签名用的 content-type，按常见约定依次尝试；上次成功的值优先（不同云端版本签名约定不同，
+     * 记住后免于每次重试两个 403），仅在 403 SignatureDoesNotMatch 时换下一个候选重试（PUT 幂等，重复上传无副作用）。
+     */
+    private static final java.util.List<String> UPLOAD_CONTENT_TYPES = java.util.List.of(
+            "video/mp4", "application/zip", "application/octet-stream", "binary/octet-stream");
+
+    /** 上次成功的 content-type（云端版本固定后签名值不变，优先复用避免 403 重试） */
+    private static volatile String lastSuccessfulContentType;
+
     void uploadToUrl(String url, byte[] body) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/zip")
-                .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
-                .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SEC))
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("HTTP " + response.statusCode() + ": " + response.body());
+        String preferred = lastSuccessfulContentType;
+        java.util.List<String> candidates = new ArrayList<>(UPLOAD_CONTENT_TYPES.size());
+        if (preferred != null) {
+            candidates.add(preferred);
         }
+        for (String contentType : UPLOAD_CONTENT_TYPES) {
+            if (!candidates.contains(contentType)) {
+                candidates.add(contentType);
+            }
+        }
+        IllegalStateException lastFailure = null;
+        for (String contentType : candidates) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", contentType)
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
+                    .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SEC))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                lastSuccessfulContentType = contentType;
+                log.info("质检结果文件上传成功, content-type={} (后续上传沿用此值)", contentType);
+                return;
+            }
+            String bodyText = response.body() == null ? "" : response.body();
+            lastFailure = new IllegalStateException("HTTP " + response.statusCode() + ": " + bodyText);
+            boolean signatureMismatch = response.statusCode() == 403 && bodyText.contains("SignatureDoesNotMatch");
+            log.warn("质检结果文件上传失败（content-type={}）: HTTP {}", contentType, response.statusCode());
+            // 只有"签名不匹配"才值得换 content-type 重试；403 过期/拒绝访问等其他错误直接失败
+            if (!signatureMismatch) {
+                throw lastFailure;
+            }
+        }
+        throw lastFailure;
     }
 
     /** zenoh pub task-result-files-uploaded 通知云端。 */
@@ -161,10 +296,27 @@ public class RmsInspectionUploader {
             file.put("upload_status", "uploaded");
 
             String key = keyBase + "/task-result-files-uploaded";
-            channel.putOnce(key, mapper.writeValueAsString(root));
+            String notification = mapper.writeValueAsString(root);
+            RmsMessageLog.outboundPublish(key, notification);
+            channel.putOnce(key, notification);
             log.info("task-result-files-uploaded 已通知: task_id={} key={}", taskId, key);
         } catch (Exception exception) {
             log.warn("task-result-files-uploaded 通知失败: task_id={} msg={}", taskId, exception.getMessage());
+        }
+    }
+
+    /** 上传失败的兜底通知：result=failed，让云端知道本轮上传没成，别等 task-result-files-uploaded 空转 */
+    void publishUploadFailedNotification(ZenohChannel channel, String keyBase, String taskId, String reason) {
+        try {
+            ObjectNode root = mapper.createObjectNode();
+            root.put("task_id", taskId);
+            root.put("result", "failed");
+            root.put("msg", reason == null ? "upload failed" : reason);
+            String key = keyBase + "/task-result-files-uploaded";
+            channel.putOnce(key, mapper.writeValueAsString(root));
+            log.info("task-result-files-uploaded(failed) 已通知: task_id={} key={}", taskId, key);
+        } catch (Exception exception) {
+            log.warn("task-result-files-uploaded(failed) 通知失败: task_id={} msg={}", taskId, exception.getMessage());
         }
     }
 
