@@ -111,6 +111,8 @@ rms:
     status_interval_ms: 5000
     publish_legacy_status: true
     publish_body_status: true
+    # 排查开关：逐条打印心跳/状态上报（排查云端机器人掉线时临时打开）
+    verbose_log: ${RMS_VERBOSE_LOG:false}
   behavior:
     # 仿真质检：任务正常完成时 action_status=3，业务质检结果独立为 OK / NG
     inspection_duration_ms: 8000

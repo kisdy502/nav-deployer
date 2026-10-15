@@ -257,6 +257,16 @@ public class RmsProperties {
         private boolean publishLegacyStatus = true;
         /** 是否发布 body key（.../api/v1/status/report） */
         private boolean publishBodyStatus = true;
+        /** 排查开关：逐条打印心跳/状态上报结果（默认只打 30s 汇总） */
+        private boolean verboseLog = false;
+
+        public boolean isVerboseLog() {
+            return verboseLog;
+        }
+
+        public void setVerboseLog(boolean verboseLog) {
+            this.verboseLog = verboseLog;
+        }
 
         public long getHeartbeatIntervalMs() {
             return heartbeatIntervalMs;

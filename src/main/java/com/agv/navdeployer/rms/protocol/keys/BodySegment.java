@@ -46,7 +46,10 @@ public enum BodySegment {
     TASK_STOP("task/stop", true),
     TASK_STATUS("task/status", true),
 
-    RESULT_FILES_UPLOAD_START("task/result_files_upload_start", true);
+    RESULT_FILES_UPLOAD_START("task/result_files_upload_start", true),
+
+    /** RMS 日志收集指令（robot-management RobotLogCollectionService 下发） */
+    LOG_COLLECT("log/collect", true);
 
     private final String segment;
     private final boolean supported;

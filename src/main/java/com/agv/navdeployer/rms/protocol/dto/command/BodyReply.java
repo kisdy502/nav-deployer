@@ -23,4 +23,9 @@ public record BodyReply(
     public static BodyReply failure(int status, String msg) {
         return new BodyReply(status, msg, Instant.now().toEpochMilli(), Map.of());
     }
+
+    /** 带业务 data 的失败回复（如日志收集拒绝时携带 collection_id/accepted/error_code） */
+    public static BodyReply failure(int status, String msg, Object data) {
+        return new BodyReply(status, msg, Instant.now().toEpochMilli(), data);
+    }
 }

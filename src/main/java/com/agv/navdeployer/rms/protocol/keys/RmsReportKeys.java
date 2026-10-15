@@ -27,7 +27,7 @@ public final class RmsReportKeys {
         return ctx.robotScopedBase() + "/heartbeat";
     }
 
-    /** 任务结果上报：.../api/v1/task/{task_id}/result_report（任务终态时一次）。 */
+    /** 任务结果上报：.../api/v1/task/result_report（平铺 key；云端同时订阅带/不带 task_id 两种形态）。 */
     public String taskResultReport(String taskId) {
         return ctx.bodyApiBase() + "/task/result_report";
     }

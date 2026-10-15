@@ -187,7 +187,10 @@ public class RmsRobotSession {
             reportGateway.publishLegacyHeartbeat(json);
             boolean queryReplied = serviceGateway.heartbeatQuery(json, props.getZenoh().getQueryTimeoutMs());
             long now = System.currentTimeMillis();
-            if (now - lastHeartbeatLogMs > 30_000) {
+            if (props.getReport().isVerboseLog()) {
+                log.info("rms heartbeat beat: legacy_put=ok, body_query_replied={} (每 {}ms, verbose)",
+                        queryReplied, props.getReport().getHeartbeatIntervalMs());
+            } else if (now - lastHeartbeatLogMs > 30_000) {
                 lastHeartbeatLogMs = now;
                 log.info("rms heartbeat: legacy_put=ok, body_query_replied={} (每 {}ms)",
                         queryReplied, props.getReport().getHeartbeatIntervalMs());

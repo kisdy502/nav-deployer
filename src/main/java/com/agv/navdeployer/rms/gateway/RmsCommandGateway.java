@@ -3,6 +3,7 @@ package com.agv.navdeployer.rms.gateway;
 import com.agv.navdeployer.rms.map.RmsInspectionUploader;
 import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.map.RmsTelemetryService;
+import com.agv.navdeployer.rms.log.RmsLogCollector;
 import com.agv.navdeployer.rms.protocol.keys.BodySegment;
 import com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
@@ -32,16 +33,18 @@ public class RmsCommandGateway {
     private final RmsMapService mapService;
     private final RmsTelemetryService telemetryService;
     private final RmsInspectionUploader inspectionUploader;
+    private final RmsLogCollector logCollector;
     private final com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter;
     private final com.agv.navdeployer.service.NavPointService navPointService;
     private final com.agv.navdeployer.service.NavPathService navPathService;
     private final ObjectMapper mapper;
     private volatile RmsCommandKeys keys;
     private volatile ZenohChannel currentChannel;
-
-    public RmsCommandGateway(RmsTaskService taskService, RmsMapService mapService,
+    public RmsCommandGateway(RmsTaskService taskService,
+                             RmsMapService mapService,
                              RmsTelemetryService telemetryService,
                              RmsInspectionUploader inspectionUploader,
+                             RmsLogCollector logCollector,
                              com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
                              com.agv.navdeployer.service.NavPointService navPointService,
                              com.agv.navdeployer.service.NavPathService navPathService,
@@ -50,6 +53,7 @@ public class RmsCommandGateway {
         this.mapService = mapService;
         this.telemetryService = telemetryService;
         this.inspectionUploader = inspectionUploader;
+        this.logCollector = logCollector;
         this.scheduleAdapter = scheduleAdapter;
         this.navPointService = navPointService;
         this.navPathService = navPathService;
@@ -161,6 +165,7 @@ public class RmsCommandGateway {
             case TASK_ADD -> taskService.addTask(request);
             case RESULT_FILES_UPLOAD_START -> inspectionUploader.handleUploadStart(
                     rawPayload, currentChannel, keys.bodyKeyBase());
+            case LOG_COLLECT -> logCollector.handleCollect(rawPayload, currentChannel, keys.bodyKeyBase());
             case TASK_START -> taskService.startTask(request);
             case TASK_DELETE -> taskService.deleteTask(request.taskId());
             case TASK_PAUSE, TASK_PAUSE_TYPO -> taskService.pauseTask(request.taskId());
