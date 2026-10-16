@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.agv</groupId>
+        <artifactId>nav-deployer</artifactId>
+        <version>0.1.0</version>
+    </parent>
+    <artifactId>nav-rms</artifactId>
+    <name>nav-rms</name>
+    <description>RMS 协议层：zenoh 双向通道（Report/Service/Command），对接 robot-manager-service 微服务</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-robot-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-platform</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.zenoh</groupId>
+            <artifactId>zenoh-java</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>

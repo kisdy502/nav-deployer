@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.agv</groupId>
+        <artifactId>nav-deployer</artifactId>
+        <version>0.1.0</version>
+    </parent>
+    <artifactId>nav-app</artifactId>
+    <name>nav-app</name>
+    <description>装配与应用：Spring Boot 启动器、REST 控制器、配置与资源（唯一可运行模块，产出 fat jar）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-robot-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-platform</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-rms</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
