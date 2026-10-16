@@ -309,6 +309,8 @@ public class RmsProperties {
         private String inspectionResult = "OK";
         /** 仿真质检图片目录（含子目录）：打包 zip 时随机取 2~3 张真实图片；为空或无图时回退占位图 */
         private String inspectionImageDir = "";
+        /** teach 采集样例目录（含子目录）：teach/capture 打包 zip 时取前几个文件；为空回退 application.yaml+runtime 信息 */
+        private String teachSampleDir = "";
         /** 充电点坐标（charge / replace_battery 模板目标；未配置则此类任务失败） */
         private Pose chargePose;
         /** 回家点坐标（return_home 模板目标） */
@@ -338,6 +340,14 @@ public class RmsProperties {
 
         public void setInspectionImageDir(String inspectionImageDir) {
             this.inspectionImageDir = inspectionImageDir;
+        }
+
+        public String getTeachSampleDir() {
+            return teachSampleDir;
+        }
+
+        public void setTeachSampleDir(String teachSampleDir) {
+            this.teachSampleDir = teachSampleDir;
         }
 
         public Pose getChargePose() {

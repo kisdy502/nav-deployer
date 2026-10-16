@@ -77,13 +77,14 @@ public class RmsConfig {
                                                RmsTelemetryService telemetryService,
                                                RmsInspectionUploader inspectionUploader,
                                                com.agv.navdeployer.rms.log.RmsLogCollector logCollector,
+                                               com.agv.navdeployer.rms.teach.RmsTeachCollector teachCollector,
                                                com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
                                                com.agv.navdeployer.service.NavPointService navPointService,
                                                com.agv.navdeployer.service.NavPathService navPathService,
                                                RmsTaskService taskService,
                                                ObjectMapper mapper, RmsCommandKeys keys) {
         return new RmsCommandGateway(taskService, mapService, telemetryService,
-                inspectionUploader, logCollector, scheduleAdapter, navPointService, navPathService,
+                inspectionUploader, logCollector, teachCollector, scheduleAdapter, navPointService, navPathService,
                 mapper, keys);
     }
 
@@ -91,6 +92,12 @@ public class RmsConfig {
     public com.agv.navdeployer.rms.log.RmsLogCollector rmsLogCollector(ObjectMapper mapper,
                                                                         RmsProperties properties) {
         return new com.agv.navdeployer.rms.log.RmsLogCollector(mapper, properties);
+    }
+
+    @Bean
+    public com.agv.navdeployer.rms.teach.RmsTeachCollector rmsTeachCollector(ObjectMapper mapper,
+                                                                              RmsProperties properties) {
+        return new com.agv.navdeployer.rms.teach.RmsTeachCollector(mapper, properties);
     }
 
     @Bean

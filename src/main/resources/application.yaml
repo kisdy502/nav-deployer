@@ -119,6 +119,8 @@ rms:
     inspection_result: OK
     # 仿真质检图片目录（含子目录）：打 zip 时随机取 2~3 张真实图片；为空或无图时回退占位图
     inspection_image_dir: ${RMS_INSPECTION_IMAGE_DIR:C:/Users/think/Pictures}
+    # teach 2D/3D 采集样例目录（含子目录）：teach/capture 打 zip 时取前几个文件；为空回退 application.yaml+runtime 信息
+    teach_sample_dir: ${RMS_TEACH_SAMPLE_DIR:}
     # charge / return_home 目标坐标（未配置且 RMS 未带 destination 时任务失败）
     # charge_pose: { x: 0.0, y: 0.0, yaw: 0.0 }
     # home_pose:   { x: 0.0, y: 0.0, yaw: 0.0 }
@@ -174,6 +176,8 @@ sim_agv:
   goal_timeout_s: 600
   default_max_speed: 0.6
   default_step: 0.1
+  # FOLLOW_PATH 起点纠偏：机器人距首段起点超过该距离（米）时，自动先插一段"驶向起点"
+  follow_path_start_radius: 0.5
   # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理，完成看 mode 流转）
   list_maps_service: /agv/list_maps
   get_map_service: /agv/get_map

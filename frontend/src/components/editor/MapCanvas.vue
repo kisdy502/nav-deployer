@@ -65,6 +65,22 @@ let posePreviewArrow: THREE.Mesh | null = null
 /** 视图整体旋转 180°（对齐 RViz 观察方向），localStorage 持久化 */
 const viewRot180 = ref(localStorage.getItem('nd_view_rot180') === '1')
 
+/** RViz 式 3D 环绕视角（左键旋转 / 右键平移 / 滚轮缩放） */
+const orbit3d = ref(false)
+
+function toggleOrbit3d() {
+  orbit3d.value = !orbit3d.value
+  scene?.setOrbitView(orbit3d.value)
+}
+
+/** 镜头跟随机器人：出画自动拉回，拖拽/定位后自动退出（scene 侧会翻转状态，onFrame 里同步回 UI） */
+const followCam = ref(false)
+
+function toggleFollowCam() {
+  followCam.value = !followCam.value
+  scene?.setFollowEnabled(followCam.value)
+}
+
 function applyViewRot() {
   scene?.setViewRot180(viewRot180.value)
 }
@@ -145,7 +161,11 @@ onMounted(() => {
     onLeftUp: onUp,
     onLeftClick: onClick,
     onContext: onCtx,
-    onFrame: (dt) => robotLayer?.tick(dt),
+    onFrame: (dt) => {
+      robotLayer?.tick(dt)
+      scene?.updateFollow(robotLayer?.currentPose ?? null, dt)
+      followCam.value = scene?.isFollowEnabled ?? false
+    },
   })
   scene.pickRoot.add(pointLayer.group, pathLayer.group, robotLayer.group, robotLayer.trailGroup)
   scene.scene.add(scanLayer.group)
@@ -469,6 +489,18 @@ async function onKey(ev: KeyboardEvent) {
     </div>
     <div class="nd-overlay nd-overlay--tr">
       <button class="nd-chip nd-chip--btn" :disabled="!map3dName" @click="show3d = true">三维地图</button>
+      <button
+        class="nd-chip nd-chip--btn"
+        :class="{ 'nd-chip--active': orbit3d }"
+        title="RViz 式 3D 视角：左键拖动旋转、右键平移、滚轮缩放；关闭恢复俯视"
+        @click="toggleOrbit3d"
+      >3D 视角</button>
+      <button
+        class="nd-chip nd-chip--btn"
+        :class="{ 'nd-chip--active': followCam }"
+        title="镜头跟随机器人：快出画时自动平移保持可见；手动拖拽视图或点定位后自动退出"
+        @click="toggleFollowCam"
+      >◎ 跟随</button>
       <button
         class="nd-chip nd-chip--btn"
         :class="{ 'nd-chip--active': viewRot180 }"

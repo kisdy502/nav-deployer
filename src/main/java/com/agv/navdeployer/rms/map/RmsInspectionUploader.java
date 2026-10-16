@@ -4,6 +4,7 @@ import com.agv.navdeployer.rms.config.RmsProperties;
 import com.agv.navdeployer.rms.inspection.RmsInspectionResultFactory;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.rms.task.RmsTaskRegistry;
+import com.agv.navdeployer.rms.zenoh.PresignedUrlPut;
 import com.agv.navdeployer.rms.zenoh.RmsMessageLog;
 import com.agv.navdeployer.rms.zenoh.ZenohChannel;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,14 +17,9 @@ import org.slf4j.LoggerFactory;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -45,12 +41,10 @@ import javax.imageio.ImageIO;
 public class RmsInspectionUploader {
 
     private static final Logger log = LoggerFactory.getLogger(RmsInspectionUploader.class);
-    private static final long HTTP_TIMEOUT_SEC = 30;
 
     private final ObjectMapper mapper;
     private final RmsProperties properties;
     private final RmsTaskRegistry taskRegistry;
-    private final HttpClient httpClient;
     /** 上传异步执行器：云端 query 等待窗口仅 ~5s，zip 生成+HTTP 上传必须放后台，收到指令立即应答 */
     private final java.util.concurrent.ExecutorService uploadWorker =
             java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
@@ -65,9 +59,6 @@ public class RmsInspectionUploader {
         this.mapper = mapper;
         this.properties = properties;
         this.taskRegistry = taskRegistry;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
     }
 
     /**
@@ -232,54 +223,10 @@ public class RmsInspectionUploader {
     }
 
     /**
-     * HTTP PUT 二进制到预签名 URL。
-     *
-     * <p>云端预签名把 content-type 计入了签名（X-Amz-SignedHeaders=content-type;host），
-     * PUT 的 Content-Type 必须与云端签名时的值完全一致，否则 MinIO 返回 403 SignatureDoesNotMatch。
-     * 云端指令未告知签名用的 content-type，按常见约定依次尝试；上次成功的值优先（不同云端版本签名约定不同，
-     * 记住后免于每次重试两个 403），仅在 403 SignatureDoesNotMatch 时换下一个候选重试（PUT 幂等，重复上传无副作用）。
+     * HTTP PUT 二进制到预签名 URL（Content-Type 自适应重试见 {@link PresignedUrlPut}）。
      */
-    private static final java.util.List<String> UPLOAD_CONTENT_TYPES = java.util.List.of(
-            "video/mp4", "application/zip", "application/octet-stream", "binary/octet-stream");
-
-    /** 上次成功的 content-type（云端版本固定后签名值不变，优先复用避免 403 重试） */
-    private static volatile String lastSuccessfulContentType;
-
     void uploadToUrl(String url, byte[] body) throws Exception {
-        String preferred = lastSuccessfulContentType;
-        java.util.List<String> candidates = new ArrayList<>(UPLOAD_CONTENT_TYPES.size());
-        if (preferred != null) {
-            candidates.add(preferred);
-        }
-        for (String contentType : UPLOAD_CONTENT_TYPES) {
-            if (!candidates.contains(contentType)) {
-                candidates.add(contentType);
-            }
-        }
-        IllegalStateException lastFailure = null;
-        for (String contentType : candidates) {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("Content-Type", contentType)
-                    .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
-                    .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SEC))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                lastSuccessfulContentType = contentType;
-                log.info("质检结果文件上传成功, content-type={} (后续上传沿用此值)", contentType);
-                return;
-            }
-            String bodyText = response.body() == null ? "" : response.body();
-            lastFailure = new IllegalStateException("HTTP " + response.statusCode() + ": " + bodyText);
-            boolean signatureMismatch = response.statusCode() == 403 && bodyText.contains("SignatureDoesNotMatch");
-            log.warn("质检结果文件上传失败（content-type={}）: HTTP {}", contentType, response.statusCode());
-            // 只有"签名不匹配"才值得换 content-type 重试；403 过期/拒绝访问等其他错误直接失败
-            if (!signatureMismatch) {
-                throw lastFailure;
-            }
-        }
-        throw lastFailure;
+        PresignedUrlPut.put(url, body);
     }
 
     /** zenoh pub task-result-files-uploaded 通知云端。 */

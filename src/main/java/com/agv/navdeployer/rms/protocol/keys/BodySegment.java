@@ -49,7 +49,10 @@ public enum BodySegment {
     RESULT_FILES_UPLOAD_START("task/result_files_upload_start", true),
 
     /** RMS 日志收集指令（robot-management RobotLogCollectionService 下发） */
-    LOG_COLLECT("log/collect", true);
+    LOG_COLLECT("log/collect", true),
+
+    /** teach 2D/3D 数据采集指令（应答信封为 teach 协议自定义 {msg_id,status,msg,timestamp,data}） */
+    TEACH_CAPTURE("teach/capture", true);
 
     private final String segment;
     private final boolean supported;

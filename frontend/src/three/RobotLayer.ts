@@ -6,6 +6,8 @@ const TRAIL_MAX = 2000
 /** 机器人矩形显示尺寸（实际车体 0.4m × 0.32m 的 2.5 倍左右），长边沿 +x，即朝向方向 */
 const BODY_L = 1.02
 const BODY_W = 0.7
+/** 车体显示高度（视觉放大，配合灯光呈现立体感） */
+const BODY_H = 0.5
 
 /** ">" V 形符号（空心，粗线条由外/内两条 V 边之间的填充区域构成） */
 function chevronMesh(x: number, size: number, halfH: number, thickness: number, color: number): THREE.Mesh {
@@ -23,7 +25,7 @@ function chevronMesh(x: number, size: number, halfH: number, thickness: number, 
   )
 }
 
-/** 机器人图层：蓝色矩形车体（整体随朝向旋转，长边即朝向）+ 车内「》」朝向符号 + 几何中心点（观察停靠对齐）+ 轨迹线 */
+/** 机器人图层：长方体车体（受光呈现立体感，整体随朝向旋转）+ 顶面「》」朝向符号 + 几何中心点 + 轨迹线 */
 export class RobotLayer {
   readonly group = new THREE.Group()
   readonly trailGroup = new THREE.Group()
@@ -42,32 +44,35 @@ export class RobotLayer {
   constructor() {
     this.group.position.z = 0.2
 
+    // 长方体车体：Lambert 材质在方向光下各面明暗不同，3D 视角下立体感明显
     const body = new THREE.Mesh(
-      new THREE.PlaneGeometry(BODY_L, BODY_W),
-      new THREE.MeshBasicMaterial({ color: 0x409eff, side: THREE.DoubleSide }),
+      new THREE.BoxGeometry(BODY_L, BODY_W, BODY_H),
+      new THREE.MeshLambertMaterial({ color: 0x409eff }),
     )
-    body.position.z = 0.01
-    const border = new THREE.LineLoop(
-      new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-BODY_L / 2, -BODY_W / 2, 0.02),
-        new THREE.Vector3(BODY_L / 2, -BODY_W / 2, 0.02),
-        new THREE.Vector3(BODY_L / 2, BODY_W / 2, 0.02),
-        new THREE.Vector3(-BODY_L / 2, BODY_W / 2, 0.02),
-      ]),
+    body.position.z = BODY_H / 2 + 0.01
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(body.geometry),
       new THREE.LineBasicMaterial({ color: 0x1d6fd1 }),
     )
-    // 几何中心点：观察停靠对齐
+    edges.position.z = BODY_H / 2 + 0.01
+    // 前部深色"头部"：侧视/斜视时也能分辨朝向
+    const nose = new THREE.Mesh(
+      new THREE.BoxGeometry(BODY_L * 0.22, BODY_W * 0.96, BODY_H * 1.02),
+      new THREE.MeshLambertMaterial({ color: 0x1d6fd1 }),
+    )
+    nose.position.set(BODY_L / 2 - BODY_L * 0.11, 0, BODY_H / 2 + 0.01)
+    // 几何中心点：观察行驶时与路线的偏离（贴顶面，小圆点减少遮挡）
     const centerDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.077, 16),
+      new THREE.CircleGeometry(0.05, 16),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     )
-    centerDot.position.z = 0.03
-    // 「>>」朝向符号：两个空心 V 形，位于机器人前部（不与中心圆点重叠）
+    centerDot.position.z = BODY_H + 0.02
+    // 「>>」朝向符号：两个空心 V 形紧邻排列（尾箭头前移贴住首箭头），位于机器人前部
     this.chevron.add(
-      chevronMesh(0.10, 0.14, 0.11, 0.032, 0xffffff),
+      chevronMesh(0.16, 0.14, 0.11, 0.032, 0xffffff),
       chevronMesh(0.30, 0.14, 0.11, 0.032, 0xffffff),
     )
-    this.chevron.position.z = 0.04
+    this.chevron.position.z = BODY_H + 0.02
 
     const el = document.createElement('div')
     el.className = 'nd-label'
@@ -76,11 +81,11 @@ export class RobotLayer {
     inner.textContent = 'AGV'
     el.appendChild(inner)
     const label = new CSS2DObject(el)
-    // 标签上移出车体（挂在 root 上不随车体旋转，世界系固定在机器人上方）
-    label.position.set(0, 0.55, 0)
+    // 标签挂在 root 上不随车体旋转，浮在车体上方（俯视与 3D 视角都清晰）
+    label.position.set(0, 0.55, BODY_H + 0.25)
 
-    // 车体组：矩形、边框、朝向符号随 yaw 一起旋转；label 挂在 root 上保持文字不随车体转动
-    this.bodyGroup.add(body, border, centerDot, this.chevron)
+    // 车体组：长方体、描边、头部、朝向符号随 yaw 一起旋转；label 挂在 root 上保持文字不随车体转动
+    this.bodyGroup.add(body, edges, nose, centerDot, this.chevron)
     this.root.add(this.bodyGroup, label)
     this.group.add(this.root)
 

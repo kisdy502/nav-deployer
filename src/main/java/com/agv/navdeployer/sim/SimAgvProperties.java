@@ -56,6 +56,8 @@ public class SimAgvProperties {
     private long goalTimeoutSeconds = 600L;
     private double defaultMaxSpeed = 0.6;
     private double defaultStep = 0.1;
+    /** FOLLOW_PATH 起点纠偏阈值（米）：机器人距首段起点超过该值时自动插入一段"驶向起点"。 */
+    private double followPathStartRadius = 0.5;
 
     // ===== 地图管理服务（agv_bridge_v2 v0.3.0+）=====
     private String listMapsService = "/agv/list_maps";
@@ -362,6 +364,14 @@ public class SimAgvProperties {
 
     public void setDefaultStep(double defaultStep) {
         this.defaultStep = defaultStep;
+    }
+
+    public double getFollowPathStartRadius() {
+        return followPathStartRadius;
+    }
+
+    public void setFollowPathStartRadius(double followPathStartRadius) {
+        this.followPathStartRadius = followPathStartRadius;
     }
 
     public List<String> getAdvertiseTopics() {

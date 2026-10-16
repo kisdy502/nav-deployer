@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Easing, Group, Tween } from '@tweenjs/tween.js'
 import { makeGridTexture, updateGridTexture } from './mapTexture'
 import type { MapGridVO } from '@/types/api'
@@ -120,6 +121,16 @@ export class MapScene {
   private tmpRight = new THREE.Vector3()
   private tmpUp = new THREE.Vector3()
 
+  // RViz 式 3D 环绕视角（透视相机 + OrbitControls），与俯视正交模式互斥切换
+  private perspCamera: THREE.PerspectiveCamera | null = null
+  private controls: OrbitControls | null = null
+  private orbitMode = false
+  private rightStart: { x: number; y: number } | null = null
+
+  // 镜头跟随机器人：死区（出画才拉动相机）+ 磁滞（进内环才停），手动平移/定位后自动退出
+  private followEnabled = false
+  private followEngaged = false
+
   // 测量
   private measureGroup = new THREE.Group()
   private measureLine: THREE.Line
@@ -137,6 +148,12 @@ export class MapScene {
     this.scene.background = new THREE.Color(0xeef1f6)
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 4000)
     this.camera.position.set(0, 0, 100)
+
+    // 灯光：仅影响 Lambert/Standard 材质（3D 机器人车体等）；平面贴图用 Basic 材质不受影响
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa4b1, 1.0))
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9)
+    dir.position.set(40, -50, 90)
+    this.scene.add(dir)
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
     this.renderer.setPixelRatio(window.devicePixelRatio)
@@ -213,6 +230,100 @@ export class MapScene {
   }
 
   // ---------- 相机 ----------
+
+  /** 当前生效相机：俯视模式为正交相机，3D 环绕模式为透视相机 */
+  get activeCamera(): THREE.Camera {
+    return this.orbitMode && this.perspCamera ? this.perspCamera : this.camera
+  }
+
+  /**
+   * RViz 式 3D 环绕视角开关：开启后左键拖动旋转、右键平移、滚轮缩放（OrbitControls），
+   * 点选/拖拽编辑仍按地面平面射线工作；关闭恢复俯视正交视图（状态保留）。
+   */
+  setOrbitView(on: boolean) {
+    if (on === this.orbitMode) return
+    this.orbitMode = on
+    if (on) {
+      if (!this.perspCamera) {
+        this.perspCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000)
+        this.perspCamera.up.set(0, 0, 1)
+        this.controls = new OrbitControls(this.perspCamera, this.renderer.domElement)
+        this.controls.enableDamping = true
+        this.controls.dampingFactor = 0.12
+        this.controls.screenSpacePanning = false
+        this.controls.maxPolarAngle = Math.PI / 2 - 0.04
+        this.controls.minDistance = 1.5
+        this.controls.maxDistance = 700
+      }
+      this.controls!.enabled = true
+      const aspect = (this.container.clientWidth || 1) / (this.container.clientHeight || 1)
+      this.perspCamera.aspect = aspect
+      this.perspCamera.updateProjectionMatrix()
+      // 以当前俯视视图中心为环绕中心，仰角 55°，方位角对齐当前 180° 视图偏好
+      const center = new THREE.Vector3(this.camera.position.x, this.camera.position.y, 0)
+      const az = this.viewRot180 ? Math.PI : 0
+      const el = THREE.MathUtils.degToRad(55)
+      const dist = Math.max(this.viewHeight * 1.35, 3)
+      this.perspCamera.position.set(
+        center.x + dist * Math.cos(el) * Math.sin(az),
+        center.y - dist * Math.cos(el) * Math.cos(az),
+        dist * Math.sin(el),
+      )
+      this.perspCamera.lookAt(center)
+      this.controls!.target.copy(center)
+      this.controls!.update()
+      // 斜视角下 1m 细网格易摩尔纹，只保留 10m 粗网格
+      if (this.gridMinor) this.gridMinor.visible = false
+    } else {
+      if (this.controls) this.controls.enabled = false
+      this.updateCamera()
+    }
+  }
+
+  get isOrbitMode() {
+    return this.orbitMode
+  }
+
+  get isFollowEnabled() {
+    return this.followEnabled
+  }
+
+  setFollowEnabled(on: boolean) {
+    this.followEnabled = on
+    this.followEngaged = false
+  }
+
+  /**
+   * 镜头跟随机器人（由渲染循环每帧调用）：机器人快出画（NDC 超出 ±0.35）时
+   * 指数平滑拉动相机，回到内环（±0.25）后停止——画面稳定不抖动；
+   * 正交模式平移相机，3D 环绕模式同步平移 target 与相机保持视角不变。
+   */
+  updateFollow(robot: { x: number; y: number } | null, dt: number) {
+    if (!this.followEnabled || !robot) return
+    const p = new THREE.Vector3(robot.x, robot.y, 0).project(this.activeCamera)
+    const ax = Math.abs(p.x)
+    const ay = Math.abs(p.y)
+    if (!this.followEngaged) {
+      if (ax <= 0.35 && ay <= 0.35) return
+      this.followEngaged = true
+    } else if (ax < 0.25 && ay < 0.25) {
+      this.followEngaged = false
+      return
+    }
+    const k = 1 - Math.exp(-3.5 * Math.max(dt, 0.001))
+    if (this.orbitMode && this.controls && this.perspCamera) {
+      const dx = (robot.x - this.controls.target.x) * k
+      const dy = (robot.y - this.controls.target.y) * k
+      this.controls.target.x += dx
+      this.controls.target.y += dy
+      this.perspCamera.position.x += dx
+      this.perspCamera.position.y += dy
+    } else {
+      this.camera.position.x += (robot.x - this.camera.position.x) * k
+      this.camera.position.y += (robot.y - this.camera.position.y) * k
+    }
+  }
+
   private updateCamera() {
     const w = this.container.clientWidth || 1
     const h = this.container.clientHeight || 1
@@ -222,6 +333,10 @@ export class MapScene {
     this.camera.top = this.viewHeight / 2
     this.camera.bottom = (-this.viewHeight) / 2
     this.camera.updateProjectionMatrix()
+    if (this.perspCamera) {
+      this.perspCamera.aspect = aspect
+      this.perspCamera.updateProjectionMatrix()
+    }
     // 网格 LOD：1m 格不足 ~10px 时隐藏细网格防摩尔纹，10m 格不足 ~1.5px 时全部隐藏
     const pxPerMeter = h / this.viewHeight
     if (this.gridMinor) this.gridMinor.visible = pxPerMeter >= 10
@@ -259,7 +374,7 @@ export class MapScene {
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
-    this.raycaster.setFromCamera(ndc, this.camera)
+    this.raycaster.setFromCamera(ndc, this.activeCamera)
     const p = new THREE.Vector3()
     this.raycaster.ray.intersectPlane(this.groundPlane, p)
     return p
@@ -271,7 +386,7 @@ export class MapScene {
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
-    this.raycaster.setFromCamera(ndc, this.camera)
+    this.raycaster.setFromCamera(ndc, this.activeCamera)
     const hits = this.raycaster.intersectObjects(this.pickRoot.children, true)
     for (const h of hits) {
       let o: THREE.Object3D | null = h.object
@@ -294,6 +409,7 @@ export class MapScene {
   }
 
   fitView(bounds: MapSceneBounds, pad = 0.12) {
+    this.followEnabled = false
     const w = Math.max(bounds.maxX - bounds.minX, 0.5)
     const h = Math.max(bounds.maxY - bounds.minY, 0.5)
     const aspect = (this.container.clientWidth || 1) / (this.container.clientHeight || 1)
@@ -301,9 +417,25 @@ export class MapScene {
     this.camera.position.x = (bounds.minX + bounds.maxX) / 2
     this.camera.position.y = (bounds.minY + bounds.maxY) / 2
     this.updateCamera()
+    // 3D 环绕模式下同步平移环绕中心，保持正交视图状态供切回
+    if (this.orbitMode && this.controls) {
+      this.controls.target.set(this.camera.position.x, this.camera.position.y, 0)
+    }
   }
 
   flyTo(x: number, y: number, viewHeight?: number, duration = 600) {
+    this.followEnabled = false
+    if (this.orbitMode && this.controls) {
+      const t = { x: this.controls.target.x, y: this.controls.target.y }
+      new Tween(t, this.tweens)
+        .to({ x, y }, duration)
+        .easing(Easing.Cubic.Out)
+        .onUpdate(() => {
+          this.controls!.target.set(t.x, t.y, 0)
+        })
+        .start()
+      return
+    }
     const state = { x: this.camera.position.x, y: this.camera.position.y, vh: this.viewHeight }
     new Tween(state, this.tweens)
       .to({ x, y, vh: viewHeight ?? this.viewHeight }, duration)
@@ -450,6 +582,7 @@ export class MapScene {
       downHit: hit,
       panning: false,
     }
+    this.rightStart = ev.button === 2 ? { x: ev.clientX, y: ev.clientY } : null
     ;(ev.target as HTMLElement).setPointerCapture(ev.pointerId)
     if (ev.button === 0) this.opts.onLeftDown?.(hit, this.screenToWorld(ev.clientX, ev.clientY), ev)
   }
@@ -465,7 +598,12 @@ export class MapScene {
     p.lastX = ev.clientX
     p.lastY = ev.clientY
     if (Math.hypot(ev.clientX - p.startX, ev.clientY - p.startY) > 4) p.moved = true
-    const canPan = p.button !== 0 || (!p.downHit && !p.panning)
+    // 3D 环绕模式：左键旋转 / 右键平移均由 OrbitControls 处理，这里只做拾取与编辑回调
+    const canPan = !this.orbitMode && (p.button !== 0 || (!p.downHit && !p.panning))
+    // 手动平移（俯视拖拽 / 3D 右键拖拽）视为接管镜头，退出跟随
+    if (p.moved && ((canPan) || (this.orbitMode && p.button === 2))) {
+      this.followEnabled = false
+    }
     if (p.moved && canPan) {
       p.panning = true
       const wpp = this.viewHeight / (this.container.clientHeight || 1)
@@ -493,6 +631,8 @@ export class MapScene {
 
   private onWheel = (ev: WheelEvent) => {
     if (this.disposed) return
+    // 3D 环绕模式：缩放由 OrbitControls 处理
+    if (this.orbitMode) return
     ev.preventDefault()
     const factor = ev.deltaY < 0 ? 1.15 : 1 / 1.15
     this.zoomBy(factor, ev.clientX, ev.clientY)
@@ -501,6 +641,11 @@ export class MapScene {
   private onContextMenu = (ev: MouseEvent) => {
     if (this.disposed) return
     ev.preventDefault()
+    // 3D 环绕模式：右键拖动平移后不弹编辑菜单（OrbitControls 也消费了右键）
+    if (this.orbitMode && this.rightStart
+      && Math.hypot(ev.clientX - this.rightStart.x, ev.clientY - this.rightStart.y) > 4) {
+      return
+    }
     const hit = this.pick(ev.clientX, ev.clientY)
     this.opts.onContext?.(hit, this.screenToWorld(ev.clientX, ev.clientY), ev)
   }
@@ -514,8 +659,10 @@ export class MapScene {
     this.lastT = now
     this.tweens.update()
     this.opts.onFrame?.(dt)
-    this.renderer.render(this.scene, this.camera)
-    this.labelRenderer.render(this.scene, this.camera)
+    if (this.orbitMode && this.controls) this.controls.update()
+    const cam = this.activeCamera
+    this.renderer.render(this.scene, cam)
+    this.labelRenderer.render(this.scene, cam)
   }
 
   dispose() {
@@ -523,6 +670,8 @@ export class MapScene {
     cancelAnimationFrame(this.rafId)
     this.ro.disconnect()
     this.disposeMapResources()
+    this.controls?.dispose()
+    this.controls = null
     const el = this.renderer.domElement
     el.removeEventListener('pointerdown', this.onPointerDown)
     el.removeEventListener('pointermove', this.onPointerMove)

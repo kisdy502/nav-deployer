@@ -53,12 +53,12 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Spring Boot 应用
+  # Spring Boot 应用（镜像内已包含前端构建产物，8083 直接访问完整 UI）
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: nav-deployer:v0.1.0
+    image: nav-deployer:v0.2.0
     container_name: nav-deployer-app
     ports:
       - "8083:8083"
@@ -78,6 +78,23 @@ services:
       # 仿真 AGV rosbridge（compose 单机部署时机器人栈需与本机互通）
       SIM_AGV_ENABLED: "true"
       SIM_AGV_WS_URL: ws://host.docker.internal:9090
+      # ---- RMS 对接（zenoh）----
+      # 未显式关闭时容器会连接打包内置的 zenoh 路由（config-json5.json）并自动注册
+      RMS_ENABLED: "true"
+      # 多实例/与本机开发同时运行时必须指定不同 SN（默认从固定种子生成，重复会互相顶号）
+      RMS_ROBOT_SN: ${RMS_ROBOT_SN:-}
+      # 切换 zenoh 环境时挂载外部配置并取消注释（bj/cc/sz 变体见 src/main/resources）
+      # RMS_ZENOH_CONFIG_FILE: /app/config/zenoh.json5
+      # ---- RMS 日志收集/质检图片/teach 采集样例目录（Linux 容器需挂载真实路径，Windows 默认值无效）----
+      RMS_INSPECTION_IMAGE_DIR: ${RMS_INSPECTION_IMAGE_DIR:-}
+      RMS_TEACH_SAMPLE_DIR: ${RMS_TEACH_SAMPLE_DIR:-}
+    volumes:
+      # 日志持久化（RMS log/collect 打包的就是这里的文件）
+      - app_logs:/app/logs
+      # 切换 zenoh 环境时挂载外部配置：
+      # - ./docker/zenoh.json5:/app/config/zenoh.json5:ro
+      # teach 采集 / 质检图片样例目录挂载示例：
+      # - ./docker/samples:/app/samples:ro     # 配合 RMS_TEACH_SAMPLE_DIR=/app/samples
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,3 +108,4 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  app_logs:

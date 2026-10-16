@@ -34,6 +34,7 @@ public class RmsCommandGateway {
     private final RmsTelemetryService telemetryService;
     private final RmsInspectionUploader inspectionUploader;
     private final RmsLogCollector logCollector;
+    private final com.agv.navdeployer.rms.teach.RmsTeachCollector teachCollector;
     private final com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter;
     private final com.agv.navdeployer.service.NavPointService navPointService;
     private final com.agv.navdeployer.service.NavPathService navPathService;
@@ -45,6 +46,7 @@ public class RmsCommandGateway {
                              RmsTelemetryService telemetryService,
                              RmsInspectionUploader inspectionUploader,
                              RmsLogCollector logCollector,
+                             com.agv.navdeployer.rms.teach.RmsTeachCollector teachCollector,
                              com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
                              com.agv.navdeployer.service.NavPointService navPointService,
                              com.agv.navdeployer.service.NavPathService navPathService,
@@ -54,6 +56,7 @@ public class RmsCommandGateway {
         this.telemetryService = telemetryService;
         this.inspectionUploader = inspectionUploader;
         this.logCollector = logCollector;
+        this.teachCollector = teachCollector;
         this.scheduleAdapter = scheduleAdapter;
         this.navPointService = navPointService;
         this.navPathService = navPathService;
@@ -90,10 +93,10 @@ public class RmsCommandGateway {
             BodySegment.TASK_STATUS.segment(),
             BodySegment.TASK_TEMPLATE_QUERY.segment());
 
-    /** 统一入口（exact 与通配 queryable 都走这里）。 */
+    /** 统一入口（exact 与通配 queryable 都走这里）。reply 为 BodyReply 或 teach 等自定义信封 ObjectNode。 */
     void dispatch(Query query, String declaredSegment) {
         String rawPayload = "{}";
-        BodyReply reply;
+        Object reply;
         try {
             rawPayload = ZenohChannel.readPayload(query);
             String actualSegment = RmsCommandKeys.extractBodySegment(String.valueOf(query.getKeyExpr()));
@@ -106,10 +109,10 @@ public class RmsCommandGateway {
             }
             reply = handle(actualSegment, rawPayload);
             if (periodic) {
-                log.debug("RMS periodic query segment={} reply_status={}", actualSegment, reply.status());
+                log.debug("RMS periodic query segment={} reply_status={}", actualSegment, statusOf(reply));
             } else {
                 log.info("RMS query key={} segment={} reply_status={} reply_msg={}",
-                        query.getKeyExpr(), actualSegment, reply.status(), reply.msg());
+                        query.getKeyExpr(), actualSegment, statusOf(reply), msgOf(reply));
             }
         } catch (Exception exception) {
             log.warn("RMS query failed key={} payload={} msg={}",
@@ -134,7 +137,7 @@ public class RmsCommandGateway {
         }
     }
 
-    private BodyReply handle(String segment, String rawPayload) {
+    private Object handle(String segment, String rawPayload) {
         // task/{id}/pause|resume|stop 通配形态：从段里取 task_id
         String perTaskId = RmsCommandKeys.extractTaskIdFromSegment(segment);
         if (perTaskId != null) {
@@ -166,6 +169,7 @@ public class RmsCommandGateway {
             case RESULT_FILES_UPLOAD_START -> inspectionUploader.handleUploadStart(
                     rawPayload, currentChannel, keys.bodyKeyBase());
             case LOG_COLLECT -> logCollector.handleCollect(rawPayload, currentChannel, keys.bodyKeyBase());
+            case TEACH_CAPTURE -> teachCollector.handleCapture(rawPayload, currentChannel, keys.bodyKeyBase());
             case TASK_START -> taskService.startTask(request);
             case TASK_DELETE -> taskService.deleteTask(request.taskId());
             case TASK_PAUSE, TASK_PAUSE_TYPO -> taskService.pauseTask(request.taskId());
@@ -174,6 +178,27 @@ public class RmsCommandGateway {
             case TASK_STATUS -> taskService.taskStatus(request.taskId());
             default -> BodyReply.failure(501, "segment not supported: " + segment);
         };
+    }
+
+    /** 自定义信封（teach 等）的 status/msg 提取，统一日志格式。 */
+    private static String statusOf(Object reply) {
+        if (reply instanceof BodyReply bodyReply) {
+            return String.valueOf(bodyReply.status());
+        }
+        if (reply instanceof com.fasterxml.jackson.databind.node.ObjectNode node) {
+            return node.path("status").asText("?");
+        }
+        return "?";
+    }
+
+    private static String msgOf(Object reply) {
+        if (reply instanceof BodyReply bodyReply) {
+            return String.valueOf(bodyReply.msg());
+        }
+        if (reply instanceof com.fasterxml.jackson.databind.node.ObjectNode node) {
+            return node.path("msg").asText("");
+        }
+        return "";
     }
 
     /** 地图/模式段分发；非地图段返回 null 走原有任务链路。 */

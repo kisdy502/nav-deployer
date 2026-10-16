@@ -162,7 +162,8 @@ public class MoveTaskService {
                 task.setGoalY(dto.y());
                 task.setGoalTheta(dto.theta());
                 segments = List.of(new SegmentPlan("", "", dto.x(), dto.y(), dto.theta(),
-                        "STRAIGHT", List.of(), dto.maxSpeed(), false, false));
+                        "STRAIGHT", List.of(), dto.maxSpeed(), false, false,
+                        Double.NaN, Double.NaN, Double.NaN));
                 endPointSingle = dto.endPoint() == null || dto.endPoint();
             }
             case MoveTask.TYPE_FOLLOW_PATH -> {
@@ -176,6 +177,26 @@ public class MoveTaskService {
                 segments = buildPathPlan(path.getId(), dto.maxSpeed());
                 if (segments.isEmpty()) {
                     throw new IllegalStateException("路线 " + dto.pathId() + " 没有可执行的边");
+                }
+                SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
+                if (pose != null && shouldReverseForNearestEnd(segments, pose.x(), pose.y())) {
+                    SegmentPlan firstEdge = segments.get(0);
+                    SegmentPlan lastEdge = segments.get(segments.size() - 1);
+                    segments = reversePathPlan(segments);
+                    log.info("follow path {} reversed for nearest end: robot=({},{}) start=({},{}) end=({},{})",
+                            path.getId(), pose.x(), pose.y(),
+                            firstEdge.sx(), firstEdge.sy(), lastEdge.x(), lastEdge.y());
+                }
+                int edgeCount = segments.size();
+                segments = withStartHopIfNeeded(segments,
+                        pose == null ? null : pose.x(), pose == null ? null : pose.y(),
+                        props.getFollowPathStartRadius());
+                if (segments.size() > edgeCount && pose != null) {
+                    SegmentPlan firstEdge = segments.get(1);
+                    log.info("follow path {} start hop prepended: robot=({},{}) start=({},{}), distance={}m > {}m",
+                            path.getId(), pose.x(), pose.y(), firstEdge.sx(), firstEdge.sy(),
+                            String.format("%.2f", Math.hypot(pose.x() - firstEdge.sx(), pose.y() - firstEdge.sy())),
+                            props.getFollowPathStartRadius());
                 }
                 SegmentPlan last = segments.get(segments.size() - 1);
                 task.setPathId(path.getId());
@@ -388,8 +409,9 @@ public class MoveTaskService {
                 .collect(Collectors.toMap(NavPoint::getId, Function.identity()));
         List<SegmentPlan> plans = new ArrayList<>(edges.size());
         for (PathEdgeVO edge : edges) {
+            NavPoint source = points.get(edge.getSourcePointId());
             NavPoint target = points.get(edge.getTargetPointId());
-            if (target == null) {
+            if (source == null || target == null) {
                 throw new IllegalStateException("路线边引用的点位不存在，数据不一致");
             }
             Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride : edge.getMaxSpeed();
@@ -402,15 +424,84 @@ public class MoveTaskService {
                     edge.getEdgeType(), controlPoints,
                     maxSpeed,
                     Boolean.TRUE.equals(edge.getBackUp()),
-                    Boolean.TRUE.equals(edge.getReverse())));
+                    Boolean.TRUE.equals(edge.getReverse()),
+                    source.getX(), source.getY(), source.getYaw()));
         }
         return plans;
+    }
+
+    /**
+     * FOLLOW_PATH 起点纠偏（可单测）：机器人距首段源点超过阈值时，在最前插入一段"驶向起点"，
+     * 到点朝向取首段行进方向；否则沿线控制器会从当前位置倒退蹭线（表现为在一段上来回移动）。
+     */
+    static List<SegmentPlan> withStartHopIfNeeded(List<SegmentPlan> segments,
+                                                  Double robotX, Double robotY, double radiusMeters) {
+        if (robotX == null || robotY == null || segments.isEmpty()) {
+            return segments;
+        }
+        SegmentPlan first = segments.get(0);
+        if (Double.isNaN(first.sx()) || Double.isNaN(first.sy())) {
+            return segments;
+        }
+        double distance = Math.hypot(robotX - first.sx(), robotY - first.sy());
+        if (distance <= radiusMeters) {
+            return segments;
+        }
+        double heading = Math.atan2(first.y() - first.sy(), first.x() - first.sx());
+        SegmentPlan hop = new SegmentPlan("", first.sourceCode(), first.sx(), first.sy(), heading,
+                "STRAIGHT", List.of(), first.maxSpeed(), false, false,
+                Double.NaN, Double.NaN, Double.NaN);
+        List<SegmentPlan> withHop = new ArrayList<>(segments.size() + 1);
+        withHop.add(hop);
+        withHop.addAll(segments);
+        return withHop;
+    }
+
+    /**
+     * 路线反向执行计划（可单测）：段序倒排，目标取原源点位姿，控制点倒序
+     * （贝塞尔 B,C2,C1,A 与 A,C1,C2,B 为同一几何曲线），reverse 置 false——已自行倒转，
+     * 不再让固件重复反转控制点。
+     */
+    static List<SegmentPlan> reversePathPlan(List<SegmentPlan> segments) {
+        List<SegmentPlan> out = new ArrayList<>(segments.size());
+        for (int i = segments.size() - 1; i >= 0; i--) {
+            SegmentPlan s = segments.get(i);
+            List<ControlPoint> cps = new ArrayList<>(s.controlPoints());
+            java.util.Collections.reverse(cps);
+            out.add(new SegmentPlan(s.targetCode(), s.sourceCode(),
+                    s.sx(), s.sy(), s.syaw(),
+                    s.edgeType(), cps,
+                    s.maxSpeed(),
+                    s.backUp(),
+                    false,
+                    Double.NaN, Double.NaN, Double.NaN));
+        }
+        return out;
+    }
+
+    /**
+     * 就近端点判定（可单测）：机器人距路线终点比起点更近时返回 true（反向执行整条路线）。
+     * 调试验证语义：从任一端起步、全段走完，站在终点就往回走，支持往复验证。
+     */
+    static boolean shouldReverseForNearestEnd(List<SegmentPlan> segments, Double robotX, Double robotY) {
+        if (robotX == null || robotY == null || segments.isEmpty()) {
+            return false;
+        }
+        SegmentPlan first = segments.get(0);
+        SegmentPlan last = segments.get(segments.size() - 1);
+        if (Double.isNaN(first.sx()) || Double.isNaN(last.x())) {
+            return false;
+        }
+        double distStart = Math.hypot(robotX - first.sx(), robotY - first.sy());
+        double distEnd = Math.hypot(robotX - last.x(), robotY - last.y());
+        return distEnd < distStart;
     }
 
     private SegmentPlan singlePlan(NavPoint point, MoveTaskCreateDTO dto) {
         return new SegmentPlan("", point.getPointCode(),
                 point.getX(), point.getY(), point.getYaw(),
-                "STRAIGHT", List.of(), dto.maxSpeed(), false, false);
+                "STRAIGHT", List.of(), dto.maxSpeed(), false, false,
+                Double.NaN, Double.NaN, Double.NaN);
     }
 
     private MoveTask findOrThrow(Long id) {
@@ -442,8 +533,8 @@ public class MoveTaskService {
         return StringUtils.hasText(message) ? prefix + ": " + message : prefix;
     }
 
-    /** 一段执行计划：目标点位坐标 + 边参数。 */
-    private record SegmentPlan(
+    /** 一段执行计划：目标点位坐标 + 边参数；sx/sy/syaw 为源点位姿（无源点时 NaN，供起点纠偏与反向执行）。 */
+    record SegmentPlan(
             String sourceCode,
             String targetCode,
             double x,
@@ -453,7 +544,10 @@ public class MoveTaskService {
             List<ControlPoint> controlPoints,
             Double maxSpeed,
             boolean backUp,
-            boolean reverse
+            boolean reverse,
+            double sx,
+            double sy,
+            double syaw
     ) {
     }
 
