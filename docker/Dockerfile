@@ -16,21 +16,21 @@ WORKDIR /build
 
 # 先只拷贝 parent + 各模块 pom 下载依赖，利用 Docker 层缓存加速重复构建
 COPY pom.xml .
-COPY robot-core/pom.xml robot-core/
-COPY platform/pom.xml platform/
-COPY rms/pom.xml rms/
-COPY app/pom.xml app/
+COPY modules/robot-core/pom.xml modules/robot-core/
+COPY modules/platform/pom.xml modules/platform/
+COPY modules/rms/pom.xml modules/rms/
+COPY modules/app/pom.xml modules/app/
 RUN mvn -B dependency:go-offline
 
 # 再拷贝各模块源码（源码变更时不会重新下载依赖）
-COPY robot-core/src robot-core/src
-COPY platform/src platform/src
-COPY rms/src rms/src
-COPY app/src app/src
+COPY modules/robot-core/src modules/robot-core/src
+COPY modules/platform/src modules/platform/src
+COPY modules/rms/src modules/rms/src
+COPY modules/app/src modules/app/src
 
 # 前端产物替换占位 static（镜像自带完整 UI，8083 直接可访问）
-RUN rm -rf app/src/main/resources/static/*
-COPY --from=frontend /web/dist ./app/src/main/resources/static
+RUN rm -rf modules/app/src/main/resources/static/*
+COPY --from=frontend /web/dist ./modules/app/src/main/resources/static
 RUN mvn -B package -DskipTests
 
 # ============ 运行阶段：只需 JRE，镜像更小 ============
@@ -41,7 +41,7 @@ WORKDIR /app
 RUN groupadd -r spring && useradd -r -g spring spring \
     && mkdir -p /app/logs && chown -R spring:spring /app
 
-COPY --from=build /build/app/target/*.jar app.jar
+COPY --from=build /build/modules/app/target/*.jar app.jar
 
 # 容器内 JVM 按内存百分比自适应堆大小
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Duser.timezone=Asia/Shanghai"

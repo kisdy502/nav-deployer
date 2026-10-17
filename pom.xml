@@ -16,10 +16,10 @@
     <description>仿真机器人上位机：模块化单体（robot-core 机器人接入 / platform 平台领域 / rms 云端协议 / app 装配与 Web）</description>
 
     <modules>
-        <module>robot-core</module>
-        <module>platform</module>
-        <module>rms</module>
-        <module>app</module>
+        <module>modules/robot-core</module>
+        <module>modules/platform</module>
+        <module>modules/rms</module>
+        <module>modules/app</module>
     </modules>
 
     <properties>

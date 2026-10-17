@@ -1,5 +1,6 @@
 target/
 */target/
+modules/*/target/
 .idea/
 .git/
 .gitignore

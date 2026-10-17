@@ -6,6 +6,7 @@
         <groupId>com.agv</groupId>
         <artifactId>nav-deployer</artifactId>
         <version>0.1.0</version>
+        <relativePath>../../pom.xml</relativePath>
     </parent>
     <artifactId>nav-rms</artifactId>
     <name>nav-rms</name>

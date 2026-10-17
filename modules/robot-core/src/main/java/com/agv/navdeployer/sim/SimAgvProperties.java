@@ -97,7 +97,11 @@ public class SimAgvProperties {
     }
 
     public void setWsUrl(String wsUrl) {
-        this.wsUrl = wsUrl;
+        if (wsUrl != null && !wsUrl.isBlank() && !wsUrl.contains("://")) {
+            this.wsUrl = "ws://" + wsUrl.trim();
+        } else {
+            this.wsUrl = wsUrl;
+        }
     }
 
     public long getReconnectDelayMs() {
