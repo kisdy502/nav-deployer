@@ -193,6 +193,9 @@ onMounted(() => {
 
   // 组件重挂载（如编辑器返回浏览页）时场景是新的，需主动同步一次已有数据
   syncAll()
+
+  // URDF 模型尝试加载：读到 robot_description 就替换参数化模型（读不到静默回退）
+  robotLayer.tryLoadUrdf()
 })
 
 /** 把 store 中的当前状态整体刷进场景 */
@@ -297,6 +300,11 @@ watch(
 watch(
   () => robot.pose,
   (p) => robotLayer?.setTarget(p),
+)
+
+watch(
+  () => robot.joints,
+  (j) => robotLayer?.setJointStates(j),
 )
 
 watch(

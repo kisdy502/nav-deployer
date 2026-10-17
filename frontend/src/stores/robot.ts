@@ -16,6 +16,7 @@ export const useRobotStore = defineStore('robot', () => {
   const started = ref(false)
 
   const pose = computed(() => snapshot.value?.pose ?? null)
+  const joints = computed(() => snapshot.value?.joints ?? null)
   const status = computed(() => snapshot.value?.status ?? null)
   const battery = computed(() => status.value?.battery ?? null)
 
@@ -86,6 +87,7 @@ export const useRobotStore = defineStore('robot', () => {
     scan1Cloud,
     scan2Cloud,
     pose,
+    joints,
     status,
     battery,
     start,

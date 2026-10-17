@@ -50,6 +50,10 @@ public final class SimAgvTelemetry {
     ) {
     }
 
+    /** /joint_states 关节快照：name 与 position 一一对应（底盘舵轮 + 机械臂关节混在同一消息）。 */
+    public record JointSnapshot(String[] names, double[] positions, Instant receivedAt) {
+    }
+
     public record Snapshot(
             boolean connected,
             StatusSnapshot status,
@@ -57,6 +61,7 @@ public final class SimAgvTelemetry {
             PoseSnapshot odomPose,
             double odomLinearX,
             double odomAngularZ,
+            JointSnapshot joints,
             long statusCount,
             long tfCount,
             long odomCount,
@@ -72,6 +77,7 @@ public final class SimAgvTelemetry {
     private volatile PoseSnapshot odomPose;
     private volatile ScanSnapshot scan1;
     private volatile ScanSnapshot scan2;
+    private volatile JointSnapshot jointStates;
     private volatile double odomLinearX;
     private volatile double odomAngularZ;
     private volatile long statusCount;
@@ -143,6 +149,14 @@ public final class SimAgvTelemetry {
         this.odomAngularZ = angularZ;
     }
 
+    public JointSnapshot getJointStates() {
+        return jointStates;
+    }
+
+    public void setJointStates(JointSnapshot jointStates) {
+        this.jointStates = jointStates;
+    }
+
     public double getOdomAngularZ() {
         return odomAngularZ;
     }
@@ -197,6 +211,7 @@ public final class SimAgvTelemetry {
                 odomPose,
                 odomLinearX,
                 odomAngularZ,
+                jointStates,
                 statusCount,
                 tfCount,
                 odomCount,

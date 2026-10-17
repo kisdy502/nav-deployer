@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -55,6 +56,23 @@ public class RobotController {
         ObjectNode snap = ssePublisher.buildSnapshot();
         snap.set("map_align", objectMapper.valueToTree(mapModeTaskService.computeAlignment()));
         return ApiResponse.ok(snap);
+    }
+
+    @Operation(summary = "机器人 URDF", description = "转发机器人侧 rosparam robot_description（rosapi/get_param），读不到返回 404，前端回退参数化模型")
+    @GetMapping(value = "/api/v1/robot/urdf", produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> urdf() {
+        if (!rosbridgeClient.isConnected()) {
+            return ResponseEntity.status(503).body("rosbridge not connected");
+        }
+        try {
+            String urdf = dispatcher.getRobotUrdf().join();
+            if (urdf == null || urdf.isBlank()) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(urdf);
+        } catch (CompletionException e) {
+            return ResponseEntity.status(502).body("robot_description not available: " + e.getCause().getMessage());
+        }
     }
 
     @Operation(summary = "任务闸门", description = "start 恢复接单 / stop 停车暂停 / reset 复位（同步等 service_response）")

@@ -101,6 +101,10 @@ public class RosbridgeConfig {
                 // 机器人自描述安装变换就丢了（换机器人要同步改上位机 yaml 的根因）
                 rosbridgeClient.subscribe(props.getTfStaticTopic(), props.getTfTopicType(), 0, 0, true);
             }
+            if (props.isJointStatesEnabled()) {
+                // 关节角驱动前端 3D 模型（舵轮转向/机械臂），关节消息不大走主通道
+                rosbridgeClient.subscribe(props.getJointStatesTopic(), props.getJointStatesTopicType(), 100, 0);
+            }
             // /map 由 MapSubscriptionGuard 在 MAPPING 模式或 /live 被轮询时
             // 挂载到专用通道（mapRosbridgeClient），主通道永远不见大消息
             mapSubscriptionGuard.attach(mapRosbridgeClient);

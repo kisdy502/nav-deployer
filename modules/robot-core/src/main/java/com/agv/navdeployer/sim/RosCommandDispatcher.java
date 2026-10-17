@@ -98,6 +98,19 @@ public class RosCommandDispatcher implements RosbridgeHandler {
         return callService(service, args, props.getServiceTimeoutMs());
     }
 
+    /** 读取机器人 URDF（rosparam robot_description，经 /rosapi/get_param），读不到返回 null。 */
+    public CompletableFuture<String> getRobotUrdf() {
+        requireClient();
+        ObjectNode args = MAPPER.createObjectNode();
+        args.put("name", "robot_description");
+        return callService("/rosapi/get_param", args)
+                .thenApply(values -> {
+                    String urdf = values.path("value").asText(null);
+                    return urdf == null || urdf.isBlank() ? null : urdf;
+                })
+                .exceptionally(throwable -> null);
+    }
+
     /** 指定超时版本：大响应服务（如 get_map 栅格数 MB）需要更长等待。 */
     public CompletableFuture<JsonNode> callService(String service, JsonNode args, long timeoutMs) {
         requireClient();

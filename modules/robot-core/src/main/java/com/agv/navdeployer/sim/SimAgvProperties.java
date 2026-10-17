@@ -31,6 +31,10 @@ public class SimAgvProperties {
     private String scanTopic2 = "/scan_2";
     private int scanThrottleMs = 333;
 
+    /** 关节状态（底盘舵轮转向角 / 机械臂关节角），驱动前端 3D 模型。 */
+    private boolean jointStatesEnabled = true;
+    private String jointStatesTopic = "/joint_states";
+
 
     private boolean mapEnabled = true;
     private String mapTopic = "/map";
@@ -46,6 +50,7 @@ public class SimAgvProperties {
     private String odomTopicType = "nav_msgs/msg/Odometry";
     private String scanTopicType = "sensor_msgs/msg/LaserScan";
     private String mapTopicType = "nav_msgs/msg/OccupancyGrid";
+    private String jointStatesTopicType = "sensor_msgs/msg/JointState";
 
     private String followEdgeAction = "/agv/follow_edge";
     private String followEdgeActionType = "agv_bridge_v2_interfaces/action/FollowEdge";
@@ -216,7 +221,29 @@ public class SimAgvProperties {
         this.scanThrottleMs = scanThrottleMs;
     }
 
+    public boolean isJointStatesEnabled() {
+        return jointStatesEnabled;
+    }
 
+    public void setJointStatesEnabled(boolean jointStatesEnabled) {
+        this.jointStatesEnabled = jointStatesEnabled;
+    }
+
+    public String getJointStatesTopic() {
+        return jointStatesTopic;
+    }
+
+    public void setJointStatesTopic(String jointStatesTopic) {
+        this.jointStatesTopic = jointStatesTopic;
+    }
+
+    public String getJointStatesTopicType() {
+        return jointStatesTopicType;
+    }
+
+    public void setJointStatesTopicType(String jointStatesTopicType) {
+        this.jointStatesTopicType = jointStatesTopicType;
+    }
 
     public boolean isMapEnabled() {
         return mapEnabled;

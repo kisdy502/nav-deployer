@@ -127,9 +127,8 @@ export class MapScene {
   private orbitMode = false
   private rightStart: { x: number; y: number } | null = null
 
-  // 镜头跟随机器人：死区（出画才拉动相机）+ 磁滞（进内环才停），手动平移/定位后自动退出
+  // 镜头跟随机器人：RViz 式硬锁（每帧对齐，零延迟零追赶），手动平移/定位后自动退出
   private followEnabled = false
-  private followEngaged = false
 
   // 测量
   private measureGroup = new THREE.Group()
@@ -290,37 +289,25 @@ export class MapScene {
 
   setFollowEnabled(on: boolean) {
     this.followEnabled = on
-    this.followEngaged = false
   }
 
   /**
-   * 镜头跟随机器人（由渲染循环每帧调用）：机器人快出画（NDC 超出 ±0.35）时
-   * 指数平滑拉动相机，回到内环（±0.25）后停止——画面稳定不抖动；
-   * 正交模式平移相机，3D 环绕模式同步平移 target 与相机保持视角不变。
+   * 镜头跟随机器人（渲染循环每帧调用）：RViz 式硬锁——相机位姿逐帧对齐机器人
+   * （正交模式 xy 硬同步；3D 环绕模式平移 target 与相机保持视角），相机与机器人
+   * 零偏差零延迟，平滑性由机器人位姿插值保证；手动平移/定位后自动退出。
    */
-  updateFollow(robot: { x: number; y: number } | null, dt: number) {
+  updateFollow(robot: { x: number; y: number } | null, _dt: number) {
     if (!this.followEnabled || !robot) return
-    const p = new THREE.Vector3(robot.x, robot.y, 0).project(this.activeCamera)
-    const ax = Math.abs(p.x)
-    const ay = Math.abs(p.y)
-    if (!this.followEngaged) {
-      if (ax <= 0.35 && ay <= 0.35) return
-      this.followEngaged = true
-    } else if (ax < 0.25 && ay < 0.25) {
-      this.followEngaged = false
-      return
-    }
-    const k = 1 - Math.exp(-3.5 * Math.max(dt, 0.001))
     if (this.orbitMode && this.controls && this.perspCamera) {
-      const dx = (robot.x - this.controls.target.x) * k
-      const dy = (robot.y - this.controls.target.y) * k
+      const dx = robot.x - this.controls.target.x
+      const dy = robot.y - this.controls.target.y
       this.controls.target.x += dx
       this.controls.target.y += dy
       this.perspCamera.position.x += dx
       this.perspCamera.position.y += dy
     } else {
-      this.camera.position.x += (robot.x - this.camera.position.x) * k
-      this.camera.position.y += (robot.y - this.camera.position.y) * k
+      this.camera.position.x = robot.x
+      this.camera.position.y = robot.y
     }
   }
 

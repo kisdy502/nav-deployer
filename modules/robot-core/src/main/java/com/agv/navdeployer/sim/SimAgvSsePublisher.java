@@ -144,6 +144,20 @@ public class SimAgvSsePublisher {
             root.putNull("pose");
         }
 
+        // 关节状态（舵轮转向/机械臂）：names 全量随包（10Hz 快照限频，几十字节/关节可接受）
+        var joints = telemetry.getJointStates();
+        if (joints != null) {
+            ObjectNode node = root.putObject("joints");
+            ArrayNode names = node.putArray("name");
+            ArrayNode positions = node.putArray("position");
+            for (int i = 0; i < joints.names().length; i++) {
+                names.add(joints.names()[i]);
+                positions.add(round(joints.positions()[i]));
+            }
+        } else {
+            root.putNull("joints");
+        }
+
         appendScan(root, "scan1", telemetry.getScan1());
         appendScan(root, "scan2", telemetry.getScan2());
 

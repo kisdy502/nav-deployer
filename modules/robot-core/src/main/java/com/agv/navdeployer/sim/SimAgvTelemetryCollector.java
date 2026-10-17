@@ -41,6 +41,7 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
     private final String scanTopic1;
     private final String scanTopic2;
     private final String poseTopic;
+    private final String jointStatesTopic;
     private final long summaryIntervalMs;
 
     private volatile String lastLoggedState;
@@ -78,6 +79,7 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
         this.scanTopic1 = config.getScanTopic1();
         this.scanTopic2 = config.getScanTopic2();
         this.poseTopic = config.getPoseTopic();
+        this.jointStatesTopic = config.getJointStatesTopic();
         this.summaryIntervalMs = Math.max(1000L, config.getSummaryIntervalMs());
     }
 
@@ -126,6 +128,8 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
             handleScan(payload, 2);
         } else if (poseTopic.equals(topic)) {
             handlePose(payload);
+        } else if (jointStatesTopic.equals(topic)) {
+            handleJointStates(payload);
         }
         maybeLogSummary();
     }
@@ -414,6 +418,23 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                 Instant.now());
         telemetry.setMapPose(pose);
         recordPose(pose);
+    }
+
+    /** /joint_states：关节名与角度一一对应的快照，驱动前端 3D 模型（舵轮转向 / 机械臂）。 */
+    private void handleJointStates(JsonNode payload) {
+        JsonNode names = payload.path("name");
+        JsonNode positions = payload.path("position");
+        if (!names.isArray() || names.isEmpty() || !positions.isArray()) {
+            return;
+        }
+        int n = Math.min(names.size(), positions.size());
+        String[] nameArray = new String[n];
+        double[] positionArray = new double[n];
+        for (int i = 0; i < n; i++) {
+            nameArray[i] = names.get(i).asText("");
+            positionArray[i] = positions.get(i).asDouble(0);
+        }
+        telemetry.setJointStates(new SimAgvTelemetry.JointSnapshot(nameArray, positionArray, Instant.now()));
     }
 
     // ==================== 扫描时刻位姿回溯（雷达错位修复的核心） ====================
