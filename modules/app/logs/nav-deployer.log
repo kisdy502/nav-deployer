@@ -1,0 +1,573 @@
+2026-10-18 17:54:46.978 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 77771 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 17:54:46.979 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 17:54:47.508 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 17:54:47.509 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 17:54:47.526 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 9 ms. Found 0 Redis repository interfaces.
+2026-10-18 17:54:47.860 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 17:54:47.868 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 17:54:47.868 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 17:54:47.899 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 17:54:47.900 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 902 ms
+2026-10-18 17:54:48.038 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 17:54:48.093 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@577f9dfd
+2026-10-18 17:54:48.094 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 17:54:48.510 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 17:54:48.870 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8084 (http) with context path '/'
+2026-10-18 17:54:48.877 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Started NavDeployerApplication in 2.156 seconds (process running for 2.331)
+2026-10-18 17:54:48.883 [WebSocketConnectReadThread-59] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:48.883 [WebSocketConnectReadThread-59] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:48.884 [WebSocketConnectReadThread-59] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:54:48.885 [WebSocketConnectReadThread-61] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:48.885 [WebSocketConnectReadThread-61] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:48.885 [main] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.rms.config.RmsConfig - rms integration disabled, zenoh session stays idle
+2026-10-18 17:54:51.886 [WebSocketConnectReadThread-68] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:51.887 [WebSocketConnectReadThread-68] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:51.889 [WebSocketConnectReadThread-69] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:51.889 [WebSocketConnectReadThread-69] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:51.890 [WebSocketConnectReadThread-69] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:54:52.729 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18 17:54:52.729 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-10-18 17:54:52.730 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-10-18 17:54:54.893 [WebSocketConnectReadThread-70] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:54.893 [WebSocketConnectReadThread-70] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:54.895 [WebSocketConnectReadThread-71] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:54.895 [WebSocketConnectReadThread-71] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:54.895 [WebSocketConnectReadThread-71] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:54:57.897 [WebSocketConnectReadThread-72] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:57.897 [WebSocketConnectReadThread-72] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:57.899 [WebSocketConnectReadThread-73] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:54:57.899 [WebSocketConnectReadThread-73] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:54:57.900 [WebSocketConnectReadThread-73] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:00.901 [WebSocketConnectReadThread-75] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:00.901 [WebSocketConnectReadThread-74] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:00.902 [WebSocketConnectReadThread-75] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:00.902 [WebSocketConnectReadThread-74] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:00.902 [WebSocketConnectReadThread-74] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:03.906 [WebSocketConnectReadThread-76] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:03.906 [WebSocketConnectReadThread-76] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:03.906 [WebSocketConnectReadThread-76] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:03.909 [WebSocketConnectReadThread-77] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:03.909 [WebSocketConnectReadThread-77] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:05.618 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 77946 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 17:55:05.619 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 17:55:06.080 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 17:55:06.082 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 17:55:06.097 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 9 ms. Found 0 Redis repository interfaces.
+2026-10-18 17:55:06.457 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 17:55:06.464 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 17:55:06.465 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 17:55:06.500 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 17:55:06.501 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 862 ms
+2026-10-18 17:55:06.634 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 17:55:06.701 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@1209a0f
+2026-10-18 17:55:06.702 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 17:55:06.910 [WebSocketConnectReadThread-78] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:06.910 [WebSocketConnectReadThread-78] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:06.910 [WebSocketConnectReadThread-78] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:06.916 [WebSocketConnectReadThread-79] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:06.917 [WebSocketConnectReadThread-79] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:07.143 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 17:55:07.470 [main] WARN  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2026-10-18 17:55:07.475 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 17:55:07.477 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2026-10-18 17:55:07.485 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2026-10-18 17:55:07.490 [main] ERROR [traceId=,spanId=,robot_code=] o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8084 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8084 or configure this application to listen on another port.
+
+2026-10-18 17:55:09.914 [WebSocketConnectReadThread-80] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:09.914 [WebSocketConnectReadThread-80] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:09.914 [WebSocketConnectReadThread-80] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:09.921 [WebSocketConnectReadThread-81] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:09.922 [WebSocketConnectReadThread-81] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:12.917 [WebSocketConnectReadThread-82] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:12.917 [WebSocketConnectReadThread-82] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:12.917 [WebSocketConnectReadThread-82] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:12.923 [WebSocketConnectReadThread-83] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:12.923 [WebSocketConnectReadThread-83] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:15.921 [WebSocketConnectReadThread-84] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:15.922 [WebSocketConnectReadThread-84] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:15.922 [WebSocketConnectReadThread-84] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:15.928 [WebSocketConnectReadThread-85] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:15.928 [WebSocketConnectReadThread-85] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:18.924 [WebSocketConnectReadThread-86] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:18.924 [WebSocketConnectReadThread-86] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:18.924 [WebSocketConnectReadThread-86] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:18.933 [WebSocketConnectReadThread-87] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:18.933 [WebSocketConnectReadThread-87] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:21.926 [WebSocketConnectReadThread-88] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:21.926 [WebSocketConnectReadThread-88] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:21.926 [WebSocketConnectReadThread-88] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:21.939 [WebSocketConnectReadThread-89] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:21.939 [WebSocketConnectReadThread-89] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:24.934 [WebSocketConnectReadThread-90] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:24.935 [WebSocketConnectReadThread-90] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:24.935 [WebSocketConnectReadThread-90] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:24.948 [WebSocketConnectReadThread-91] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:24.949 [WebSocketConnectReadThread-91] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:27.937 [WebSocketConnectReadThread-92] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:27.937 [WebSocketConnectReadThread-92] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:27.937 [WebSocketConnectReadThread-92] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:27.951 [WebSocketConnectReadThread-93] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:27.952 [WebSocketConnectReadThread-93] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:30.939 [WebSocketConnectReadThread-94] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:30.939 [WebSocketConnectReadThread-94] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:30.939 [WebSocketConnectReadThread-94] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:30.956 [WebSocketConnectReadThread-95] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:30.956 [WebSocketConnectReadThread-95] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:33.945 [WebSocketConnectReadThread-96] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:33.945 [WebSocketConnectReadThread-96] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:33.945 [WebSocketConnectReadThread-96] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:33.958 [WebSocketConnectReadThread-97] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:33.959 [WebSocketConnectReadThread-97] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:36.946 [WebSocketConnectReadThread-98] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:36.947 [WebSocketConnectReadThread-98] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:36.947 [WebSocketConnectReadThread-98] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:36.961 [WebSocketConnectReadThread-99] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:36.961 [WebSocketConnectReadThread-99] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:39.950 [WebSocketConnectReadThread-100] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:39.951 [WebSocketConnectReadThread-100] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:39.951 [WebSocketConnectReadThread-100] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:39.963 [WebSocketConnectReadThread-101] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:39.964 [WebSocketConnectReadThread-101] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:42.953 [WebSocketConnectReadThread-102] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:42.953 [WebSocketConnectReadThread-102] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:42.953 [WebSocketConnectReadThread-102] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:42.968 [WebSocketConnectReadThread-103] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:42.968 [WebSocketConnectReadThread-103] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:45.955 [WebSocketConnectReadThread-104] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:45.955 [WebSocketConnectReadThread-104] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:45.955 [WebSocketConnectReadThread-104] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:45.974 [WebSocketConnectReadThread-105] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:45.974 [WebSocketConnectReadThread-105] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:48.958 [WebSocketConnectReadThread-109] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:48.959 [WebSocketConnectReadThread-109] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:48.959 [WebSocketConnectReadThread-109] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:48.983 [WebSocketConnectReadThread-110] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:48.983 [WebSocketConnectReadThread-110] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:51.964 [WebSocketConnectReadThread-111] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:51.965 [WebSocketConnectReadThread-111] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:51.965 [WebSocketConnectReadThread-111] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:51.989 [WebSocketConnectReadThread-112] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:51.989 [WebSocketConnectReadThread-112] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:54.969 [WebSocketConnectReadThread-113] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:54.970 [WebSocketConnectReadThread-113] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:54.970 [WebSocketConnectReadThread-113] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:54.992 [WebSocketConnectReadThread-114] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:54.992 [WebSocketConnectReadThread-114] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:57.972 [WebSocketConnectReadThread-115] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:57.972 [WebSocketConnectReadThread-115] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:55:57.972 [WebSocketConnectReadThread-115] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:55:57.997 [WebSocketConnectReadThread-116] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:55:57.997 [WebSocketConnectReadThread-116] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:00.977 [WebSocketConnectReadThread-117] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:00.977 [WebSocketConnectReadThread-117] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:00.977 [WebSocketConnectReadThread-117] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:00.999 [WebSocketConnectReadThread-118] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:00.999 [WebSocketConnectReadThread-118] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:03.983 [WebSocketConnectReadThread-119] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:03.983 [WebSocketConnectReadThread-119] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:03.983 [WebSocketConnectReadThread-119] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:04.002 [WebSocketConnectReadThread-120] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:04.002 [WebSocketConnectReadThread-120] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:06.986 [WebSocketConnectReadThread-121] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:06.986 [WebSocketConnectReadThread-121] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:06.986 [WebSocketConnectReadThread-121] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:07.004 [WebSocketConnectReadThread-122] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:07.004 [WebSocketConnectReadThread-122] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:09.992 [WebSocketConnectReadThread-123] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:09.992 [WebSocketConnectReadThread-123] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:09.992 [WebSocketConnectReadThread-123] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:10.010 [WebSocketConnectReadThread-124] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:10.010 [WebSocketConnectReadThread-124] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:12.998 [WebSocketConnectReadThread-125] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:12.999 [WebSocketConnectReadThread-125] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:12.999 [WebSocketConnectReadThread-125] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:13.016 [WebSocketConnectReadThread-126] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:13.016 [WebSocketConnectReadThread-126] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:16.002 [WebSocketConnectReadThread-127] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:16.002 [WebSocketConnectReadThread-127] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:16.002 [WebSocketConnectReadThread-127] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:16.017 [WebSocketConnectReadThread-128] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:16.018 [WebSocketConnectReadThread-128] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:19.008 [WebSocketConnectReadThread-129] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:19.008 [WebSocketConnectReadThread-129] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:19.008 [WebSocketConnectReadThread-129] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:19.022 [WebSocketConnectReadThread-130] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:19.022 [WebSocketConnectReadThread-130] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:22.015 [WebSocketConnectReadThread-131] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:22.016 [WebSocketConnectReadThread-131] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:22.016 [WebSocketConnectReadThread-131] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:22.024 [WebSocketConnectReadThread-132] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:22.024 [WebSocketConnectReadThread-132] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:25.018 [WebSocketConnectReadThread-133] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:25.018 [WebSocketConnectReadThread-133] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:25.018 [WebSocketConnectReadThread-133] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:25.029 [WebSocketConnectReadThread-134] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:25.029 [WebSocketConnectReadThread-134] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:28.024 [WebSocketConnectReadThread-135] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:28.024 [WebSocketConnectReadThread-135] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:28.024 [WebSocketConnectReadThread-135] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:28.031 [WebSocketConnectReadThread-136] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:28.031 [WebSocketConnectReadThread-136] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:31.030 [WebSocketConnectReadThread-137] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:31.030 [WebSocketConnectReadThread-137] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:31.030 [WebSocketConnectReadThread-137] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:31.034 [WebSocketConnectReadThread-138] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:31.034 [WebSocketConnectReadThread-138] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:34.033 [WebSocketConnectReadThread-139] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:34.033 [WebSocketConnectReadThread-139] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:34.033 [WebSocketConnectReadThread-139] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:34.040 [WebSocketConnectReadThread-140] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:34.040 [WebSocketConnectReadThread-140] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:37.037 [WebSocketConnectReadThread-141] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:37.037 [WebSocketConnectReadThread-141] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:37.037 [WebSocketConnectReadThread-141] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:37.045 [WebSocketConnectReadThread-142] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:37.045 [WebSocketConnectReadThread-142] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:40.040 [WebSocketConnectReadThread-143] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:40.040 [WebSocketConnectReadThread-143] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:40.040 [WebSocketConnectReadThread-143] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:40.049 [WebSocketConnectReadThread-144] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:40.050 [WebSocketConnectReadThread-144] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:43.046 [WebSocketConnectReadThread-145] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:43.047 [WebSocketConnectReadThread-145] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:43.047 [WebSocketConnectReadThread-145] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:43.054 [WebSocketConnectReadThread-146] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:43.054 [WebSocketConnectReadThread-146] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:46.051 [WebSocketConnectReadThread-147] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:46.052 [WebSocketConnectReadThread-147] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:46.052 [WebSocketConnectReadThread-147] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:46.058 [WebSocketConnectReadThread-148] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:46.058 [WebSocketConnectReadThread-148] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:49.055 [WebSocketConnectReadThread-151] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:49.056 [WebSocketConnectReadThread-151] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:49.056 [WebSocketConnectReadThread-151] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:49.062 [WebSocketConnectReadThread-152] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:49.062 [WebSocketConnectReadThread-152] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:52.061 [WebSocketConnectReadThread-153] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:52.061 [WebSocketConnectReadThread-153] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:52.061 [WebSocketConnectReadThread-153] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:52.065 [WebSocketConnectReadThread-154] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:52.065 [WebSocketConnectReadThread-154] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:55.067 [WebSocketConnectReadThread-155] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:55.067 [WebSocketConnectReadThread-155] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:55.067 [WebSocketConnectReadThread-155] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:55.071 [WebSocketConnectReadThread-156] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:55.071 [WebSocketConnectReadThread-156] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:58.074 [WebSocketConnectReadThread-157] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:58.074 [WebSocketConnectReadThread-157] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:56:58.074 [WebSocketConnectReadThread-157] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:56:58.076 [WebSocketConnectReadThread-158] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:56:58.076 [WebSocketConnectReadThread-158] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:01.080 [WebSocketConnectReadThread-160] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:01.079 [WebSocketConnectReadThread-159] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:01.080 [WebSocketConnectReadThread-159] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:01.080 [WebSocketConnectReadThread-160] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:01.080 [WebSocketConnectReadThread-160] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:04.081 [WebSocketConnectReadThread-161] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:04.081 [WebSocketConnectReadThread-161] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:04.081 [WebSocketConnectReadThread-161] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:04.082 [WebSocketConnectReadThread-162] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:04.083 [WebSocketConnectReadThread-162] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:07.083 [WebSocketConnectReadThread-163] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:07.084 [WebSocketConnectReadThread-163] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:07.084 [WebSocketConnectReadThread-163] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:07.087 [WebSocketConnectReadThread-164] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:07.087 [WebSocketConnectReadThread-164] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:10.088 [WebSocketConnectReadThread-165] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:10.088 [WebSocketConnectReadThread-165] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:10.088 [WebSocketConnectReadThread-165] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:10.090 [WebSocketConnectReadThread-166] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:10.090 [WebSocketConnectReadThread-166] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:13.094 [WebSocketConnectReadThread-167] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:13.094 [WebSocketConnectReadThread-167] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:13.094 [WebSocketConnectReadThread-167] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:13.096 [WebSocketConnectReadThread-168] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:13.096 [WebSocketConnectReadThread-168] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:16.095 [WebSocketConnectReadThread-169] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:16.095 [WebSocketConnectReadThread-169] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:16.096 [WebSocketConnectReadThread-169] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:16.101 [WebSocketConnectReadThread-170] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:16.101 [WebSocketConnectReadThread-170] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:19.104 [WebSocketConnectReadThread-171] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:19.105 [WebSocketConnectReadThread-172] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:19.106 [WebSocketConnectReadThread-171] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:19.106 [WebSocketConnectReadThread-172] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:19.106 [WebSocketConnectReadThread-171] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:22.107 [WebSocketConnectReadThread-174] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:22.107 [WebSocketConnectReadThread-173] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:22.107 [WebSocketConnectReadThread-174] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:22.108 [WebSocketConnectReadThread-173] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:22.108 [WebSocketConnectReadThread-174] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:25.111 [WebSocketConnectReadThread-175] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:25.112 [WebSocketConnectReadThread-175] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:25.112 [WebSocketConnectReadThread-176] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:25.112 [WebSocketConnectReadThread-176] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:25.112 [WebSocketConnectReadThread-176] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:28.114 [WebSocketConnectReadThread-177] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:28.114 [WebSocketConnectReadThread-177] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:28.115 [WebSocketConnectReadThread-177] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:28.117 [WebSocketConnectReadThread-178] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:28.118 [WebSocketConnectReadThread-178] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:31.119 [WebSocketConnectReadThread-180] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:31.119 [WebSocketConnectReadThread-179] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:31.120 [WebSocketConnectReadThread-180] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:31.120 [WebSocketConnectReadThread-179] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:31.120 [WebSocketConnectReadThread-180] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:34.123 [WebSocketConnectReadThread-182] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:34.123 [WebSocketConnectReadThread-181] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:34.123 [WebSocketConnectReadThread-182] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:34.123 [WebSocketConnectReadThread-181] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:34.123 [WebSocketConnectReadThread-181] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:37.128 [WebSocketConnectReadThread-183] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:37.128 [WebSocketConnectReadThread-183] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:37.128 [WebSocketConnectReadThread-183] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:37.128 [WebSocketConnectReadThread-184] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:37.128 [WebSocketConnectReadThread-184] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:40.132 [WebSocketConnectReadThread-186] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:40.132 [WebSocketConnectReadThread-185] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:40.132 [WebSocketConnectReadThread-186] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:40.132 [WebSocketConnectReadThread-185] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:40.132 [WebSocketConnectReadThread-185] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:43.133 [WebSocketConnectReadThread-188] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:43.133 [WebSocketConnectReadThread-187] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:43.133 [WebSocketConnectReadThread-188] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:43.133 [WebSocketConnectReadThread-187] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:43.133 [WebSocketConnectReadThread-188] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:46.139 [WebSocketConnectReadThread-190] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:46.139 [WebSocketConnectReadThread-190] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:46.139 [WebSocketConnectReadThread-189] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:46.139 [WebSocketConnectReadThread-189] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:46.139 [WebSocketConnectReadThread-189] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:49.142 [WebSocketConnectReadThread-193] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:49.143 [WebSocketConnectReadThread-193] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:49.143 [WebSocketConnectReadThread-193] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:49.144 [WebSocketConnectReadThread-194] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:49.144 [WebSocketConnectReadThread-194] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:52.147 [WebSocketConnectReadThread-195] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:52.148 [WebSocketConnectReadThread-195] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:52.149 [WebSocketConnectReadThread-196] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:52.149 [WebSocketConnectReadThread-196] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:52.149 [WebSocketConnectReadThread-196] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:55.150 [WebSocketConnectReadThread-197] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:55.150 [WebSocketConnectReadThread-197] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:55.153 [WebSocketConnectReadThread-198] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:55.153 [WebSocketConnectReadThread-198] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:55.153 [WebSocketConnectReadThread-198] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:58.153 [WebSocketConnectReadThread-199] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:58.168 [WebSocketConnectReadThread-199] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:58.168 [WebSocketConnectReadThread-200] WARN  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge transport error: Connection refused
+2026-10-18 17:57:58.168 [WebSocketConnectReadThread-200] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=-1, reason=Connection refused
+2026-10-18 17:57:58.168 [WebSocketConnectReadThread-200] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=-1, reason=Connection refused
+2026-10-18 17:57:58.380 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 17:57:58.381 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2026-10-18 17:58:02.951 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 78500 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 17:58:02.952 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 17:58:03.383 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 17:58:03.384 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 17:58:03.397 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 6 ms. Found 0 Redis repository interfaces.
+2026-10-18 17:58:03.701 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 17:58:03.708 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 17:58:03.708 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 17:58:03.742 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 17:58:03.742 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 767 ms
+2026-10-18 17:58:03.866 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 17:58:03.918 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@49d42faf
+2026-10-18 17:58:03.919 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 17:58:04.332 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 17:58:04.676 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8084 (http) with context path '/'
+2026-10-18 17:58:04.687 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Started NavDeployerApplication in 2.001 seconds (process running for 2.187)
+2026-10-18 17:58:04.801 [main] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.rms.config.RmsConfig - rms integration disabled, zenoh session stays idle
+2026-10-18 17:58:04.814 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 17:58:04.829 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge ready, waiting for /agv/status / /tf / /scan_1 / /scan_2
+2026-10-18 17:58:04.835 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 17:58:04.996 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.MapSubscriptionGuard - map guard: robot mode null -> NAVIGATION
+2026-10-18 17:58:05.005 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - 等待雷达安装变换（/tf_static latched 消息尚未送达）：frame='rear_lidar_link'，该雷达点云暂缓发布，宽限期内送达即自动恢复
+2026-10-18 17:58:05.023 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=arm_mount_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:58:05.023 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - base motion transform captured from /tf_static: base_footprint -> base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:58:05.023 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=front_lidar_link, parent=base_link, d=(0.360, 0.000), yaw=0.0 deg
+2026-10-18 17:58:05.023 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=imu_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:58:05.023 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=rear_lidar_link, parent=base_link, d=(-0.360, 0.000), yaw=180.0 deg
+2026-10-18 17:58:08.445 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18 17:58:08.446 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-10-18 17:58:08.446 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Completed initialization in 0 ms
+2026-10-18 17:58:14.165 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (10 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:58:24.169 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (20 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:58:34.168 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (30 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:58:39.948 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 17:58:39.952 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 17:58:39.952 [WebSocketConnectReadThread-63] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=1000, reason=
+2026-10-18 17:58:39.953 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 17:58:39.955 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2026-10-18 17:58:44.270 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 78914 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 17:58:44.271 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 17:58:44.819 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 17:58:44.820 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 17:58:44.832 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 6 ms. Found 0 Redis repository interfaces.
+2026-10-18 17:58:45.154 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 17:58:45.162 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 17:58:45.162 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 17:58:45.191 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 17:58:45.191 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 893 ms
+2026-10-18 17:58:45.326 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 17:58:45.374 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@502c2278
+2026-10-18 17:58:45.375 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 17:58:45.783 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 17:58:46.106 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8084 (http) with context path '/'
+2026-10-18 17:58:46.113 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Started NavDeployerApplication in 2.22 seconds (process running for 2.377)
+2026-10-18 17:58:46.183 [main] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.rms.config.RmsConfig - rms integration disabled, zenoh session stays idle
+2026-10-18 17:58:46.194 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 17:58:46.206 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge ready, waiting for /agv/status / /tf / /scan_1 / /scan_2
+2026-10-18 17:58:46.217 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 17:58:46.326 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.MapSubscriptionGuard - map guard: robot mode null -> NAVIGATION
+2026-10-18 17:58:46.335 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=arm_mount_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:58:46.335 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - base motion transform captured from /tf_static: base_footprint -> base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:58:46.335 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=front_lidar_link, parent=base_link, d=(0.360, 0.000), yaw=0.0 deg
+2026-10-18 17:58:46.335 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=imu_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:58:46.335 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=rear_lidar_link, parent=base_link, d=(-0.360, 0.000), yaw=180.0 deg
+2026-10-18 17:58:50.022 [http-nio-8084-exec-2] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18 17:58:50.022 [http-nio-8084-exec-2] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-10-18 17:58:50.023 [http-nio-8084-exec-2] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-10-18 17:58:55.611 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (10 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:59:05.621 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (20 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:59:15.628 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (30 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:59:20.673 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 17:59:20.676 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 17:59:20.677 [WebSocketConnectReadThread-63] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=1000, reason=
+2026-10-18 17:59:20.678 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 17:59:20.680 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2026-10-18 17:59:25.009 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 79383 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 17:59:25.010 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 17:59:25.441 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 17:59:25.443 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 17:59:25.456 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 5 ms. Found 0 Redis repository interfaces.
+2026-10-18 17:59:25.774 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 17:59:25.780 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 17:59:25.781 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 17:59:25.818 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 17:59:25.818 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 790 ms
+2026-10-18 17:59:25.939 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 17:59:25.992 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@49d42faf
+2026-10-18 17:59:25.992 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 17:59:26.397 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 17:59:26.731 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8084 (http) with context path '/'
+2026-10-18 17:59:26.738 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Started NavDeployerApplication in 2.002 seconds (process running for 2.166)
+2026-10-18 17:59:26.810 [main] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.rms.config.RmsConfig - rms integration disabled, zenoh session stays idle
+2026-10-18 17:59:26.823 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 17:59:26.834 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge ready, waiting for /agv/status / /tf / /scan_1 / /scan_2
+2026-10-18 17:59:26.847 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 17:59:26.952 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.MapSubscriptionGuard - map guard: robot mode null -> NAVIGATION
+2026-10-18 17:59:26.963 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - 等待雷达安装变换（/tf_static latched 消息尚未送达）：frame='rear_lidar_link'，该雷达点云暂缓发布，宽限期内送达即自动恢复
+2026-10-18 17:59:26.990 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=arm_mount_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:59:26.990 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - base motion transform captured from /tf_static: base_footprint -> base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:59:26.990 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=front_lidar_link, parent=base_link, d=(0.360, 0.000), yaw=0.0 deg
+2026-10-18 17:59:26.990 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=imu_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 17:59:26.990 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=rear_lidar_link, parent=base_link, d=(-0.360, 0.000), yaw=180.0 deg
+2026-10-18 17:59:30.862 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18 17:59:30.869 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-10-18 17:59:30.871 [http-nio-8084-exec-1] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Completed initialization in 2 ms
+2026-10-18 17:59:31.105 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.RosCommandDispatcher - get_param(冒号) 耗时91ms value=40276B
+2026-10-18 17:59:31.219 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.RosCommandDispatcher - get_param(裸名) value=0B
+2026-10-18 17:59:36.238 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (10 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:59:46.253 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (20 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 17:59:56.254 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (30 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:00:06.255 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (40 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:00:06.979 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 18:00:06.983 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 18:00:06.983 [WebSocketConnectReadThread-63] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=1000, reason=
+2026-10-18 18:00:06.984 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 18:00:06.987 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2026-10-18 18:00:11.652 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 79788 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 18:00:11.653 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 18:00:12.209 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 18:00:12.211 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 18:00:12.237 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 13 ms. Found 0 Redis repository interfaces.
+2026-10-18 18:00:12.637 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 18:00:12.645 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 18:00:12.645 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 18:00:12.686 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 18:00:12.686 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1012 ms
+2026-10-18 18:00:12.848 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 18:00:12.922 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@1209a0f
+2026-10-18 18:00:12.924 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 18:00:13.471 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 18:00:13.865 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8084 (http) with context path '/'
+2026-10-18 18:00:13.874 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Started NavDeployerApplication in 2.525 seconds (process running for 2.735)
+2026-10-18 18:00:13.996 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 18:00:14.010 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge ready, waiting for /agv/status / /tf / /scan_1 / /scan_2
+2026-10-18 18:00:14.015 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 18:00:14.016 [main] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.rms.config.RmsConfig - rms integration disabled, zenoh session stays idle
+2026-10-18 18:00:14.138 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.MapSubscriptionGuard - map guard: robot mode null -> NAVIGATION
+2026-10-18 18:00:14.157 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=arm_mount_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 18:00:14.157 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - base motion transform captured from /tf_static: base_footprint -> base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 18:00:14.157 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=front_lidar_link, parent=base_link, d=(0.360, 0.000), yaw=0.0 deg
+2026-10-18 18:00:14.157 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=imu_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 18:00:14.157 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=rear_lidar_link, parent=base_link, d=(-0.360, 0.000), yaw=180.0 deg
+2026-10-18 18:00:17.023 [http-nio-8084-exec-3] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18 18:00:17.023 [http-nio-8084-exec-3] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-10-18 18:00:17.024 [http-nio-8084-exec-3] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-10-18 18:00:17.129 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.RosCommandDispatcher - get_param(冒号) 耗时41ms len=40276B head=["<?xml version=\"1.0\" ?>\n<!-- ========]
+2026-10-18 18:00:17.163 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.RosCommandDispatcher - get_param(裸名) value=0B
+2026-10-18 18:00:23.247 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (10 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:00:33.251 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (20 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:00:43.252 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (30 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:00:53.265 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (40 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:01:03.273 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (50 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:01:13.279 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (60 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:01:23.284 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (70 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:01:33.299 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (80 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:01:43.303 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (90 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:01:53.303 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (99 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:02:03.303 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (109 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:02:13.310 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (119 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:02:23.322 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (129 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:02:30.475 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 18:02:30.481 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 18:02:30.481 [WebSocketConnectReadThread-63] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=1000, reason=
+2026-10-18 18:02:30.483 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 18:02:30.485 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2026-10-18 18:02:35.628 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Starting NavDeployerApplication using Java 21.0.12.1 with PID 80508 (/Users/kisdy/projects/nav-deployer/modules/app/target/classes started by kisdy in /Users/kisdy/projects/nav-deployer/modules/app)
+2026-10-18 18:02:35.630 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - No active profile set, falling back to 1 default profile: "default"
+2026-10-18 18:02:36.218 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Multiple Spring Data modules found, entering strict repository configuration mode
+2026-10-18 18:02:36.219 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-10-18 18:02:36.242 [main] INFO  [traceId=,spanId=,robot_code=] o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 8 ms. Found 0 Redis repository interfaces.
+2026-10-18 18:02:36.659 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8084 (http)
+2026-10-18 18:02:36.670 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-10-18 18:02:36.670 [main] INFO  [traceId=,spanId=,robot_code=] o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.31]
+2026-10-18 18:02:36.702 [main] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2026-10-18 18:02:36.703 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1039 ms
+2026-10-18 18:02:36.865 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-10-18 18:02:36.919 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@502c2278
+2026-10-18 18:02:36.920 [main] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-10-18 18:02:37.511 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.a.w.s.WelcomePageHandlerMapping - Adding welcome page: class path resource [static/index.html]
+2026-10-18 18:02:37.947 [main] INFO  [traceId=,spanId=,robot_code=] o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8084 (http) with context path '/'
+2026-10-18 18:02:37.954 [main] INFO  [traceId=,spanId=,robot_code=] c.a.n.NavDeployerApplication - Started NavDeployerApplication in 2.726 seconds (process running for 2.975)
+2026-10-18 18:02:38.067 [main] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.rms.config.RmsConfig - rms integration disabled, zenoh session stays idle
+2026-10-18 18:02:38.087 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 18:02:38.100 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge ready, waiting for /agv/status / /tf / /scan_1 / /scan_2
+2026-10-18 18:02:38.109 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge connected: ws://192.168.64.3:9090
+2026-10-18 18:02:38.342 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.MapSubscriptionGuard - map guard: robot mode null -> NAVIGATION
+2026-10-18 18:02:38.378 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=arm_mount_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 18:02:38.378 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - base motion transform captured from /tf_static: base_footprint -> base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 18:02:38.378 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=front_lidar_link, parent=base_link, d=(0.360, 0.000), yaw=0.0 deg
+2026-10-18 18:02:38.379 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=imu_link, parent=base_link, d=(0.000, 0.000), yaw=0.0 deg
+2026-10-18 18:02:38.379 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - scan mount transform captured from /tf_static: frame=rear_lidar_link, parent=base_link, d=(-0.360, 0.000), yaw=180.0 deg
+2026-10-18 18:02:40.513 [http-nio-8084-exec-2] INFO  [traceId=,spanId=,robot_code=] o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-10-18 18:02:40.514 [http-nio-8084-exec-2] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-10-18 18:02:40.515 [http-nio-8084-exec-2] INFO  [traceId=,spanId=,robot_code=] o.s.web.servlet.DispatcherServlet - Completed initialization in 1 ms
+2026-10-18 18:02:40.635 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.RosCommandDispatcher - get_param(冒号) 耗时49ms len=40276B head=["<?xml version=\"1.0\" ?>\n<!-- ========]
+2026-10-18 18:02:47.265 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (9 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:02:57.288 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (19 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)

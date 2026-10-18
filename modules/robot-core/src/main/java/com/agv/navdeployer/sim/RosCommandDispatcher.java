@@ -103,14 +103,25 @@ public class RosCommandDispatcher implements RosbridgeHandler {
      * 返回空串），先按冒号格式请求，空则回退裸名兼容旧版 rosapi。 */
     public CompletableFuture<String> getRobotUrdf() {
         requireClient();
+        long start = System.currentTimeMillis();
         ObjectNode args = MAPPER.createObjectNode();
         args.put("name", "/robot_state_publisher:robot_description");
         return callService("/rosapi/get_param", args)
-                .thenApply(this::urdfOrNull)
+                .thenApply(values -> {
+                    String value = values.path("value").asText(null);
+                    log.info("get_param(robot_description) 耗时{}ms len={}B",
+                            System.currentTimeMillis() - start,
+                            value == null ? -1 : value.length());
+                    return urdfOrNull(value);
+                })
                 .thenCompose(urdf -> urdf != null
                         ? CompletableFuture.completedFuture(urdf)
-                        : callService("/rosapi/get_param", bareNameArgs()).thenApply(this::urdfOrNull))
-                .exceptionally(throwable -> null);
+                        : callService("/rosapi/get_param", bareNameArgs()).thenApply(values ->
+                                urdfOrNull(values.path("value").asText(null))))
+                .exceptionally(throwable -> {
+                    log.warn("get_robot_urdf failed: {}", throwable.getMessage());
+                    return null;
+                });
     }
 
     private ObjectNode bareNameArgs() {
@@ -119,12 +130,20 @@ public class RosCommandDispatcher implements RosbridgeHandler {
         return args;
     }
 
-    private String urdfOrNull(JsonNode values) {
-        String urdf = values.path("value").asText(null);
-        if (urdf == null || !urdf.startsWith("<?xml")) {
+    private String urdfOrNull(String value) {
+        if (value == null || value.isBlank()) {
             return null;
         }
-        return urdf;
+        String urdf = value;
+        if (urdf.startsWith("\"")) {
+            // 部分 rosapi 版本对 string 参数也做 json.dumps（双重编码），再解一层
+            try {
+                urdf = MAPPER.readTree(urdf).asText();
+            } catch (Exception exception) {
+                return null;
+            }
+        }
+        return urdf.startsWith("<?xml") ? urdf : null;
     }
 
     /** /agv/arm_move 响应（契约见《仿真机器人功能开发说明.md》F1.5）。 */
