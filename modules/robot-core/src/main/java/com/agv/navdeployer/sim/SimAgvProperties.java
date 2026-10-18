@@ -72,6 +72,8 @@ public class SimAgvProperties {
     private String saveMapService = "/agv/save_map";
     /** 机械臂/腰关节运动服务（《仿真机器人功能开发说明.md》F1.5 契约）。 */
     private String armMoveService = "/agv/arm_move";
+    /** URDF mesh 静态服务端口（机器人侧 HTTP 目录，见说明文档 F1.4/F3；host 自动取 ws-url）。 */
+    private int urdfMeshPort = 8090;
 
     /**
      * 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
@@ -457,6 +459,14 @@ public class SimAgvProperties {
 
     public void setArmMoveService(String armMoveService) {
         this.armMoveService = armMoveService;
+    }
+
+    public int getUrdfMeshPort() {
+        return urdfMeshPort;
+    }
+
+    public void setUrdfMeshPort(int urdfMeshPort) {
+        this.urdfMeshPort = urdfMeshPort;
     }
 
     public long getStatusFreshMs() {

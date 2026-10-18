@@ -168,7 +168,10 @@ export class RobotLayer {
       const xml = await res.text()
       const URDFLoader = (await import('urdf-loader')).default
       const manager = new THREE.LoadingManager()
-      const base = (import.meta.env.VITE_URDF_MESH_BASE as string | undefined)?.replace(/\/+$/, '')
+      // 默认走上位机后端代理（host 取 ws-url、端口 sim-agv.urdf-mesh-port），
+      // 浏览器同源加载免 CORS；VITE_URDF_MESH_BASE 可覆盖为直连机器人地址
+      const base = ((import.meta.env.VITE_URDF_MESH_BASE as string | undefined) ?? '/api/v1/robot/mesh')
+        .replace(/\/+$/, '')
       manager.setURLModifier((url) => {
         if (url.startsWith('package://')) {
           const path = url.slice('package://'.length)

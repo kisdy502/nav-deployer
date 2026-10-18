@@ -36,19 +36,22 @@ public class RobotController {
     private final MapModeTaskService mapModeTaskService;
     private final ObjectMapper objectMapper;
     private final SimAgvTelemetry telemetry;
+    private final com.agv.navdeployer.sim.SimAgvProperties simProps;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
                            RosbridgeClient rosbridgeClient,
                            MapModeTaskService mapModeTaskService,
                            ObjectMapper objectMapper,
-                           SimAgvTelemetry telemetry) {
+                           SimAgvTelemetry telemetry,
+                           com.agv.navdeployer.sim.SimAgvProperties simProps) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
         this.mapModeTaskService = mapModeTaskService;
         this.objectMapper = objectMapper;
         this.telemetry = telemetry;
+        this.simProps = simProps;
     }
 
     @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数 / 地图对齐状态")
@@ -95,6 +98,49 @@ public class RobotController {
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             return ResponseEntity.status(502).body(Map.of("success", false, "message", String.valueOf(cause.getMessage())));
+        }
+    }
+
+    private static final String MESH_PREFIX = "/api/v1/robot/mesh/";
+    private static final java.net.http.HttpClient MESH_CLIENT = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(5)).build();
+
+    @Operation(summary = "URDF mesh 代理", description = "把 URDF 的 package:// 路径代理到机器人侧 mesh 静态服务（host 取 ws-url，端口 sim-agv.urdf-mesh-port），浏览器同源加载免 CORS")
+    @GetMapping(MESH_PREFIX + "**")
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> mesh(
+            jakarta.servlet.http.HttpServletRequest request) {
+        String raw = request.getRequestURI().substring(request.getContextPath().length() + MESH_PREFIX.length());
+        if (raw.isBlank() || raw.contains("..") || raw.contains("\\") || raw.chars().anyMatch(Character::isISOControl)) {
+            return ResponseEntity.badRequest().build();
+        }
+        String host;
+        try {
+            host = java.net.URI.create(simProps.getWsUrl()).getHost();
+        } catch (Exception e) {
+            host = null;
+        }
+        if (host == null || host.isBlank()) {
+            return ResponseEntity.status(503).body(out -> out.write("invalid sim-agv.ws-url".getBytes()));
+        }
+        java.net.URI target = java.net.URI.create("http://" + host + ":" + simProps.getUrdfMeshPort() + "/" + raw);
+        java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(target)
+                .timeout(java.time.Duration.ofSeconds(60)).GET().build();
+        try {
+            java.net.http.HttpResponse<java.io.InputStream> upstream =
+                    MESH_CLIENT.send(req, java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+            if (upstream.statusCode() != 200) {
+                return ResponseEntity.status(upstream.statusCode() == 404 ? 404 : 502).build();
+            }
+            String contentType = upstream.headers().firstValue("Content-Type").orElse("application/octet-stream");
+            return ResponseEntity.ok()
+                    .header("Content-Type", contentType)
+                    .body(out -> upstream.body().transferTo(out));
+        } catch (java.io.IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return ResponseEntity.status(502)
+                    .body(out -> out.write(("robot mesh service unavailable: " + e.getMessage()).getBytes()));
         }
     }
 
