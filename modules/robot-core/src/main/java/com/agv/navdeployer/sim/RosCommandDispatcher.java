@@ -111,6 +111,36 @@ public class RosCommandDispatcher implements RosbridgeHandler {
                 .exceptionally(throwable -> null);
     }
 
+    /** /agv/arm_move 响应（契约见《仿真机器人功能开发说明.md》F1.5）。 */
+    public record ArmMoveResult(boolean success, String message) {
+    }
+
+    /**
+     * 机械臂/腰关节运动（仿真侧异步插值执行，进度经 /joint_states 体现）。
+     *
+     * @param arm         left / right / waist
+     * @param joints      目标关节角（弧度），顺序与 /joint_states 中该组关节名排序一致
+     * @param durationSec 执行时长（秒），null 时仿真侧取默认
+     */
+    public CompletableFuture<ArmMoveResult> armMove(String arm, double[] joints, Double durationSec) {
+        requireClient();
+        ObjectNode args = MAPPER.createObjectNode();
+        args.put("arm", arm);
+        ArrayNode jointArray = args.putArray("joints");
+        for (double joint : joints) {
+            jointArray.add(joint);
+        }
+        if (durationSec != null) {
+            args.put("duration_sec", durationSec);
+        }
+        return callService(props.getArmMoveService(), args)
+                .thenApply(values -> new ArmMoveResult(
+                        values.path("success").asBoolean(false),
+                        values.path("message").asText("")))
+                .exceptionally(throwable -> new ArmMoveResult(false,
+                        "arm_move 调用失败: " + throwable.getMessage()));
+    }
+
     /** 指定超时版本：大响应服务（如 get_map 栅格数 MB）需要更长等待。 */
     public CompletableFuture<JsonNode> callService(String service, JsonNode args, long timeoutMs) {
         requireClient();

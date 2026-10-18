@@ -36,7 +36,7 @@ public class RmsTelemetryService {
         this.mapper = mapper;
     }
 
-    /** pose/query：底盘当前 map 系位姿（x/y/yaw），AGV 无上肢/腰部，全零。 */
+    /** pose/query：底盘位姿 + 臂/腰关节角（/joint_states 按命名分组），末端 vector 无数据源暂全零。 */
     public BodyReply poseQuery() {
         SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
         double x = pose == null ? 0.0 : pose.x();
@@ -45,7 +45,38 @@ public class RmsTelemetryService {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("agv_vector", new double[]{x, y, yaw});
         data.put("head_vector", new double[]{0, 0, 0, 0, 0, 0});
+        data.put("leftarm_vector", new double[]{0, 0, 0, 0, 0, 0});
+        data.put("rightarm_vector", new double[]{0, 0, 0, 0, 0, 0});
+        appendGroupedJoints(data, telemetry.getJointStates());
         return BodyReply.success("ok", data);
+    }
+
+    /**
+     * 关节分组（命名契约见《仿真机器人功能开发说明.md》§2.4）：
+     * 名含 arm+left → left_joints，arm+right → right_joints，waist → waist_joints；
+     * 组内按关节名自然排序（arm_left_joint_1..7）；舵轮（steer）与未知关节不下发。
+     */
+    static void appendGroupedJoints(Map<String, Object> data, SimAgvTelemetry.JointSnapshot joints) {
+        Map<String, Double> left = new java.util.TreeMap<>();
+        Map<String, Double> right = new java.util.TreeMap<>();
+        Map<String, Double> waist = new java.util.TreeMap<>();
+        if (joints != null) {
+            String[] names = joints.names();
+            double[] positions = joints.positions();
+            for (int i = 0; i < names.length && i < positions.length; i++) {
+                String lower = names[i].toLowerCase();
+                if (lower.contains("arm") && lower.contains("left")) {
+                    left.put(names[i], positions[i]);
+                } else if (lower.contains("arm") && lower.contains("right")) {
+                    right.put(names[i], positions[i]);
+                } else if (lower.contains("waist")) {
+                    waist.put(names[i], positions[i]);
+                }
+            }
+        }
+        data.put("left_joints", left.values().stream().mapToDouble(Double::doubleValue).toArray());
+        data.put("right_joints", right.values().stream().mapToDouble(Double::doubleValue).toArray());
+        data.put("waist_joints", waist.values().stream().mapToDouble(Double::doubleValue).toArray());
     }
 
     /** config/get：静态属性 + config/edit 覆盖项合并后的快照。 */

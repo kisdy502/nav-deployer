@@ -70,6 +70,8 @@ public class SimAgvProperties {
     private String loadMapService = "/agv/load_map";
     private String startMappingService = "/agv/start_mapping";
     private String saveMapService = "/agv/save_map";
+    /** 机械臂/腰关节运动服务（《仿真机器人功能开发说明.md》F1.5 契约）。 */
+    private String armMoveService = "/agv/arm_move";
 
     /**
      * 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
@@ -447,6 +449,14 @@ public class SimAgvProperties {
 
     public void setSaveMapService(String saveMapService) {
         this.saveMapService = saveMapService;
+    }
+
+    public String getArmMoveService() {
+        return armMoveService;
+    }
+
+    public void setArmMoveService(String armMoveService) {
+        this.armMoveService = armMoveService;
     }
 
     public long getStatusFreshMs() {

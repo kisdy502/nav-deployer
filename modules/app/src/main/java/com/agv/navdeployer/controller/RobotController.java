@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
 import java.util.concurrent.CompletionException;
 
 @Tag(name = "机器人状态与控制", description = "遥测快照、set_control 任务闸门、重定位、SSE 事件流")
@@ -72,6 +73,28 @@ public class RobotController {
             return ResponseEntity.ok(urdf);
         } catch (CompletionException e) {
             return ResponseEntity.status(502).body("robot_description not available: " + e.getCause().getMessage());
+        }
+    }
+
+    /** 机械臂调试指令体（契约见《仿真机器人功能开发说明.md》F1.5）。 */
+    record ArmMoveDTO(String arm, double[] joints, Double durationSec) {
+    }
+
+    @Operation(summary = "机械臂运动（调试入口）", description = "转发 /agv/arm_move 服务：arm=left/right/waist，joints 为目标关节角（弧度），异步执行进度见 /joint_states")
+    @PostMapping("/api/v1/robot/arm-move")
+    public ResponseEntity<Object> armMove(@Valid @RequestBody ArmMoveDTO dto) {
+        if (!rosbridgeClient.isConnected()) {
+            return ResponseEntity.status(503).body(Map.of("success", false, "message", "rosbridge not connected"));
+        }
+        if (dto.arm() == null || dto.arm().isBlank() || dto.joints() == null || dto.joints().length == 0) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "arm 与 joints 必填"));
+        }
+        try {
+            var result = dispatcher.armMove(dto.arm().trim(), dto.joints(), dto.durationSec()).join();
+            return ResponseEntity.ok(result);
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            return ResponseEntity.status(502).body(Map.of("success", false, "message", String.valueOf(cause.getMessage())));
         }
     }
 
