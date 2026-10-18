@@ -98,17 +98,33 @@ public class RosCommandDispatcher implements RosbridgeHandler {
         return callService(service, args, props.getServiceTimeoutMs());
     }
 
-    /** 读取机器人 URDF（rosparam robot_description，经 /rosapi/get_param），读不到返回 null。 */
+    /** 读取机器人 URDF（rosparam robot_description，经 /rosapi/get_param），读不到返回 null。
+     * ROS2 Humble 的 rosapi 要求 name 为冒号格式 <节点名>:<参数名>（裸名会被静默判 malformed
+     * 返回空串），先按冒号格式请求，空则回退裸名兼容旧版 rosapi。 */
     public CompletableFuture<String> getRobotUrdf() {
         requireClient();
         ObjectNode args = MAPPER.createObjectNode();
-        args.put("name", "robot_description");
+        args.put("name", "/robot_state_publisher:robot_description");
         return callService("/rosapi/get_param", args)
-                .thenApply(values -> {
-                    String urdf = values.path("value").asText(null);
-                    return urdf == null || urdf.isBlank() ? null : urdf;
-                })
+                .thenApply(this::urdfOrNull)
+                .thenCompose(urdf -> urdf != null
+                        ? CompletableFuture.completedFuture(urdf)
+                        : callService("/rosapi/get_param", bareNameArgs()).thenApply(this::urdfOrNull))
                 .exceptionally(throwable -> null);
+    }
+
+    private ObjectNode bareNameArgs() {
+        ObjectNode args = MAPPER.createObjectNode();
+        args.put("name", "robot_description");
+        return args;
+    }
+
+    private String urdfOrNull(JsonNode values) {
+        String urdf = values.path("value").asText(null);
+        if (urdf == null || !urdf.startsWith("<?xml")) {
+            return null;
+        }
+        return urdf;
     }
 
     /** /agv/arm_move 响应（契约见《仿真机器人功能开发说明.md》F1.5）。 */
