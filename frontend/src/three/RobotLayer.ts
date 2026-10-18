@@ -3,17 +3,20 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { angleDelta } from '@/utils/coords'
 
 const TRAIL_MAX = 2000
-/** 机器人矩形显示尺寸（实际车体 0.4m × 0.32m 的 2.5 倍左右），长边沿 +x，即朝向方向 */
-const BODY_L = 1.02
-const BODY_W = 0.7
-/** 车体显示高度（视觉放大，配合灯光呈现立体感） */
-const BODY_H = 0.5
-/** 舵轮：三轮 120° 分布（对齐仿真底盘三舵轮构型） */
-const WHEEL_R = 0.13
-const WHEEL_MOUNT_R = 0.34
-/** 机械臂示意连杆长度（参数化模型的兜底显示，URDF 可用时整体替换） */
-const ARM_L1 = 0.55
-const ARM_L2 = 0.45
+/** 车体真实比例（对齐 Gazebo 三舵轮 AGV，长边沿 +x 即朝向方向）；全局视图偏小时用缩放工具放大 */
+const BODY_L = 0.42
+const BODY_W = 0.32
+const BODY_H = 0.14
+/** 三舵轮布局（对齐 /joint_states 命名：front / left / right，前 1 + 后 2） */
+const WHEEL_R = 0.06
+const WHEEL_W = 0.04
+const WHEEL_FRONT = { x: 0.15, y: 0 }
+const WHEEL_LEFT = { x: -0.14, y: 0.1 }
+const WHEEL_RIGHT = { x: -0.14, y: -0.1 }
+/** 机械臂尺寸（对齐 UR5e 真实构型：底座 + 大臂 0.42 + 前臂 0.39 + 腕） */
+const ARM_BASE_H = 0.08
+const ARM_L1 = 0.42
+const ARM_L2 = 0.39
 
 /** ">" V 形符号（空心，粗线条由外/内两条 V 边之间的填充区域构成） */
 function chevronMesh(x: number, size: number, halfH: number, thickness: number, color: number): THREE.Mesh {
@@ -50,8 +53,9 @@ export class RobotLayer {
   private bodyGroup = new THREE.Group()
   private paramGroup = new THREE.Group()
   private chevron = new THREE.Group()
-  private steerPivots: THREE.Group[] = []
-  private wheelSpins: THREE.Mesh[] = []
+  private steerPivots = new Map<string, THREE.Group>()
+  private wheelMeshes = new Map<string, THREE.Mesh>()
+  private hasWheelFeedback = false
   private armBase: THREE.Group | null = null
   private armJoints: THREE.Group[] = []
   private urdfRobot: any = null
@@ -70,58 +74,62 @@ export class RobotLayer {
   constructor() {
     this.group.position.z = 0.2
 
+    // 底盘（Gazebo 风格：浅灰车体 + 蓝色描边 + 前部蓝色饰条分辨朝向），底面离地 = 轮半径
+    const chassisZ = WHEEL_R
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(BODY_L, BODY_W, BODY_H),
-      new THREE.MeshLambertMaterial({ color: 0x409eff }),
+      new THREE.MeshLambertMaterial({ color: 0xd7dde6 }),
     )
-    body.position.z = BODY_H / 2 + 0.01
+    body.position.z = chassisZ + BODY_H / 2
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(body.geometry),
       new THREE.LineBasicMaterial({ color: 0x1d6fd1 }),
     )
-    edges.position.z = BODY_H / 2 + 0.01
-    // 前部深色"头部"：侧视/斜视时也能分辨朝向
+    edges.position.z = chassisZ + BODY_H / 2
     const nose = new THREE.Mesh(
-      new THREE.BoxGeometry(BODY_L * 0.22, BODY_W * 0.96, BODY_H * 1.02),
-      new THREE.MeshLambertMaterial({ color: 0x1d6fd1 }),
+      new THREE.BoxGeometry(BODY_L * 0.18, BODY_W * 0.98, BODY_H * 0.6),
+      new THREE.MeshLambertMaterial({ color: 0x409eff }),
     )
-    nose.position.set(BODY_L / 2 - BODY_L * 0.11, 0, BODY_H / 2 + 0.01)
-    // 几何中心点：观察行驶时与路线的偏离（贴顶面，小圆点减少遮挡）
+    nose.position.set(BODY_L / 2 - BODY_L * 0.09, 0, chassisZ + BODY_H)
     const centerDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.05, 16),
+      new THREE.CircleGeometry(0.018, 12),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     )
-    centerDot.position.z = BODY_H + 0.02
-    // 「>>」朝向符号：两个空心 V 形紧邻排列（尾箭头前移贴住首箭头），位于机器人前部
+    centerDot.position.z = chassisZ + BODY_H + 0.005
+    // 「>>」朝向符号：贴顶面前部
     this.chevron.add(
-      chevronMesh(0.16, 0.14, 0.11, 0.032, 0xffffff),
-      chevronMesh(0.30, 0.14, 0.11, 0.032, 0xffffff),
+      chevronMesh(0.06, 0.05, 0.04, 0.012, 0x409eff),
+      chevronMesh(0.115, 0.05, 0.04, 0.012, 0x409eff),
     )
-    this.chevron.position.z = BODY_H + 0.02
+    this.chevron.position.z = chassisZ + BODY_H + 0.006
 
-    // 三舵轮：120° 分布（0° 前左、120° 后、240° 前右近似仿真构型）。
-    // 场景 z-up：圆柱默认轴沿 y 恰为左右方向，滚动即 rotation.y，转向为 steer 绕 z
-    for (let i = 0; i < 3; i++) {
+    // 三舵轮轮组（front / left / right，布局对齐 /joint_states 命名）：
+    // 转向罩（银灰小圆柱）+ 舵轮（黑圆柱，轴沿 y，滚动 rotation.y，转向 steer 绕 z）
+    const wheelSites: Array<[string, { x: number; y: number }]> = [
+      ['front', WHEEL_FRONT], ['left', WHEEL_LEFT], ['right', WHEEL_RIGHT],
+    ]
+    for (const [site, pos] of wheelSites) {
       const steer = new THREE.Group()
-      const angle = (Math.PI / 3) * 2 * i + Math.PI / 6
-      steer.position.set(
-        Math.cos(angle) * WHEEL_MOUNT_R,
-        Math.sin(angle) * WHEEL_MOUNT_R,
-        WHEEL_R,
-      )
+      steer.position.set(pos.x, pos.y, 0)
       const wheel = new THREE.Mesh(
-        new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.09, 20),
+        new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, WHEEL_W, 20),
         new THREE.MeshLambertMaterial({ color: 0x2b3440 }),
       )
-      steer.add(wheel)
-      this.steerPivots.push(steer)
-      this.wheelSpins.push(wheel)
+      wheel.position.z = WHEEL_R
+      const hub = new THREE.Mesh(
+        new THREE.CylinderGeometry(WHEEL_R + 0.015, WHEEL_R + 0.015, 0.035, 20),
+        new THREE.MeshLambertMaterial({ color: 0x9aa4b1 }),
+      )
+      hub.position.z = WHEEL_R * 2 + 0.02
+      steer.add(wheel, hub)
+      this.steerPivots.set(site, steer)
+      this.wheelMeshes.set(site, wheel)
       this.paramGroup.add(steer)
     }
 
-    // 机械臂示意（参数化兜底）：水平摆动式连杆，浮在车顶上方俯视可见
+    // 机械臂（UR5e 风格立式构型：底座 + 肩 + 大臂 + 肘 + 前臂 + 腕），立于车顶后部
     this.armBase = buildParametricArm(this.armJoints)
-    this.armBase.position.set(-BODY_L * 0.25, 0, BODY_H + 0.08)
+    this.armBase.position.set(-BODY_L * 0.28, 0, chassisZ + BODY_H)
     this.armBase.visible = false
     this.paramGroup.add(this.armBase)
 
@@ -136,7 +144,7 @@ export class RobotLayer {
     el.appendChild(inner)
     const label = new CSS2DObject(el)
     // 标签挂在 root 上不随车体旋转，浮在车体上方（俯视与 3D 视角都清晰）
-    label.position.set(0, 0.55, BODY_H + 0.25)
+    label.position.set(0, 0.55, chassisZ + BODY_H + 0.25)
 
     // 车体组：模型、描边、朝向符号随 yaw 一起旋转；label 挂在 root 上保持文字不随车体转动
     this.root.add(this.bodyGroup, label)
@@ -211,22 +219,34 @@ export class RobotLayer {
       }
       return
     }
-    let steerIndex = 0
     const armAngles: number[] = []
+    this.hasWheelFeedback = false
     joints.name.forEach((name, i) => {
       const lower = name.toLowerCase()
       const value = joints.position[i] ?? 0
-      if (lower.includes('steer') && steerIndex < this.steerPivots.length) {
-        this.steerPivots[steerIndex++].rotation.z = value
+      if (lower.includes('steer')) {
+        // 转向关节：按 front/left/right 定位轮组
+        const pivot = this.steerPivots.get(wheelSite(lower) ?? '')
+        if (pivot) pivot.rotation.z = value
+      } else if (lower.includes('wheel')) {
+        // 滚动关节：仿真侧给了真实累计角，直接驱动
+        const wheel = this.wheelMeshes.get(wheelSite(lower) ?? '')
+        if (wheel) {
+          wheel.rotation.y = value
+          this.hasWheelFeedback = true
+        }
       } else if (isArmJoint(lower)) {
         armAngles.push(value)
       }
     })
     if (this.armBase) {
       this.armBase.visible = armAngles.length > 0
-      // 全部绕 z 水平摆动（俯视可见），关节值缺失时给微张开缺省角
+      // UR5e 构型：j1 回转(绕 z)，j2/j3/j4 俯仰(绕 y)；缺省角取 UR5e 典型姿态
+      const defaults = [0, 0.6, -1.2, 0.5]
       this.armJoints.forEach((pivot, i) => {
-        pivot.rotation.z = armAngles[i] ?? (i === 0 ? -0.4 : 0.7)
+        const value = armAngles[i] ?? defaults[i] ?? 0
+        if (i === 0) pivot.rotation.z = value
+        else pivot.rotation.y = value
       })
     }
   }
@@ -277,13 +297,15 @@ export class RobotLayer {
     this.shown.y = this.segmentStart.y + (this.target.y - this.segmentStart.y) * t
     this.shown.yaw = this.segmentStart.yaw + angleDelta(this.segmentStart.yaw, this.target.yaw) * t
 
-    // 轮子滚动：由插值位姿差分累计（真实关节反馈缺失时的近似，前进为正）
+    // 轮子滚动兜底：仿真侧未提供滚动关节反馈时，由插值位姿差分近似（前进为正）
     if (this.lastRollAt) {
       const ds = Math.hypot(this.shown.x - this.lastRollAt.x, this.shown.y - this.lastRollAt.y)
       if (ds > 0.0005) {
         this.wheelRoll += ds / WHEEL_R
         this.lastRollAt = { x: this.shown.x, y: this.shown.y }
-        for (const wheel of this.wheelSpins) wheel.rotation.y = this.wheelRoll
+        if (!this.hasWheelFeedback) {
+          for (const wheel of this.wheelMeshes.values()) wheel.rotation.y = this.wheelRoll
+        }
       }
     } else {
       this.lastRollAt = { x: this.shown.x, y: this.shown.y }
@@ -328,49 +350,64 @@ function isArmJoint(lowerName: string): boolean {
   return lowerName.includes('joint')
 }
 
-/** 参数化机械臂（俯视可见设计）：底座 → j1 回转 → 大臂 → j2 摆动 → 小臂 → j3 摆动 → 末端。
- * 连杆全部在水平面内展开（绕 z 轴），俯视视角下臂的动作一目了然；
- * URDF 模型可用时整体替换为真实立式结构。 */
+/** 关节名 → 轮组站点（front/left/right），未知返回 null */
+function wheelSite(lowerName: string): string | null {
+  if (lowerName.includes('front')) return 'front'
+  if (lowerName.includes('left')) return 'left'
+  if (lowerName.includes('right')) return 'right'
+  return null
+}
+
+/** 参数化机械臂（UR5e 风格立式构型）：
+ * 底座 → j1 回转(绕 z) → 肩 j2 俯仰(绕 y) → 大臂 → 肘 j3 俯仰(绕 y) → 前臂 → 腕 j4 俯仰(绕 y)。
+ * 白色连杆 + 深灰关节球对齐 UR5e 配色；连杆沿 z 立式展开，3D 环绕视角完整可见。 */
 function buildParametricArm(jointsOut: THREE.Group[]): THREE.Group {
   const base = new THREE.Group()
   const dark = new THREE.MeshLambertMaterial({ color: 0x2b3440 })
-  const mid = new THREE.MeshLambertMaterial({ color: 0x67c23a })
+  const white = new THREE.MeshLambertMaterial({ color: 0xeef1f6 })
+  const radius = 0.036
+  const jointR = 0.045
 
-  // 场景 z-up：圆柱默认轴沿 y，旋转到沿 z
-  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.1, 16), dark)
+  // 底座圆柱（轴沿 z：默认轴沿 y，转到 z）
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, ARM_BASE_H, 16), dark)
   pedestal.rotation.x = Math.PI / 2
+  pedestal.position.z = ARM_BASE_H / 2
   base.add(pedestal)
 
   const j1 = new THREE.Group()
-  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.07, 14, 12), dark)
+  const shoulder = new THREE.Mesh(new THREE.SphereGeometry(jointR, 14, 12), dark)
+  shoulder.position.z = ARM_BASE_H
   j1.add(shoulder)
   base.add(j1)
 
-  const link1Pivot = new THREE.Group()
-  const link1 = new THREE.Mesh(new THREE.BoxGeometry(ARM_L1, 0.09, 0.07), mid)
-  link1.position.x = ARM_L1 / 2
-  link1Pivot.add(link1)
-  const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), dark)
-  elbow.position.x = ARM_L1
-  link1Pivot.add(elbow)
-  j1.add(link1Pivot)
-
   const j2 = new THREE.Group()
-  j2.position.x = ARM_L1
-  const link2 = new THREE.Mesh(new THREE.BoxGeometry(ARM_L2, 0.07, 0.06), mid)
-  link2.position.x = ARM_L2 / 2
-  j2.add(link2)
-  const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), dark)
-  wrist.position.x = ARM_L2
-  j2.add(wrist)
-  link1Pivot.add(j2)
+  j2.position.z = ARM_BASE_H
+  const link1 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, ARM_L1), white)
+  link1.position.z = ARM_L1 / 2
+  j2.add(link1)
+  const elbow = new THREE.Mesh(new THREE.SphereGeometry(jointR, 14, 12), dark)
+  elbow.position.z = ARM_L1
+  j2.add(elbow)
+  j1.add(j2)
 
   const j3 = new THREE.Group()
-  j3.position.x = ARM_L2
-  const gripper = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.05), dark)
-  j3.add(gripper)
+  j3.position.z = ARM_L1
+  const link2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, ARM_L2), white)
+  link2.position.z = ARM_L2 / 2
+  j3.add(link2)
+  const wrist = new THREE.Mesh(new THREE.SphereGeometry(jointR * 0.9, 12, 10), dark)
+  wrist.position.z = ARM_L2
+  j3.add(wrist)
   j2.add(j3)
 
-  jointsOut.push(j1, link1Pivot, j2)
+  const j4 = new THREE.Group()
+  j4.position.z = ARM_L2
+  const forearm = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.12, 12), white)
+  forearm.rotation.x = Math.PI / 2
+  forearm.position.z = 0.06
+  j4.add(forearm)
+  j3.add(j4)
+
+  jointsOut.push(j1, j2, j3, j4)
   return base
 }
