@@ -159,9 +159,17 @@ export class RobotLayer {
           const path = url.slice('package://'.length)
           return base ? `${base}/${path}` : path
         }
+        // urdf-loader 内部会先剥掉 package:// 前缀再请求 manager（相对路径 "包名/meshes/..."），
+        // 该形态同样重写到代理，否则相对路径会打到页面服务器拿到 SPA fallback 的 HTML
+        if (base && /^[\w.-]+\/meshes\//.test(url)) {
+          return `${base}/${url}`
+        }
         return url
       })
       const loader = new URDFLoader(manager)
+      // 官方包路径解析机制：package://<pkg>/... → <base>/<pkg>/...（上位机 mesh 代理）。
+      // 不设置时 urdf-loader 会剥成相对路径打到页面服务器（SPA fallback 返回 HTML，mesh 全挂）
+      ;(loader as any).packages = (pkg: string) => `${base}/${pkg}`
       const robot = loader.parse(xml)
       if (!robot) return
       // URDF 本身就是 z-up、x-forward（ROS 语义），与本场景坐标约定一致，直接挂载

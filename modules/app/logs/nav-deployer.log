@@ -571,3 +571,8 @@ Identify and stop the process that's listening on port 8084 or configure this ap
 2026-10-18 18:02:40.635 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.RosCommandDispatcher - get_param(冒号) 耗时49ms len=40276B head=["<?xml version=\"1.0\" ?>\n<!-- ========]
 2026-10-18 18:02:47.265 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (9 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
 2026-10-18 18:02:57.288 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV summary | conn=true | status=IDLE/100% (19 msg) | pose n/a (0 msg) | scan1 [n/a] (0 msg) | scan2 [n/a] (0 msg)
+2026-10-18 18:03:06.449 [WebSocketConnectReadThread-66] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 18:03:06.464 [WebSocketConnectReadThread-63] INFO  [traceId=,spanId=,robot_code=] c.a.navdeployer.sim.RosbridgeClient - rosbridge disconnected: code=1000, reason=
+2026-10-18 18:03:06.464 [WebSocketConnectReadThread-63] WARN  [traceId=,spanId=,robot_code=] c.a.n.sim.SimAgvTelemetryCollector - Sim AGV rosbridge disconnected, will retry: code=1000, reason=
+2026-10-18 18:03:06.474 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-10-18 18:03:06.479 [SpringApplicationShutdownHook] INFO  [traceId=,spanId=,robot_code=] com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
