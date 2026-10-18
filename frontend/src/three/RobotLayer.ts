@@ -85,8 +85,8 @@ export class RobotLayer {
     this.rebuildChassis(BODY_L, BODY_W)
     this.bodyGroup.add(this.paramGroup, this.chevron, this.armSkeletonGroup)
 
-    // 三舵轮轮组（front / left / right，布局对齐 /joint_states 命名）：
-    // 转向罩（银灰小圆柱）+ 舵轮（黑圆柱，轴沿 y，滚动 rotation.y，转向 steer 绕 z）
+    // 三舵轮轮组（front / left / right）：黑色舵轮（轴沿 y，滚动 rotation.y，转向 steer 绕 z），
+    // 位置初始按常量，TF 雷达包络到达后按真实车长重排
     const wheelSites: Array<[string, { x: number; y: number }]> = [
       ['front', WHEEL_FRONT], ['left', WHEEL_LEFT], ['right', WHEEL_RIGHT],
     ]
@@ -98,12 +98,7 @@ export class RobotLayer {
         new THREE.MeshLambertMaterial({ color: 0x2b3440 }),
       )
       wheel.position.z = WHEEL_R
-      const hub = new THREE.Mesh(
-        new THREE.CylinderGeometry(WHEEL_R + 0.015, WHEEL_R + 0.015, 0.035, 20),
-        new THREE.MeshLambertMaterial({ color: 0x9aa4b1 }),
-      )
-      hub.position.z = WHEEL_R * 2 + 0.02
-      steer.add(wheel, hub)
+      steer.add(wheel)
       this.steerPivots.set(site, steer)
       this.wheelMeshes.set(site, wheel)
       this.paramGroup.add(steer)
@@ -242,10 +237,35 @@ export class RobotLayer {
       if (Math.abs(len - this.chassisL) > 0.02 || Math.abs(wid - this.chassisW) > 0.02) {
         this.rebuildChassis(len, wid)
       }
+    } else {
+      // 兜底：仿真侧未发布轮子 TF 时，用雷达安装位（车体两端）反推真实车长，
+      // 底盘按雷达包络自适应，轮位按新车长重排（前中 + 后两侧）
+      const lidarX: number[] = []
+      for (const frame of frames) {
+        if (!/lidar/i.test(frame.child)) continue
+        const matrix = resolve(frame.child)
+        if (matrix) lidarX.push(new THREE.Vector3().setFromMatrixPosition(matrix).x)
+      }
+      if (lidarX.length >= 2) {
+        const span = Math.max(...lidarX) - Math.min(...lidarX)
+        const len = span + 0.16
+        const wid = Math.max(this.chassisW, len * 0.42)
+        if (Math.abs(len - this.chassisL) > 0.02) {
+          this.rebuildChassis(len, wid)
+          this.repositionWheels(len, wid)
+        }
+      }
     }
 
     // 3) 臂骨架
     this.updateArmSkeleton(frames, resolve)
+  }
+
+  /** 无轮 TF 时的轮位重排：按底盘尺寸比例摆三舵轮（前中 + 后两侧）。 */
+  private repositionWheels(len: number, wid: number) {
+    this.steerPivots.get('front')?.position.set(len / 2 - 0.09, 0, 0)
+    this.steerPivots.get('left')?.position.set(-len / 2 + 0.09, wid / 2 - 0.06, 0)
+    this.steerPivots.get('right')?.position.set(-len / 2 + 0.09, -(wid / 2 - 0.06), 0)
   }
 
   private applyJoints() {
@@ -314,17 +334,12 @@ export class RobotLayer {
       new THREE.LineBasicMaterial({ color: 0x1d6fd1 }),
     )
     edges.position.z = chassisZ + BODY_H / 2
-    const nose = new THREE.Mesh(
-      new THREE.BoxGeometry(len * 0.16, wid * 0.9, 0.03),
-      new THREE.MeshLambertMaterial({ color: 0x409eff }),
-    )
-    nose.position.set(len / 2 - len * 0.08, 0, chassisZ + BODY_H)
     const centerDot = new THREE.Mesh(
       new THREE.CircleGeometry(0.018, 12),
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
     )
     centerDot.position.z = chassisZ + BODY_H + 0.005
-    parts.add(body, edges, nose, centerDot)
+    parts.add(body, edges, centerDot)
     this.chassisParts = parts
     this.paramGroup.add(parts)
 
