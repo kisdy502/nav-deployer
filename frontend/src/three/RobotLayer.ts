@@ -119,9 +119,9 @@ export class RobotLayer {
       this.paramGroup.add(steer)
     }
 
-    // 机械臂示意（参数化兜底）：底座回转 j1（绕 z）→ 大臂俯仰 j2（绕 y）→ 小臂俯仰 j3（绕 y）→ 末端
+    // 机械臂示意（参数化兜底）：水平摆动式连杆，浮在车顶上方俯视可见
     this.armBase = buildParametricArm(this.armJoints)
-    this.armBase.position.set(-BODY_L * 0.3, 0, BODY_H)
+    this.armBase.position.set(-BODY_L * 0.25, 0, BODY_H + 0.08)
     this.armBase.visible = false
     this.paramGroup.add(this.armBase)
 
@@ -224,12 +224,9 @@ export class RobotLayer {
     })
     if (this.armBase) {
       this.armBase.visible = armAngles.length > 0
-      const axisFor = (i: number) => (i === 0 ? 'z' : 'y')
+      // 全部绕 z 水平摆动（俯视可见），关节值缺失时给微张开缺省角
       this.armJoints.forEach((pivot, i) => {
-        const axis = axisFor(i)
-        const value = armAngles[i] ?? (axis === 'z' ? 0 : 0.35)
-        if (axis === 'z') pivot.rotation.z = value
-        else pivot.rotation.y = value
+        pivot.rotation.z = armAngles[i] ?? (i === 0 ? -0.4 : 0.7)
       })
     }
   }
@@ -331,14 +328,16 @@ function isArmJoint(lowerName: string): boolean {
   return lowerName.includes('joint')
 }
 
-/** 参数化机械臂：底座 → j1 回转（绕 z）→ 大臂 → j2 俯仰（绕 y）→ 小臂 → j3 俯仰（绕 y）→ 末端 */
+/** 参数化机械臂（俯视可见设计）：底座 → j1 回转 → 大臂 → j2 摆动 → 小臂 → j3 摆动 → 末端。
+ * 连杆全部在水平面内展开（绕 z 轴），俯视视角下臂的动作一目了然；
+ * URDF 模型可用时整体替换为真实立式结构。 */
 function buildParametricArm(jointsOut: THREE.Group[]): THREE.Group {
   const base = new THREE.Group()
   const dark = new THREE.MeshLambertMaterial({ color: 0x2b3440 })
   const mid = new THREE.MeshLambertMaterial({ color: 0x67c23a })
 
-  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.1, 16), dark)
   // 场景 z-up：圆柱默认轴沿 y，旋转到沿 z
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.1, 16), dark)
   pedestal.rotation.x = Math.PI / 2
   base.add(pedestal)
 
@@ -348,27 +347,27 @@ function buildParametricArm(jointsOut: THREE.Group[]): THREE.Group {
   base.add(j1)
 
   const link1Pivot = new THREE.Group()
-  const link1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, ARM_L1), mid)
-  link1.position.z = ARM_L1 / 2
+  const link1 = new THREE.Mesh(new THREE.BoxGeometry(ARM_L1, 0.09, 0.07), mid)
+  link1.position.x = ARM_L1 / 2
   link1Pivot.add(link1)
   const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 10), dark)
-  elbow.position.z = ARM_L1
+  elbow.position.x = ARM_L1
   link1Pivot.add(elbow)
   j1.add(link1Pivot)
 
   const j2 = new THREE.Group()
-  j2.position.z = ARM_L1
-  const link2 = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, ARM_L2), mid)
-  link2.position.z = ARM_L2 / 2
+  j2.position.x = ARM_L1
+  const link2 = new THREE.Mesh(new THREE.BoxGeometry(ARM_L2, 0.07, 0.06), mid)
+  link2.position.x = ARM_L2 / 2
   j2.add(link2)
   const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), dark)
-  wrist.position.z = ARM_L2
+  wrist.position.x = ARM_L2
   j2.add(wrist)
   link1Pivot.add(j2)
 
   const j3 = new THREE.Group()
-  j3.position.z = ARM_L2
-  const gripper = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.05), dark)
+  j3.position.x = ARM_L2
+  const gripper = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.05), dark)
   j3.add(gripper)
   j2.add(j3)
 
