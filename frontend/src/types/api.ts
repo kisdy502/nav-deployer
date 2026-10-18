@@ -226,6 +226,18 @@ export interface ScanCloud {
 }
 
 /** telemetry 事件体（= GET /robot/snapshot 的 data） */
+export interface TfFrame {
+  parent: string
+  child: string
+  x: number
+  y: number
+  z: number
+  qx: number
+  qy: number
+  qz: number
+  qw: number
+}
+
 export interface TelemetrySnapshot {
   timestamp: string
   connected: boolean
@@ -233,6 +245,7 @@ export interface TelemetrySnapshot {
   status: AgvStatus | null
   pose: { x: number; y: number; yaw: number; yaw_deg: number } | null
   joints: { name: string[]; position: number[] } | null
+  tf_frames: TfFrame[] | null
   scan1: ScanSummary | null
   scan2: ScanSummary | null
   msg_status: number

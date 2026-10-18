@@ -54,6 +54,12 @@ public final class SimAgvTelemetry {
     public record JointSnapshot(String[] names, double[] positions, Instant receivedAt) {
     }
 
+    /** TF 树一帧原始相对变换（parent → child），供前端按真实构型绘制（轮位/臂骨架）。 */
+    public record TfFrameSnapshot(String parent, String child,
+                                  double x, double y, double z,
+                                  double qx, double qy, double qz, double qw) {
+    }
+
     public record Snapshot(
             boolean connected,
             StatusSnapshot status,
@@ -78,6 +84,9 @@ public final class SimAgvTelemetry {
     private volatile ScanSnapshot scan1;
     private volatile ScanSnapshot scan2;
     private volatile JointSnapshot jointStates;
+    /** TF 树最新变换缓存（child frame → 相对 parent 的变换），/tf 与 /tf_static 合并写入。 */
+    private final java.util.concurrent.ConcurrentHashMap<String, TfFrameSnapshot> tfFrames =
+            new java.util.concurrent.ConcurrentHashMap<>();
     private volatile double odomLinearX;
     private volatile double odomAngularZ;
     private volatile long statusCount;
@@ -155,6 +164,17 @@ public final class SimAgvTelemetry {
 
     public void setJointStates(JointSnapshot jointStates) {
         this.jointStates = jointStates;
+    }
+
+    public void putTfFrame(TfFrameSnapshot frame) {
+        if (tfFrames.size() > 256) {
+            tfFrames.clear();
+        }
+        tfFrames.put(frame.child(), frame);
+    }
+
+    public java.util.Collection<TfFrameSnapshot> getTfFrames() {
+        return tfFrames.values();
     }
 
     public double getOdomAngularZ() {

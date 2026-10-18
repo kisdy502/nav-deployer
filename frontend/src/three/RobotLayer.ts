@@ -58,6 +58,13 @@ export class RobotLayer {
   private hasWheelFeedback = false
   private armBase: THREE.Group | null = null
   private armJoints: THREE.Group[] = []
+  private armSkeletonGroup = new THREE.Group()
+  private skeletonKey = ''
+  private skeletonNodes: { name: string; mesh: THREE.Mesh }[] = []
+  private skeletonEdges: { a: string; b: string; line: THREE.Line }[] = []
+  private chassisL = BODY_L
+  private chassisW = BODY_W
+  private chassisParts: THREE.Group | null = null
   private urdfRobot: any = null
   private target: { x: number; y: number; yaw: number } | null = null
   private shown: { x: number; y: number; yaw: number } | null = null
@@ -74,34 +81,9 @@ export class RobotLayer {
   constructor() {
     this.group.position.z = 0.2
 
-    // 底盘（Gazebo 风格：浅灰车体 + 蓝色描边 + 前部蓝色饰条分辨朝向），底面离地 = 轮半径
-    const chassisZ = WHEEL_R
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(BODY_L, BODY_W, BODY_H),
-      new THREE.MeshLambertMaterial({ color: 0xd7dde6 }),
-    )
-    body.position.z = chassisZ + BODY_H / 2
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(body.geometry),
-      new THREE.LineBasicMaterial({ color: 0x1d6fd1 }),
-    )
-    edges.position.z = chassisZ + BODY_H / 2
-    const nose = new THREE.Mesh(
-      new THREE.BoxGeometry(BODY_L * 0.18, BODY_W * 0.98, BODY_H * 0.6),
-      new THREE.MeshLambertMaterial({ color: 0x409eff }),
-    )
-    nose.position.set(BODY_L / 2 - BODY_L * 0.09, 0, chassisZ + BODY_H)
-    const centerDot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.018, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffffff }),
-    )
-    centerDot.position.z = chassisZ + BODY_H + 0.005
-    // 「>>」朝向符号：贴顶面前部
-    this.chevron.add(
-      chevronMesh(0.06, 0.05, 0.04, 0.012, 0x409eff),
-      chevronMesh(0.115, 0.05, 0.04, 0.012, 0x409eff),
-    )
-    this.chevron.position.z = chassisZ + BODY_H + 0.006
+    // 底盘几何由 rebuildChassis 生成（初始按常量，TF 轮位到达后按包络自适应）
+    this.rebuildChassis(BODY_L, BODY_W)
+    this.bodyGroup.add(this.paramGroup, this.chevron, this.armSkeletonGroup)
 
     // 三舵轮轮组（front / left / right，布局对齐 /joint_states 命名）：
     // 转向罩（银灰小圆柱）+ 舵轮（黑圆柱，轴沿 y，滚动 rotation.y，转向 steer 绕 z）
@@ -127,14 +109,11 @@ export class RobotLayer {
       this.paramGroup.add(steer)
     }
 
-    // 机械臂（UR5e 风格立式构型：底座 + 肩 + 大臂 + 肘 + 前臂 + 腕），立于车顶后部
+    // 机械臂参数化示意（TF 骨架不可用时的兜底）
     this.armBase = buildParametricArm(this.armJoints)
-    this.armBase.position.set(-BODY_L * 0.28, 0, chassisZ + BODY_H)
+    this.armBase.position.set(-BODY_L * 0.28, 0, WHEEL_R + BODY_H)
     this.armBase.visible = false
     this.paramGroup.add(this.armBase)
-
-    this.paramGroup.add(body, edges, nose, centerDot)
-    this.bodyGroup.add(this.paramGroup, this.chevron)
 
     const el = document.createElement('div')
     el.className = 'nd-label'
@@ -144,7 +123,7 @@ export class RobotLayer {
     el.appendChild(inner)
     const label = new CSS2DObject(el)
     // 标签挂在 root 上不随车体旋转，浮在车体上方（俯视与 3D 视角都清晰）
-    label.position.set(0, 0.55, chassisZ + BODY_H + 0.25)
+    label.position.set(0, 0.55, WHEEL_R + BODY_H + 0.25)
 
     // 车体组：模型、描边、朝向符号随 yaw 一起旋转；label 挂在 root 上保持文字不随车体转动
     this.root.add(this.bodyGroup, label)
@@ -207,6 +186,68 @@ export class RobotLayer {
     this.applyJoints()
   }
 
+  /**
+   * TF 树帧到达（10Hz）：真实构型驱动的三件事——
+   * 1) 轮组按 steering frame 的 base 系坐标精确定位（front/left/right 按名匹配）；
+   * 2) 底盘尺寸按轮位包络自适应（轮组永不外露）；
+   * 3) 机械臂改为 TF 骨架（各关节位置 = ur5e 各 frame 的 base 系真实坐标，天然不会拖地/错位），
+   *    有骨架时隐藏参数化示意臂。
+   */
+  setTfFrames(frames: import('@/types/api').TfFrame[] | null) {
+    if (!frames || frames.length === 0) return
+    const byChild = new Map(frames.map((f) => [f.child, f]))
+    const baseName = findBaseFrame(frames)
+    if (!baseName) return
+
+    const resolved = new Map<string, THREE.Matrix4>()
+    const resolve = (name: string, depth = 0): THREE.Matrix4 | null => {
+      if (resolved.has(name)) return resolved.get(name)!
+      if (depth > 16) return null
+      const frame = byChild.get(name)
+      if (!frame) return null
+      const local = new THREE.Matrix4().compose(
+        new THREE.Vector3(frame.x, frame.y, frame.z),
+        new THREE.Quaternion(frame.qx, frame.qy, frame.qz, frame.qw),
+        new THREE.Vector3(1, 1, 1),
+      )
+      if (frame.parent === baseName) {
+        resolved.set(name, local)
+        return local
+      }
+      const parentMatrix = resolve(frame.parent, depth + 1)
+      if (!parentMatrix) return null
+      const matrix = parentMatrix.clone().multiply(local)
+      resolved.set(name, matrix)
+      return matrix
+    }
+
+    // 1) 轮组真实定位 + 2) 底盘包络
+    let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity
+    let wheelSeen = 0
+    for (const frame of frames) {
+      if (!/steer/i.test(frame.child)) continue
+      const site = wheelSite(frame.child.toLowerCase())
+      const pivot = site ? this.steerPivots.get(site) : null
+      const matrix = resolve(frame.child)
+      if (!pivot || !matrix) continue
+      const pos = new THREE.Vector3().setFromMatrixPosition(matrix)
+      pivot.position.set(pos.x, pos.y, 0)
+      minX = Math.min(minX, pos.x - WHEEL_R); maxX = Math.max(maxX, pos.x + WHEEL_R)
+      minY = Math.min(minY, pos.y - WHEEL_R); maxY = Math.max(maxY, pos.y + WHEEL_R)
+      wheelSeen++
+    }
+    if (wheelSeen >= 2) {
+      const len = maxX - minX + 0.10
+      const wid = maxY - minY + 0.08
+      if (Math.abs(len - this.chassisL) > 0.02 || Math.abs(wid - this.chassisW) > 0.02) {
+        this.rebuildChassis(len, wid)
+      }
+    }
+
+    // 3) 臂骨架
+    this.updateArmSkeleton(frames, resolve)
+  }
+
   private applyJoints() {
     const joints = this.joints
     if (!joints) return
@@ -239,7 +280,7 @@ export class RobotLayer {
         armAngles.push(value)
       }
     })
-    if (this.armBase) {
+    if (this.armBase && this.skeletonKey === '') {
       this.armBase.visible = armAngles.length > 0
       // UR5e 构型：j1 回转(绕 z)，j2/j3/j4 俯仰(绕 y)；缺省角取 UR5e 典型姿态
       const defaults = [0, 0.6, -1.2, 0.5]
@@ -248,6 +289,105 @@ export class RobotLayer {
         if (i === 0) pivot.rotation.z = value
         else pivot.rotation.y = value
       })
+    }
+  }
+
+  /** 按轮位包络重建底盘几何（浅灰车体 + 蓝描边 + 前部蓝色饰条 + 朝向符号 + 中心点）。 */
+  private rebuildChassis(len: number, wid: number) {
+    this.chassisL = len
+    this.chassisW = wid
+    if (this.chassisParts) {
+      this.chassisParts.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) obj.geometry.dispose()
+      })
+      this.paramGroup.remove(this.chassisParts)
+    }
+    const chassisZ = WHEEL_R
+    const parts = new THREE.Group()
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(len, wid, BODY_H),
+      new THREE.MeshLambertMaterial({ color: 0xd7dde6 }),
+    )
+    body.position.z = chassisZ + BODY_H / 2
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(body.geometry),
+      new THREE.LineBasicMaterial({ color: 0x1d6fd1 }),
+    )
+    edges.position.z = chassisZ + BODY_H / 2
+    const nose = new THREE.Mesh(
+      new THREE.BoxGeometry(len * 0.16, wid * 0.9, 0.03),
+      new THREE.MeshLambertMaterial({ color: 0x409eff }),
+    )
+    nose.position.set(len / 2 - len * 0.08, 0, chassisZ + BODY_H)
+    const centerDot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.018, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    )
+    centerDot.position.z = chassisZ + BODY_H + 0.005
+    parts.add(body, edges, nose, centerDot)
+    this.chassisParts = parts
+    this.paramGroup.add(parts)
+
+    // 朝向符号跟随车长（贴顶面前部）
+    this.chevron.clear()
+    this.chevron.add(
+      chevronMesh(len * 0.14, len * 0.11, len * 0.08, len * 0.028, 0x409eff),
+      chevronMesh(len * 0.25, len * 0.11, len * 0.08, len * 0.028, 0x409eff),
+    )
+    this.chevron.position.set(len * 0.1, 0, chassisZ + BODY_H + 0.006)
+  }
+
+  /**
+   * 机械臂 TF 骨架：臂相关 frame（名含 ur5e/arm/tool）按 parent-child 连成
+   * 关节球+连线的骨架，位置全部取自 TF 真实坐标（相对 base 系累积），
+   * 结构不变时仅更新位置（10Hz 高频复用，无 GC 压力）。
+   */
+  private updateArmSkeleton(
+    frames: import('@/types/api').TfFrame[],
+    resolve: (name: string) => THREE.Matrix4 | null,
+  ) {
+    const isArmFrame = (name: string) => /ur5e|arm|tool/i.test(name)
+    const armFrames = frames.filter((f) => isArmFrame(f.child))
+    if (armFrames.length === 0) return
+    const key = armFrames.map((f) => f.child).sort().join('|')
+    if (key !== this.skeletonKey) {
+      this.skeletonKey = key
+      this.armSkeletonGroup.clear()
+      this.skeletonNodes = []
+      this.skeletonEdges = []
+      const nodeGeo = new THREE.SphereGeometry(0.028, 12, 10)
+      const nodeMat = new THREE.MeshLambertMaterial({ color: 0x2b3440 })
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x2b3440 })
+      for (const frame of armFrames) {
+        const node = new THREE.Mesh(nodeGeo, nodeMat)
+        this.skeletonNodes.push({ name: frame.child, mesh: node })
+        this.armSkeletonGroup.add(node)
+        if (isArmFrame(frame.parent)) {
+          const geometry = new THREE.BufferGeometry()
+          geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3))
+          const line = new THREE.Line(geometry, edgeMat)
+          this.skeletonEdges.push({ a: frame.parent, b: frame.child, line })
+          this.armSkeletonGroup.add(line)
+        }
+      }
+      this.armSkeletonGroup.visible = true
+      if (this.armBase) this.armBase.visible = false
+    }
+    const tmp = new THREE.Vector3()
+    for (const node of this.skeletonNodes) {
+      const matrix = resolve(node.name)
+      if (matrix) {
+        node.mesh.position.setFromMatrixPosition(matrix)
+      }
+    }
+    for (const edge of this.skeletonEdges) {
+      const ma = resolve(edge.a)
+      const mb = resolve(edge.b)
+      if (!ma || !mb) continue
+      const attr = edge.line.geometry.getAttribute('position') as THREE.BufferAttribute
+      attr.setXYZ(0, tmp.setFromMatrixPosition(ma).x, tmp.y, tmp.z)
+      attr.setXYZ(1, tmp.setFromMatrixPosition(mb).x, tmp.y, tmp.z)
+      attr.needsUpdate = true
     }
   }
 
@@ -356,6 +496,14 @@ function wheelSite(lowerName: string): string | null {
   if (lowerName.includes('left')) return 'left'
   if (lowerName.includes('right')) return 'right'
   return null
+}
+
+/** 找 TF 树的 base 根 frame：优先 base_footprint，其次任意 base_link */
+function findBaseFrame(frames: import('@/types/api').TfFrame[]): string | null {
+  const footprint = frames.find((f) => /base_footprint/i.test(f.child))
+  if (footprint) return footprint.child
+  const baseLink = frames.find((f) => /base_link/i.test(f.child))
+  return baseLink ? baseLink.child : null
 }
 
 /** 参数化机械臂（UR5e 风格立式构型）：

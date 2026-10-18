@@ -308,6 +308,11 @@ watch(
 )
 
 watch(
+  () => robot.tfFrames,
+  (f) => robotLayer?.setTfFrames(f),
+)
+
+watch(
   () => robot.trail,
   (t) => robotLayer?.setTrail(t),
   { deep: true },

@@ -180,6 +180,16 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
             if (translation.isMissingNode() || rotation.isMissingNode()) {
                 continue;
             }
+            // 全量缓存 TF 树原始变换（前端按真实构型绘制轮位/臂骨架）
+            telemetry.putTfFrame(new SimAgvTelemetry.TfFrameSnapshot(
+                    parentFrame, childFrame,
+                    translation.path("x").asDouble(),
+                    translation.path("y").asDouble(),
+                    translation.path("z").asDouble(),
+                    rotation.path("x").asDouble(),
+                    rotation.path("y").asDouble(),
+                    rotation.path("z").asDouble(),
+                    rotation.path("w").asDouble()));
             double stamp = stampSec(transform.path("header"));
             if (stamp <= 0.0) {
                 continue;
@@ -231,6 +241,20 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
             String childFrame = transform.path("child_frame_id").asText("");
             if (childFrame.isEmpty() || parentFrame.isEmpty()) {
                 continue;
+            }
+            // tf_static 全量入缓存（轮组支架等 fixed 关节只在此出现，latched 只发一次）
+            JsonNode staticTranslation = transform.path("transform").path("translation");
+            JsonNode staticRotation = transform.path("transform").path("rotation");
+            if (!staticTranslation.isMissingNode() && !staticRotation.isMissingNode()) {
+                telemetry.putTfFrame(new SimAgvTelemetry.TfFrameSnapshot(
+                        parentFrame, childFrame,
+                        staticTranslation.path("x").asDouble(),
+                        staticTranslation.path("y").asDouble(),
+                        staticTranslation.path("z").asDouble(),
+                        staticRotation.path("x").asDouble(),
+                        staticRotation.path("y").asDouble(),
+                        staticRotation.path("z").asDouble(),
+                        staticRotation.path("w").asDouble()));
             }
             boolean parentIsBase = frameMatches(parentFrame, baseLink);
             boolean childIsBase = frameMatches(childFrame, baseLink);

@@ -158,6 +158,29 @@ public class SimAgvSsePublisher {
             root.putNull("joints");
         }
 
+        // TF 树帧（前端按真实构型定位轮组/绘制臂骨架），数量封顶防异常膨胀
+        var tfFrames = telemetry.getTfFrames();
+        if (!tfFrames.isEmpty()) {
+            ArrayNode frames = root.putArray("tf_frames");
+            tfFrames.stream().limit(64).forEach(frame -> {
+                ObjectNode node = frames.addObject();
+                node.put("parent", frame.parent());
+                node.put("child", frame.child());
+                node.put("x", round(frame.x()));
+                node.put("y", round(frame.y()));
+                node.put("z", round(frame.z()));
+                node.put("qx", round(frame.qx()));
+                node.put("qy", round(frame.qy()));
+                node.put("qz", round(frame.qz()));
+                node.put("qw", round(frame.qw()));
+            });
+        } else {
+            root.putNull("tf_frames");
+        }
+        } else {
+            root.putNull("joints");
+        }
+
         appendScan(root, "scan1", telemetry.getScan1());
         appendScan(root, "scan2", telemetry.getScan2());
 

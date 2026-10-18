@@ -17,6 +17,7 @@ export const useRobotStore = defineStore('robot', () => {
 
   const pose = computed(() => snapshot.value?.pose ?? null)
   const joints = computed(() => snapshot.value?.joints ?? null)
+  const tfFrames = computed(() => snapshot.value?.tf_frames ?? null)
   const status = computed(() => snapshot.value?.status ?? null)
   const battery = computed(() => status.value?.battery ?? null)
 
@@ -88,6 +89,7 @@ export const useRobotStore = defineStore('robot', () => {
     scan2Cloud,
     pose,
     joints,
+    tfFrames,
     status,
     battery,
     start,
