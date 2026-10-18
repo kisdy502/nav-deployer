@@ -177,9 +177,6 @@ public class SimAgvSsePublisher {
         } else {
             root.putNull("tf_frames");
         }
-        } else {
-            root.putNull("joints");
-        }
 
         appendScan(root, "scan1", telemetry.getScan1());
         appendScan(root, "scan2", telemetry.getScan2());
