@@ -1,5 +1,6 @@
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
+import { ElMessage } from 'element-plus'
 import * as mapsApi from '@/api/maps'
 import * as pointsApi from '@/api/points'
 import * as pathsApi from '@/api/paths'
@@ -72,6 +73,9 @@ export const useEditorStore = defineStore('editor', () => {
   async function loadMap(id: number) {
     loading.value = true
     mapId.value = id
+    // 实时预览进行中切换/加载地图：先停轮询且不回灌旧图（本次加载即目标状态），
+    // 否则 3s 后实时帧会把刚加载的地图栅格再覆盖掉
+    if (livePolling.value) stopLivePolling(false)
     try {
       const [m, g, pts, pths] = await Promise.all([
         mapsApi.getMap(id),
@@ -79,6 +83,12 @@ export const useEditorStore = defineStore('editor', () => {
         pointsApi.listPoints(id),
         pathsApi.listPaths(id),
       ])
+      // 加载在途期间实时预览被启动（如刷新页面时机器人已在建图）：放弃本次加载，
+      // 否则旧图栅格/元数据会在下一帧实时图之后到达，重新造成新旧叠加
+      if (livePolling.value) {
+        ElMessage.info('机器人建图中，已切换到实时预览')
+        return
+      }
       mapInfo.value = m
       grid.value = g
       points.value = pts
@@ -105,6 +115,11 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function setMode(m: EditorMode) {
+    // 建图实时预览中画布坐标属于实时图，新点位会静默写进上一张入库地图——直接拦下
+    if (m === 'placePoint' && livePolling.value) {
+      ElMessage.warning('建图实时预览中，不能编辑点位；请先保存地图或切回已入库地图')
+      return
+    }
     mode.value = m
     if (m !== 'measure') measure.value = { a: null, b: null }
   }
@@ -121,7 +136,16 @@ export const useEditorStore = defineStore('editor', () => {
     if (id != null) selectedPathId.value = null
   }
 
+  /** 建图实时预览中禁止创建地图元素（写入的是旧地图，画布显示的却是实时图） */
+  function assertNotLivePreview() {
+    if (livePolling.value) {
+      ElMessage.warning('建图实时预览中，不能编辑地图元素；请先保存地图或切回已入库地图')
+      throw new Error('live preview active')
+    }
+  }
+
   async function createPoint(dto: { point_code: string; point_type: PointType; x: number; y: number; yaw: number; remark?: string }) {
+    assertNotLivePreview()
     const vo = await pointsApi.createPoint({ map_id: mapId.value, ...dto })
     points.value = [...points.value, vo]
     selectPoint(vo.id)
@@ -129,6 +153,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   async function createPointFromRobot(dto: { point_code: string; point_type: PointType; remark?: string }) {
+    assertNotLivePreview()
     const vo = await pointsApi.createPointFromCurrentPose({ map_id: mapId.value, ...dto })
     points.value = [...points.value, vo]
     selectPoint(vo.id)
@@ -166,6 +191,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   async function createPath(path_code: string, path_name?: string) {
+    assertNotLivePreview()
     const vo = await pathsApi.createPath({ map_id: mapId.value, path_code, path_name })
     paths.value = [vo, ...paths.value]
     selectPath(vo.id)
@@ -345,6 +371,14 @@ export const useEditorStore = defineStore('editor', () => {
   function startLivePolling() {
     if (livePolling.value) return
     livePolling.value = true
+    // 实时图与上一张入库地图不属同一坐标系：清空全部地图元数据与编辑状态，
+    // 防止旧图的点位/路线叠加显示在建图实时画面上（视觉错位 + 误操作旧图元素）
+    points.value = []
+    paths.value = []
+    pathDetails.value = {}
+    pathEdit.value = null
+    clearSelection()
+    if (mode.value !== 'idle') setMode('idle')
     const tick = async () => {
       if (liveRequestInFlight) return
       liveRequestInFlight = true
@@ -367,11 +401,16 @@ export const useEditorStore = defineStore('editor', () => {
     liveTimer = window.setInterval(tick, 3000)
   }
 
-  function stopLivePolling() {
+  /**
+   * 停止实时预览。默认恢复当前已入库地图（画布停留在最后一帧实时图且无元数据，状态不完整）；
+   * 随后将自行 loadMap 的场景（保存入库、切换地图）传 restore=false 避免重复拉取与竞态。
+   */
+  function stopLivePolling(restore = true) {
     if (liveTimer) window.clearInterval(liveTimer)
     liveTimer = undefined
     livePolling.value = false
     autoLive.value = false
+    if (restore && mapId.value > 0 && !loading.value) void loadMap(mapId.value)
   }
 
   let liveTimer: number | undefined

@@ -58,11 +58,11 @@ export const useTasksStore = defineStore('tasks', () => {
     if (e.success) {
       ElMessage.success(`机器人地图已入库并激活（nav_map_id=${e.navMapId ?? '-'}）`)
       // 界面同步：左侧列表刷新（新图变 ACTIVE）+ 编辑器加载新激活地图。
-      // 必须先停实时预览，否则 1s 轮询会把 loadMap 的结果再覆盖回实时帧
+      // 必须先停实时预览（不回灌旧图），否则 1s 轮询会把 loadMap 的结果再覆盖回实时帧
       void useMapListStore().load()
       if (e.navMapId) {
         const editor = useEditorStore()
-        editor.stopLivePolling()
+        editor.stopLivePolling(false)
         editor.loadMap(e.navMapId).catch(() => {})
       }
     } else {

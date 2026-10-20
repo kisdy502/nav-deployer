@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import { connectAgvSse } from '@/sse/agv-sse'
 import { getRobotSnapshot, robotControl as robotControlApi, sendTeleop, setInitialPose as setInitialPoseApi } from '@/api/robot'
@@ -9,10 +9,12 @@ const TRAIL_MAX = 2000
 
 export const useRobotStore = defineStore('robot', () => {
   const connStatus = ref<'connecting' | 'open' | 'closed'>('connecting')
-  const snapshot = ref<TelemetrySnapshot | null>(null)
-  const trail = ref<{ x: number; y: number }[]>([])
-  const scan1Cloud = ref<ScanCloud | null>(null)
-  const scan2Cloud = ref<ScanCloud | null>(null)
+  // 高频整帧替换的数据一律 shallowRef：ref() 的深代理会为 tf_frames/joints/points 数组
+  // 的每个元素建 Proxy（10Hz × 数百对象/帧），GC 压力直接把主线程拖卡
+  const snapshot = shallowRef<TelemetrySnapshot | null>(null)
+  const trail = shallowRef<{ x: number; y: number }[]>([])
+  const scan1Cloud = shallowRef<ScanCloud | null>(null)
+  const scan2Cloud = shallowRef<ScanCloud | null>(null)
   const started = ref(false)
 
   const pose = computed(() => snapshot.value?.pose ?? null)
@@ -26,8 +28,10 @@ export const useRobotStore = defineStore('robot', () => {
     if (p) {
       const last = trail.value[trail.value.length - 1]
       if (!last || Math.hypot(last.x - p.x, last.y - p.y) > 0.02) {
-        trail.value.push({ x: p.x, y: p.y })
-        if (trail.value.length > TRAIL_MAX) trail.value.splice(0, trail.value.length - TRAIL_MAX)
+        // 复制式更新：shallowRef 换新数组引用触发订阅（无需 deep watch）
+        const next = trail.value.concat({ x: p.x, y: p.y })
+        if (next.length > TRAIL_MAX) next.splice(0, next.length - TRAIL_MAX)
+        trail.value = next
       }
     }
     snapshot.value = t

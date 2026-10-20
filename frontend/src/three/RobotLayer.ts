@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { angleDelta } from '@/utils/coords'
+import { registerRobotLayer } from './robotLayerRef'
 
 const TRAIL_MAX = 2000
 /** 车体真实比例（对齐 Gazebo 三舵轮 AGV，长边沿 +x 即朝向方向）；全局视图偏小时用缩放工具放大 */
@@ -39,6 +40,34 @@ interface JointSample {
   position: number[]
 }
 
+type TfFrameData = import('@/types/api').TfFrame
+
+/** 关节快照等值（逐值比较，早退）：10Hz 数据链里跳过未变化帧的场景更新 */
+function jointsEqual(a: JointSample | null, b: JointSample | null): boolean {
+  if (a === b) return true
+  if (!a || !b || a.name.length !== b.name.length) return false
+  for (let i = 0; i < a.name.length; i++) {
+    if (a.name[i] !== b.name[i] || a.position[i] !== b.position[i]) return false
+  }
+  return true
+}
+
+/** TF 帧列表等值（长度 + 逐帧数值比较，早退） */
+function tfFramesEqual(a: TfFrameData[] | null, b: TfFrameData[]): boolean {
+  if (a === b) return true
+  if (!a || a.length !== b.length) return false
+  for (let i = 0; i < b.length; i++) {
+    const x = a[i]
+    const y = b[i]
+    if (x.child !== y.child || x.parent !== y.parent
+      || x.x !== y.x || x.y !== y.y || x.z !== y.z
+      || x.qx !== y.qx || x.qy !== y.qy || x.qz !== y.qz || x.qw !== y.qw) {
+      return false
+    }
+  }
+  return true
+}
+
 /**
  * 机器人图层。两套模型按可用性自动切换：
  * - URDF 模型：GET /api/v1/robot/urdf 读到 robot_description 时加载（RViz 同款效果），
@@ -73,12 +102,14 @@ export class RobotLayer {
   private segmentDurationMs = 200
   private lastTargetAtMs = 0
   private joints: JointSample | null = null
+  private lastTfFrames: TfFrameData[] | null = null
   private wheelRoll = 0
   private lastRollAt: { x: number; y: number } | null = null
   private trailLine: THREE.Line
   private trailAttr: THREE.BufferAttribute
 
   constructor() {
+    registerRobotLayer(this)
     this.group.position.z = 0.2
 
     // 底盘几何由 rebuildChassis 生成（初始按常量，TF 轮位到达后按包络自适应）
@@ -185,6 +216,7 @@ export class RobotLayer {
 
   /** 关节状态到达（telemetry 快照 10Hz）：按名字规则分发到舵轮/机械臂或 URDF 关节 */
   setJointStates(joints: JointSample | null) {
+    if (jointsEqual(this.joints, joints)) return
     this.joints = joints
     this.applyJoints()
   }
@@ -198,6 +230,9 @@ export class RobotLayer {
    */
   setTfFrames(frames: import('@/types/api').TfFrame[] | null) {
     if (!frames || frames.length === 0) return
+    // 10Hz 快照里 TF 大多数时刻不变（静态树）：等值短路，跳过整棵矩阵树重算与对象分配
+    if (tfFramesEqual(this.lastTfFrames, frames)) return
+    this.lastTfFrames = frames
     const byChild = new Map(frames.map((f) => [f.child, f]))
     const baseName = findBaseFrame(frames)
     if (!baseName) return
@@ -500,11 +535,139 @@ export class RobotLayer {
   }
 
   dispose() {
+    registerRobotLayer(null)
     this.group.clear()
     this.trailGroup.clear()
     this.trailLine.geometry.dispose()
   }
+
+  // ==================== 机械臂数值逆解（示教笛卡尔点动） ====================
+
+  /** URDF 是否可用（笛卡尔点动依赖它做正运动学） */
+  get hasUrdf(): boolean {
+    return this.urdfRobot != null
+  }
+
+  /** 指定侧臂的 URDF 关节名（排序后，与 /joint_states 分组顺序一致） */
+  private urdfArmJoints(side: 'left' | 'right'): string[] {
+    if (!this.urdfRobot) return []
+    return Object.keys(this.urdfRobot.joints ?? {})
+      .filter((n) => {
+        const l = n.toLowerCase()
+        return l.includes('arm') && l.includes(side)
+      })
+      .sort()
+  }
+
+  /**
+   * 笛卡尔点动数值逆解（机器人基座系）：dx/dy/dz 单位米，返回该臂排序后的新关节角（弧度）。
+   * 以 URDF 场景树为正运动学，阻尼最小二乘迭代（每步毫米级增量，数次收敛）；
+   * 无 URDF / 无关节数据 / 不收敛时返回 null。
+   */
+  armIkSolve(side: 'left' | 'right', dx: number, dy: number, dz: number): number[] | null {
+    const robot: any = this.urdfRobot
+    if (!robot || !this.joints) return null
+    const names = this.urdfArmJoints(side)
+    if (names.length === 0) return null
+
+    const byName = new Map(this.joints.name.map((n, i) => [n, this.joints!.position[i] ?? 0]))
+    const q = new Map<string, number>()
+    const limits = new Map<string, { lower: number; upper: number }>()
+    for (const n of names) {
+      q.set(n, byName.get(n) ?? 0)
+      const limit = robot.joints[n]?.limit
+      limits.set(n, limit && Number.isFinite(limit.lower) && Number.isFinite(limit.upper)
+        ? { lower: limit.lower, upper: limit.upper }
+        : { lower: -Infinity, upper: Infinity })
+    }
+    const last = robot.joints[names[names.length - 1]]
+
+    const rootInv = new THREE.Matrix4()
+    const tcp = new THREE.Vector3()
+    const pj = new THREE.Vector3()
+    const axisWorld = new THREE.Vector3()
+
+    const applyQ = () => {
+      for (const n of names) robot.joints[n].setJointValue(q.get(n)!)
+      robot.updateMatrixWorld(true)
+    }
+
+    applyQ()
+    rootInv.copy(robot.matrixWorld).invert()
+    last.getWorldPosition(tcp).applyMatrix4(rootInv)
+    const target = tcp.clone().add(new THREE.Vector3(dx, dy, dz))
+
+    const n = names.length
+    const J: number[][] = [new Array<number>(n).fill(0), new Array<number>(n).fill(0), new Array<number>(n).fill(0)]
+    const LAMBDA = 1e-6
+    const MAX_DQ = 0.05
+    const TOL = 5e-4
+
+    for (let iter = 0; iter < 50; iter++) {
+      applyQ()
+      last.getWorldPosition(tcp).applyMatrix4(rootInv)
+      const ex = target.x - tcp.x
+      const ey = target.y - tcp.y
+      const ez = target.z - tcp.z
+      if (Math.hypot(ex, ey, ez) < TOL) return names.map((name) => q.get(name)!)
+
+      for (let k = 0; k < n; k++) {
+        const joint = robot.joints[names[k]]
+        joint.getWorldPosition(pj)
+        pj.applyMatrix4(rootInv)
+        joint.getWorldQuaternion(TMP_QUAT)
+        axisWorld.set(0, 0, 1)
+        if (joint.axis) axisWorld.copy(joint.axis)
+        axisWorld.applyQuaternion(TMP_QUAT).transformDirection(rootInv)
+        axisWorld.normalize()
+        // 旋副：列 = axis × (tcp − joint)；UR5e 全旋副，柱副按轴向量处理即可
+        const rx = tcp.x - pj.x
+        const ry = tcp.y - pj.y
+        const rz = tcp.z - pj.z
+        J[0][k] = axisWorld.y * rz - axisWorld.z * ry
+        J[1][k] = axisWorld.z * rx - axisWorld.x * rz
+        J[2][k] = axisWorld.x * ry - axisWorld.y * rx
+      }
+
+      // dq = Jᵀ (J Jᵀ + λI)⁻¹ err（3×3 克拉默求解）
+      const A = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+      ]
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+          let s = 0
+          for (let k = 0; k < n; k++) s += J[r][k] * J[c][k]
+          A[r][c] = s + (r === c ? LAMBDA : 0)
+        }
+      }
+      const b = [ex, ey, ez]
+      const det = A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
+        - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+        + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])
+      if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null
+      const y = [0, 0, 0]
+      for (let r = 0; r < 3; r++) {
+        const M = A.map((row, i) => row.map((v, j) => (j === r ? b[i] : v)))
+        y[r] = (M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+          - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+          + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])) / det
+      }
+
+      for (let k = 0; k < n; k++) {
+        let dq = J[0][k] * y[0] + J[1][k] * y[1] + J[2][k] * y[2]
+        dq = Math.min(MAX_DQ, Math.max(-MAX_DQ, dq))
+        const limit = limits.get(names[k])!
+        const next = Math.min(limit.upper, Math.max(limit.lower, q.get(names[k])! + dq))
+        q.set(names[k], next)
+      }
+    }
+    return null
+  }
 }
+
+const TMP_QUAT = new THREE.Quaternion()
 
 /** 臂关节判定：名字含 arm，或含 joint 但不属于轮组（steer/wheel） */
 function isArmJoint(lowerName: string): boolean {

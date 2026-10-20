@@ -252,12 +252,24 @@ defineExpose({
 })
 
 // ---------- watchers ----------
+// 进入建图实时预览时，实时图与上一张图范围无关：首帧自动适配视野（其后新帧不再扰动用户缩放）
+let pendingLiveFit = false
+watch(
+  () => editor.livePolling,
+  (on) => {
+    if (on) pendingLiveFit = true
+  },
+)
+
 watch(
   () => editor.grid,
   (g) => {
     if (!g || !scene) return
     scene.setMap(g)
-    if (scene.mapBounds && lastFitMapId !== editor.mapId) {
+    if (editor.livePolling && pendingLiveFit) {
+      if (scene.mapBounds) scene.fitView(scene.mapBounds)
+      pendingLiveFit = false
+    } else if (scene.mapBounds && lastFitMapId !== editor.mapId) {
       scene.fitView(scene.mapBounds)
       lastFitMapId = editor.mapId
     }
@@ -314,8 +326,8 @@ watch(
 
 watch(
   () => robot.trail,
+  // store 侧复制式更新（换新数组引用），无需 deep 遍历 2000 个点
   (t) => robotLayer?.setTrail(t),
-  { deep: true },
 )
 
 watch(
