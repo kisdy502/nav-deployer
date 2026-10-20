@@ -22,6 +22,7 @@ import { useMapListStore } from '@/stores/mapList'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { startMapping } from '@/api/tasks'
+import { switchMap } from '@/api/maps'
 import type { PickResult } from '@/three/MapScene'
 import { onBeforeUnmount } from 'vue'
 
@@ -125,12 +126,57 @@ async function startMappingNow() {
   try {
     await startMapping()
     guide.visible = false
+    locateGuide.visible = false
     mappingVisible.value = true
     ElMessage.success('已进入建图模式，操作机器人建图完成后，在右侧面板点击「保存并入库」')
   } catch {
     /* http 层已提示 */
   } finally {
     guide.starting = false
+  }
+}
+
+// ---------- 未定位冷启动引导 ----------
+// 机器人整机重启后既无建图也无定位（pose_initialized=false），页面却仍展示上次地图，
+// 误导"机器人在图中"。检测到该状态时引导：选图启动定位 / 开始建图 / 仅浏览。
+const locateGuide = reactive({
+  visible: false,
+  mapId: undefined as number | undefined,
+  switching: false,
+  dismissed: false,
+})
+
+const needsLocalization = computed(() =>
+  robot.connStatus === 'open'
+  && robot.status != null
+  && !robot.status.pose_initialized
+  && robot.status.mode !== 'MAPPING'
+  && robot.status.mode !== 'RELOCALIZING')
+
+watch(needsLocalization, (needed) => {
+  if (!needed || guide.visible || locateGuide.dismissed) return
+  // 默认选中当前部署中（ACTIVE）的地图
+  locateGuide.mapId = editor.mapId
+    ?? mapStore.maps.find((m) => m.status === 'ACTIVE')?.id
+    ?? mapStore.maps[0]?.id
+  locateGuide.visible = mapStore.maps.length > 0
+}, { immediate: true })
+
+async function deployAndLocalize() {
+  if (!locateGuide.mapId) {
+    ElMessage.warning('请先选择一张地图')
+    return
+  }
+  locateGuide.switching = true
+  try {
+    await switchMap(locateGuide.mapId)
+    locateGuide.visible = false
+    locateGuide.dismissed = true
+    ElMessage.success('已下发切图：机器人加载地图并启动定位，收敛后机器人将出现在地图上（必要时用「重定位」微调初始位姿）')
+  } catch {
+    /* http 层已提示 */
+  } finally {
+    locateGuide.switching = false
   }
 }
 
@@ -197,7 +243,7 @@ onBeforeUnmount(closeCtx)
     <header class="browse-header">
       <div class="header-title">
         <el-icon :size="20"><MapLocation /></el-icon>
-        <span>Nav Deployer 部署控制台</span>
+        <span>NavDeployer</span>
       </div>
 
       <div class="header-map">
@@ -323,6 +369,25 @@ onBeforeUnmount(closeCtx)
       <template #footer>
         <el-button @click="guide.visible = false">稍后</el-button>
         <el-button type="primary" :loading="guide.starting" @click="startMappingNow">开始建图</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 未定位冷启动引导：机器人无建图无定位，页面展示的是存档地图（仅为浏览） -->
+    <el-dialog v-model="locateGuide.visible" title="机器人未启动定位" width="480px" :close-on-click-modal="false">
+      <div class="guide-body">
+        <el-alert type="warning" :closable="false" show-icon
+          title="机器人当前既无建图也无定位"
+          description="页面显示的是上位机存档地图，仅为浏览（机器人不在图中）。选择一张地图启动定位，或开始新建图。" />
+        <el-select v-model="locateGuide.mapId" placeholder="选择地图" style="width: 100%; margin-top: 14px">
+          <el-option v-for="m in sortedMaps" :key="m.id" :value="m.id" :label="m.map_name" />
+        </el-select>
+      </div>
+      <template #footer>
+        <el-button @click="startMappingNow">开始建图</el-button>
+        <el-button @click="locateGuide.visible = false; locateGuide.dismissed = true">仅浏览</el-button>
+        <el-button type="primary" :loading="locateGuide.switching" :disabled="!locateGuide.mapId" @click="deployAndLocalize">
+          启动定位
+        </el-button>
       </template>
     </el-dialog>
   </div>

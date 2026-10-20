@@ -95,9 +95,9 @@ public class MapModeTaskService {
         this.moveTaskService = moveTaskService;
     }
 
-    /** 切换机器人定位地图（调 /agv/load_map，受理后由状态机跟踪收敛）。 */
+    /** 切换机器人定位地图（调 /agv/load_map，受理后由状态机跟踪收敛）；未定位冷启动同样受理（拉起定位）。 */
     public MapModeTaskVO switchMap(Long navMapId, String robotMapNameOverride) {
-        requireIdleAndGates(MODE_NAVIGATION);
+        requireIdleAndGates(MODE_NAVIGATION, true);
 
         NavMap map = navMapMapper.selectById(navMapId);
         if (map == null) {
@@ -131,9 +131,9 @@ public class MapModeTaskService {
         return registerAndPublish(machine);
     }
 
-    /** 进入在线建图（调 /agv/start_mapping，停托管定位、拉起建图；遥控不受影响）。 */
+    /** 进入在线建图（调 /agv/start_mapping，停托管定位、拉起建图；遥控不受影响）；未定位冷启动同样受理。 */
     public MapModeTaskVO startMapping() {
-        requireIdleAndGates(MODE_NAVIGATION);
+        requireIdleAndGates(MODE_NAVIGATION, true);
 
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.START_MAPPING,
@@ -231,6 +231,15 @@ public class MapModeTaskService {
 
     /** 公共闸门：无在途任务 + 连接正常 + 状态新鲜 + mode 等于要求值（全部读机器人镜像）。 */
     private void requireIdleAndGates(String requiredMode) {
+        requireIdleAndGates(requiredMode, false);
+    }
+
+    /**
+     * 公共闸门（放宽版）：allowUnlocalizedColdStart=true 时额外放行"未定位冷启动"——
+     * 机器人整机重启后既无建图也无定位（pose_initialized=false，mode 非 MAPPING/RELOCALIZING），
+     * 此时切图（load_map 拉起定位）/ 建图（start_mapping）恰恰是引导机器人口径的正确入口。
+     */
+    private void requireIdleAndGates(String requiredMode, boolean allowUnlocalizedColdStart) {
         synchronized (this) {
             if (current != null && !current.isTerminal()) {
                 throw new IllegalStateException(
@@ -255,10 +264,16 @@ public class MapModeTaskService {
             throw new IllegalStateException("机器人未上报 mode 字段（旧版 agv_bridge_v2），请升级机器人固件到 v0.3.0+");
         }
         if (!requiredMode.equals(status.mode())) {
-            String hint = MODE_NAVIGATION.equals(requiredMode)
-                    ? "（切图/建图中），请等待回到 NAVIGATION"
-                    : "，仅建图模式（MAPPING）下可执行，请先 start-mapping";
-            throw new IllegalStateException("机器人当前 mode=" + status.mode() + hint);
+            if (allowUnlocalizedColdStart && !status.poseInitialized()
+                    && !"MAPPING".equals(status.mode()) && !"RELOCALIZING".equals(status.mode())) {
+                // 未定位冷启动放行：正是要靠 load_map / start_mapping 把定位拉起来
+                log.info("cold start accepted for mode task: mode={}, pose_initialized=false", status.mode());
+            } else {
+                String hint = MODE_NAVIGATION.equals(requiredMode)
+                        ? "（切图/建图中），请等待回到 NAVIGATION"
+                        : "，仅建图模式（MAPPING）下可执行，请先 start-mapping";
+                throw new IllegalStateException("机器人当前 mode=" + status.mode() + hint);
+            }
         }
         if (moveTaskService.active() != null) {
             throw new IllegalStateException("存在在途移动任务，请先取消或等待完成后再执行");

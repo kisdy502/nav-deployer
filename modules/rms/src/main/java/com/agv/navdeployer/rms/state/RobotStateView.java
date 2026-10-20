@@ -65,6 +65,8 @@ public class RobotStateView {
     private final RmsTaskRegistry taskRegistry;
     private final RmsProperties props;
     private final HostStats hostStats;
+    /** 机械臂归位联锁（可空：无 Bean 时状态上报不带 arm 模块） */
+    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
 
     /**
      * RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值）。落盘持久化。
@@ -73,11 +75,13 @@ public class RobotStateView {
     private final Path codeStoreFile;
 
     public RobotStateView(SimAgvTelemetry telemetry, RmsTaskRegistry taskRegistry,
-                          RmsProperties props, HostStats hostStats) {
+                          RmsProperties props, HostStats hostStats,
+                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
         this.telemetry = telemetry;
         this.taskRegistry = taskRegistry;
         this.props = props;
         this.hostStats = hostStats;
+        this.armStateMonitor = armStateMonitor;
         this.codeStoreFile = Path.of(System.getProperty("user.home"),
                 ".nav-deployer", "rms-robot-code");
         this.effectiveRobotCode = loadPersistedCode();
@@ -275,7 +279,11 @@ public class RobotStateView {
                         hostStats.uptimeSeconds(), now),
                 List.of(
                         new BodyFullStatusData.Temperature(SIM_BATTERY_ID, "battery", 31.0, now),
-                        new BodyFullStatusData.Temperature(SIM_BATTERY_ID, "battery", 31.0, now)));
+                        new BodyFullStatusData.Temperature(SIM_BATTERY_ID, "battery", 31.0, now)),
+                armStateMonitor == null ? null : java.util.Map.of(
+                        "state", armStateMonitor.state().name(),
+                        "movement_allowed", armStateMonitor.movementAllowed(),
+                        "update_time", now));
         RmsProperties.Robot robot = props.getRobot();
         return new StatusReportEnvelope(
                 data,

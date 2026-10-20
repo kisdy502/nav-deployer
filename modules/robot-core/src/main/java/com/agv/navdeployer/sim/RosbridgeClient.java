@@ -145,6 +145,7 @@ public final class RosbridgeClient {
             log.debug("rosbridge not open, buffer operation: {}", operation);
             return;
         }
+        RosbridgeMessageLog.outbound(operation);
         client.send(operation.toString());
     }
 
@@ -207,6 +208,7 @@ public final class RosbridgeClient {
         try {
             JsonNode message = assembler.add(raw);
             if (message != null) {
+                RosbridgeMessageLog.inbound(message, raw.length());
                 for (RosbridgeHandler handler : handlers) {
                     try {
                         handler.onMessage(message);

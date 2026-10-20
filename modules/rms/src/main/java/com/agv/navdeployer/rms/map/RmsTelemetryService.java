@@ -60,6 +60,7 @@ public class RmsTelemetryService {
         Map<String, Double> left = new java.util.TreeMap<>();
         Map<String, Double> right = new java.util.TreeMap<>();
         Map<String, Double> waist = new java.util.TreeMap<>();
+        Map<String, Double> singleArm = new java.util.TreeMap<>();
         if (joints != null) {
             String[] names = joints.names();
             double[] positions = joints.positions();
@@ -69,11 +70,15 @@ public class RmsTelemetryService {
                     left.put(names[i], positions[i]);
                 } else if (lower.contains("arm") && lower.contains("right")) {
                     right.put(names[i], positions[i]);
+                } else if (lower.startsWith("ur5e_") && lower.endsWith("_joint")) {
+                    singleArm.put(names[i], positions[i]);
                 } else if (lower.contains("waist")) {
                     waist.put(names[i], positions[i]);
                 }
             }
         }
+        // Single-arm simulation reports actual joints, without inventing extra axes.
+        if (left.isEmpty()) left.putAll(singleArm);
         data.put("left_joints", left.values().stream().mapToDouble(Double::doubleValue).toArray());
         data.put("right_joints", right.values().stream().mapToDouble(Double::doubleValue).toArray());
         data.put("waist_joints", waist.values().stream().mapToDouble(Double::doubleValue).toArray());

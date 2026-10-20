@@ -35,6 +35,8 @@ public class RmsTaskService {
     private final RobotStateView stateView;
     private final MoveTaskService moveTaskService;
     private final RmsProperties props;
+    /** 机械臂归位联锁（可空：独立装配无此 Bean 时跳过受理闸门，MoveTaskService 闸门仍兜底） */
+    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
 
     /** 执行与轮询线程：与 RMS query 回调线程隔离，保证 queryable 快速回复 */
     private final ScheduledExecutorService worker =
@@ -52,12 +54,28 @@ public class RmsTaskService {
                           RmsResultReporter resultReporter,
                           RobotStateView stateView,
                           MoveTaskService moveTaskService,
-                          RmsProperties props) {
+                          RmsProperties props,
+                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.stateView = stateView;
         this.moveTaskService = moveTaskService;
         this.props = props;
+        this.armStateMonitor = armStateMonitor;
+    }
+
+    /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：质检动作任务不拦。 */
+    private BodyReply armGate(RmsTask task) {
+        if (armStateMonitor == null || task.isInspectionAction()) {
+            return null;
+        }
+        if (armStateMonitor.movementAllowed()) {
+            return null;
+        }
+        String msg = "ARM_NOT_HOMED: arm_state=" + armStateMonitor.state()
+                + "，机械臂未归位，拒绝移动任务（请先收臂归位后重试）";
+        log.warn("rms task {} rejected by arm gate: {}", task.taskId(), msg);
+        return BodyReply.failure(409, msg);
     }
 
     // ==================== queryable 入口（同步快速返回） ====================
@@ -173,6 +191,10 @@ public class RmsTaskService {
         if (task.status() == RmsTaskStatus.RUNNING) {
             return BodyReply.failure(409, "task already running");
         }
+        BodyReply armRejected = armGate(task);
+        if (armRejected != null) {
+            return armRejected;
+        }
         logRmsCommand("task/start", task);
         registry.transition(task.taskId(), RmsTaskStatus.RUNNING);
         final String startedTaskId = task.taskId();
@@ -202,6 +224,10 @@ public class RmsTaskService {
         }
         if (task.status() != RmsTaskStatus.PAUSED) {
             return BodyReply.failure(409, "task not paused (status=" + task.status().wireName() + ")");
+        }
+        BodyReply armRejected = armGate(task);
+        if (armRejected != null) {
+            return armRejected;
         }
         logRmsCommand("task/resume", task);
         registry.transition(taskId, RmsTaskStatus.RUNNING);

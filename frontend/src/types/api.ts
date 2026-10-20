@@ -244,7 +244,7 @@ export interface TelemetrySnapshot {
   status_fresh: boolean
   status: AgvStatus | null
   pose: { x: number; y: number; yaw: number; yaw_deg: number } | null
-  joints: { name: string[]; position: number[] } | null
+  joints: { name: string[]; position: number[]; received_at?: string | null } | null
   tf_frames: TfFrame[] | null
   scan1: ScanSummary | null
   scan2: ScanSummary | null

@@ -37,6 +37,7 @@ public class RobotController {
     private final ObjectMapper objectMapper;
     private final SimAgvTelemetry telemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
+    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
@@ -44,7 +45,8 @@ public class RobotController {
                            MapModeTaskService mapModeTaskService,
                            ObjectMapper objectMapper,
                            SimAgvTelemetry telemetry,
-                           com.agv.navdeployer.sim.SimAgvProperties simProps) {
+                           com.agv.navdeployer.sim.SimAgvProperties simProps,
+                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
@@ -52,6 +54,7 @@ public class RobotController {
         this.objectMapper = objectMapper;
         this.telemetry = telemetry;
         this.simProps = simProps;
+        this.armStateMonitor = armStateMonitor;
     }
 
     @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数 / 地图对齐状态")
@@ -80,7 +83,22 @@ public class RobotController {
     }
 
     /** 机械臂调试指令体（契约见《仿真机器人功能开发说明.md》F1.5）。 */
-    record ArmMoveDTO(String arm, double[] joints, Double durationSec) {
+    record ArmMoveDTO(String arm, double[] joints,
+                      @com.fasterxml.jackson.annotation.JsonAlias("durationSec") Double durationSec) {
+    }
+
+    record ArmHomeDTO(double[] home) {
+    }
+
+    @Operation(summary = "设置机械臂归位（联锁基准）", description = "home 为角色顺序 [pan, lift, elbow, wrist1, wrist2, wrist3] 的目标角（弧度），两侧同时生效；前端「设为归位位」调用，覆盖 yaml 默认值（运行期有效，重启回 yaml）")
+    @PostMapping("/api/v1/robot/arm-home")
+    public ResponseEntity<Object> setArmHome(@RequestBody ArmHomeDTO dto) {
+        if (dto.home() == null || dto.home().length != 6) {
+            return ResponseEntity.badRequest().body(Map.of("success", false,
+                    "message", "home 需要 6 个角色顺序关节角 [pan,lift,elbow,wrist1,wrist2,wrist3]"));
+        }
+        armStateMonitor.setHomeOverride(dto.home());
+        return ResponseEntity.ok(Map.of("success", true, "message", "arm home updated"));
     }
 
     @Operation(summary = "机械臂运动（调试入口）", description = "转发 /agv/arm_move 服务：arm=left/right/waist，joints 为目标关节角（弧度），异步执行进度见 /joint_states")

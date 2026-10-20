@@ -58,11 +58,33 @@ public class SimAgvProperties {
     private String relocalizeService = "/agv/relocalize";
     private String cmdVelTopic = "/cmd_vel";
     private long serviceTimeoutMs = 5000L;
+    /** rosbridge 收发消息高亮日志开关（指令类全量、高频话题采样、大报文摘要） */
+    private boolean wsMessageLogEnabled = true;
+    /** rosbridge 消息日志单条报文截断长度（字符） */
+    private int wsMessageLogMaxChars = 300;
+    /** 话题数据日志的时间节流间隔（毫秒，同一话题最多 1 条/间隔）；<=0 完全不打话题数据（指令日志保留） */
+    private long wsMessageLogTopicIntervalMs = 10_000;
     private long goalTimeoutSeconds = 600L;
     private double defaultMaxSpeed = 0.6;
     private double defaultStep = 0.1;
     /** FOLLOW_PATH 起点纠偏阈值（米）：机器人距首段起点超过该值时自动插入一段"驶向起点"。 */
     private double followPathStartRadius = 0.5;
+
+    // ===== 机械臂归位联锁（真机安全语义：臂未归位时移动作业可能撞击人员/设施）=====
+    /** 联锁总开关：false 时状态恒为 HOME（闸门全放行） */
+    private boolean armGateEnabled = true;
+    /** UNKNOWN 态策略：true=无关节数据也拒绝（严格，真机原则"未知即不安全"）；false=放行（兼容不发布 /joint_states 的旧栈） */
+    private boolean armStrictUnknown = false;
+    /** 归位判定容差（弧度，所有臂关节与归位姿态之差需小于该值） */
+    private double armHomeToleranceRad = 0.1;
+    /**
+     * 左臂归位姿态（弧度，按语义角色顺序 pan/lift/elbow/wrist1/wrist2/wrist3）。
+     * 机器人侧标定（关节名字母序 [elbow,lift,pan,wrist1..3] = [2.65,-2.6,0,-1.6208,-1.5708,0]）换算；
+     * 运行期可被前端「设为归位位」经 REST 覆盖。
+     */
+    private double[] armHomeLeft = {0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0};
+    /** 右臂归位姿态（弧度，同上按角色顺序） */
+    private double[] armHomeRight = {0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0};
 
     // ===== 地图管理服务（agv_bridge_v2 v0.3.0+）=====
     private String listMapsService = "/agv/list_maps";
@@ -377,6 +399,30 @@ public class SimAgvProperties {
         this.serviceTimeoutMs = serviceTimeoutMs;
     }
 
+    public boolean isWsMessageLogEnabled() {
+        return wsMessageLogEnabled;
+    }
+
+    public void setWsMessageLogEnabled(boolean wsMessageLogEnabled) {
+        this.wsMessageLogEnabled = wsMessageLogEnabled;
+    }
+
+    public int getWsMessageLogMaxChars() {
+        return wsMessageLogMaxChars;
+    }
+
+    public void setWsMessageLogMaxChars(int wsMessageLogMaxChars) {
+        this.wsMessageLogMaxChars = wsMessageLogMaxChars;
+    }
+
+    public long getWsMessageLogTopicIntervalMs() {
+        return wsMessageLogTopicIntervalMs;
+    }
+
+    public void setWsMessageLogTopicIntervalMs(long wsMessageLogTopicIntervalMs) {
+        this.wsMessageLogTopicIntervalMs = wsMessageLogTopicIntervalMs;
+    }
+
     public long getGoalTimeoutSeconds() {
         return goalTimeoutSeconds;
     }
@@ -407,6 +453,46 @@ public class SimAgvProperties {
 
     public void setFollowPathStartRadius(double followPathStartRadius) {
         this.followPathStartRadius = followPathStartRadius;
+    }
+
+    public boolean isArmGateEnabled() {
+        return armGateEnabled;
+    }
+
+    public void setArmGateEnabled(boolean armGateEnabled) {
+        this.armGateEnabled = armGateEnabled;
+    }
+
+    public boolean isArmStrictUnknown() {
+        return armStrictUnknown;
+    }
+
+    public void setArmStrictUnknown(boolean armStrictUnknown) {
+        this.armStrictUnknown = armStrictUnknown;
+    }
+
+    public double getArmHomeToleranceRad() {
+        return armHomeToleranceRad;
+    }
+
+    public void setArmHomeToleranceRad(double armHomeToleranceRad) {
+        this.armHomeToleranceRad = armHomeToleranceRad;
+    }
+
+    public double[] getArmHomeLeft() {
+        return armHomeLeft;
+    }
+
+    public void setArmHomeLeft(double[] armHomeLeft) {
+        this.armHomeLeft = armHomeLeft;
+    }
+
+    public double[] getArmHomeRight() {
+        return armHomeRight;
+    }
+
+    public void setArmHomeRight(double[] armHomeRight) {
+        this.armHomeRight = armHomeRight;
     }
 
     public List<String> getAdvertiseTopics() {

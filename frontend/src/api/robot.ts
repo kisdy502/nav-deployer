@@ -15,5 +15,9 @@ export const armMove = (arm: string, joints: number[], durationSec?: number) =>
   post<{ success: boolean; message: string }>('/robot/arm-move', {
     arm,
     joints,
-    durationSec: durationSec ?? null,
+    duration_sec: durationSec ?? null,
   })
+
+/** 设置机械臂归位（联锁基准）：home 为角色顺序 [pan,lift,elbow,wrist1,wrist2,wrist3] 弧度 */
+export const setArmHome = (home: number[]) =>
+  post<{ success: boolean; message: string }>('/robot/arm-home', { home })

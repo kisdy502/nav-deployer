@@ -1,8 +1,9 @@
 import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import { connectAgvSse } from '@/sse/agv-sse'
-import { getRobotSnapshot, robotControl as robotControlApi, sendTeleop, setInitialPose as setInitialPoseApi } from '@/api/robot'
+import { getRobotSnapshot, robotControl as robotControlApi, sendTeleop, setInitialPose as setInitialPoseApi, setArmHome } from '@/api/robot'
 import { useTasksStore } from './tasks'
+import { hasArmHomeOverride, armHome, ARM_ROLE_ORDER } from '@/utils/armJoints'
 import type { ScanCloud, TelemetrySnapshot } from '@/types/api'
 
 const TRAIL_MAX = 2000
@@ -44,6 +45,10 @@ export const useRobotStore = defineStore('robot', () => {
     getRobotSnapshot()
       .then((s) => applySnapshot(s))
       .catch(() => {})
+    // 自定义归位回推后端联锁（后端重启后 yaml 回默认，这里保证两侧基准一致）
+    if (hasArmHomeOverride()) {
+      setArmHome(ARM_ROLE_ORDER.map((r) => armHome[r])).catch(() => {})
+    }
     connectAgvSse({
       onStatus: (s) => (connStatus.value = s),
       onTelemetry: (t) => applySnapshot(t),

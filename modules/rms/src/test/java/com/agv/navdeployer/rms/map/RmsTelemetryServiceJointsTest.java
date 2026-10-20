@@ -59,4 +59,14 @@ class RmsTelemetryServiceJointsTest {
         assertArrayEquals(new double[]{0.2}, (double[]) data.get("right_joints"));
         assertArrayEquals(new double[]{0.3}, (double[]) data.get("waist_joints"));
     }
+    @Test
+    void singleUr5eReportsActualJoints() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        RmsTelemetryService.appendGroupedJoints(data, joints(
+                new String[]{"ur5e_wrist_3_joint", "ur5e_elbow_joint", "wheel_joint"},
+                new double[]{0.3, 0.1, 99}));
+        assertArrayEquals(new double[]{0.1, 0.3}, (double[]) data.get("left_joints"));
+        assertArrayEquals(new double[0], (double[]) data.get("right_joints"));
+        assertArrayEquals(new double[0], (double[]) data.get("waist_joints"));
+    }
 }

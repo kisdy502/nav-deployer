@@ -25,7 +25,9 @@ public record BodyFullStatusData(
         Position position,
         RobotInfo robotInfo,
         SystemInfo system,
-        List<Temperature> temperature
+        List<Temperature> temperature,
+        /** 机械臂归位联锁状态（arm_state 模块；RMS 未解析时忽略） */
+        Map<String, Object> arm
 ) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

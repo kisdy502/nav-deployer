@@ -37,7 +37,7 @@ const hint = computed(() => {
           : '点击下一个点位以连接（Esc 取消起点）'
         : '正在创建路线…'
     case 'initialPose':
-      return '按下并拖动：设置机器人初始位姿（方向 = 拖动方向）'
+      return '按下并拖动设置新位姿（方向 = 拖动方向）：松手后青色雷达点云按新位姿重绘，与地图障碍物贴合后再点「应用重定位」'
     case 'measure':
       return '点击两点测量距离（Esc 退出）'
     default:
@@ -58,6 +58,8 @@ type DragState =
   | { kind: 'control'; edgeIdx: number; cpIdx: number }
 let drag: DragState | null = null
 let poseAnchor: { x: number; y: number } | null = null
+/** 重定位待确认位姿（两步交互：拖出后先看雷达预览匹配度，再应用） */
+const pendingReloc = ref<{ x: number; y: number; yaw: number } | null>(null)
 let lastFitMapId = 0
 let posePreview: THREE.Group | null = null
 let posePreviewArrow: THREE.Mesh | null = null
@@ -210,6 +212,8 @@ function syncAll() {
   pointLayer?.sync(editor.points, editor.selectedPointId ?? null, props.editable, pathEditHighlightIds.value ?? undefined)
   pathLayer?.render(pathItems.value)
   robotLayer?.setTarget(robot.pose)
+  robotLayer?.setJointStates(robot.joints)
+  robotLayer?.setTfFrames(robot.tfFrames)
   robotLayer?.setTrail(robot.trail)
   scanLayer?.setScan(1, robot.scan1Cloud?.points ?? null, robot.scan1Cloud?.pose ?? null)
   scanLayer?.setScan(2, robot.scan2Cloud?.points ?? null, robot.scan2Cloud?.pose ?? null)
@@ -316,7 +320,11 @@ watch(
 
 watch(
   () => robot.joints,
-  (j) => robotLayer?.setJointStates(j),
+  (j) => {
+    robotLayer?.setJointStates(j)
+    // A page may open before robot_description is available. Retry when telemetry arrives.
+    if (j) void robotLayer?.tryLoadUrdf()
+  },
 )
 
 watch(
@@ -347,6 +355,8 @@ watch(
 function hidePreviews() {
   if (posePreview) posePreview.visible = false
   poseAnchor = null
+  pendingReloc.value = null
+  scanLayer?.setRelocalizePreview(null)
 }
 
 function onDown(_hit: PickResult | null, world: THREE.Vector3, ev: PointerEvent) {
@@ -378,6 +388,8 @@ function onMove(world: THREE.Vector3, _ev: PointerEvent) {
     const yaw = Math.atan2(world.y - poseAnchor.y, world.x - poseAnchor.x)
     posePreview.position.set(poseAnchor.x, poseAnchor.y, 0)
     posePreviewArrow.rotation.z = yaw - Math.PI / 2
+    // 拖拽过程中实时预览：雷达点云按"锚点 + 拖拽朝向"重投影，即时观察与地图贴合度
+    scanLayer?.setRelocalizePreview({ x: poseAnchor.x, y: poseAnchor.y, yaw })
     return
   }
   if (editor.mode === 'drawPath' && editor.pathEdit?.pendingSourceId != null) {
@@ -397,19 +409,14 @@ function onMove(world: THREE.Vector3, _ev: PointerEvent) {
 }
 
 async function onUp(_hit: PickResult | null, world: THREE.Vector3) {
-  // 重定位提交
+  // 重定位：拖出位姿后不立即提交——保留雷达点云预览（青色），确认贴合后再应用
   if (editor.mode === 'initialPose' && poseAnchor) {
     const anchor = poseAnchor
-    const dist = Math.hypot(world.x - poseAnchor.x, world.y - poseAnchor.y)
-    const yaw = dist < 0.15 ? 0 : Math.atan2(world.y - poseAnchor.y, world.x - poseAnchor.x)
-    hidePreviews()
-    editor.setMode('idle')
-    try {
-      await robot.setInitialPose(+anchor.x.toFixed(4), +anchor.y.toFixed(4), +yaw.toFixed(4))
-      ElMessage.success('初始位姿已发送，等待重定位…')
-    } catch {
-      /* http 层已提示 */
-    }
+    poseAnchor = null
+    const dist = Math.hypot(world.x - anchor.x, world.y - anchor.y)
+    const yaw = dist < 0.15 ? (pendingReloc.value?.yaw ?? 0) : Math.atan2(world.y - anchor.y, world.x - anchor.x)
+    pendingReloc.value = { x: anchor.x, y: anchor.y, yaw }
+    scanLayer?.setRelocalizePreview(pendingReloc.value)
     return
   }
   // 画路线预览清理（点击已由 click 处理）
@@ -475,6 +482,26 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {
   emit('context', { hit, x: ev.clientX, y: ev.clientY, world: { x: world.x, y: world.y } })
 }
 
+/** 应用重定位预览：提交临时位姿（/agv/relocalize），结束预览 */
+async function applyReloc() {
+  const pending = pendingReloc.value
+  if (!pending) return
+  try {
+    await robot.setInitialPose(+pending.x.toFixed(4), +pending.y.toFixed(4), +pending.yaw.toFixed(4))
+    ElMessage.success('初始位姿已发送，等待重定位…')
+    editor.setMode('idle')
+    hidePreviews()
+  } catch {
+    /* http 层已提示 */
+  }
+}
+
+/** 取消重定位预览（不清模式由调用方决定；这里退出重定位模式） */
+function cancelReloc() {
+  editor.setMode('idle')
+  hidePreviews()
+}
+
 async function onKey(ev: KeyboardEvent) {
   if (show3d.value) return
   if (ev.key === 'Escape') {
@@ -511,6 +538,12 @@ async function onKey(ev: KeyboardEvent) {
     <div class="nd-overlay nd-overlay--tl">
       <span class="nd-chip">{{ coordsText || '0.00 , 0.00 m' }}</span>
       <span v-if="hint" class="nd-chip nd-chip--hint">{{ hint }}</span>
+      <span
+        v-if="robot.status && !robot.status.pose_initialized
+          && robot.status.mode !== 'MAPPING' && robot.status.mode !== 'RELOCALIZING'"
+        class="nd-chip nd-chip--warn"
+        title="机器人当前无建图无定位，画面是上位机存档地图（仅为浏览）；主页可选择地图启动定位"
+      >⚠ 机器人未定位 · 仅为地图浏览</span>
     </div>
     <div class="nd-overlay nd-overlay--tr">
       <button class="nd-chip nd-chip--btn" :disabled="!map3dName" @click="show3d = true">三维地图</button>
@@ -534,6 +567,13 @@ async function onKey(ev: KeyboardEvent) {
       >⟳ 旋转视图</button>
       <span v-if="editor.livePolling" class="nd-chip nd-chip--live">● 建图实时预览中</span>
     </div>
+    <!-- 重定位预览确认条：青色点云 = 按新位姿重绘的雷达，贴合地图障碍物则位姿正确 -->
+    <div v-if="pendingReloc" class="nd-overlay nd-overlay--tc">
+      <span class="nd-chip nd-chip--hint">重定位预览：青色点云按新位姿重绘，观察与地图障碍物的贴合程度</span>
+      <button class="nd-chip nd-chip--btn nd-reloc-apply" @click="applyReloc">✓ 应用重定位</button>
+      <button class="nd-chip nd-chip--btn" @click="cancelReloc">✕ 取消</button>
+    </div>
+
     <el-dialog v-model="show3d" :title="`三维地图 · ${map3dName}`" width="90%" destroy-on-close append-to-body>
       <Map3DViewer v-if="show3d && map3dName" :key="map3dName" :map-name="map3dName" />
     </el-dialog>
@@ -566,6 +606,19 @@ async function onKey(ev: KeyboardEvent) {
   right: 10px;
 }
 
+.nd-overlay--tc {
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.nd-reloc-apply {
+  color: #67c23a;
+  border-color: #b3e19d;
+  background: #f0f9eb;
+  font-weight: 600;
+}
+
 .nd-chip {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid #dcdfe6;
@@ -578,6 +631,13 @@ async function onKey(ev: KeyboardEvent) {
 
 .nd-chip--hint {
   color: #409eff;
+}
+
+.nd-chip--warn {
+  color: #e6a23c;
+  border-color: #f3d19e;
+  background: #fdf6ec;
+  font-weight: 600;
 }
 
 .nd-chip--live {

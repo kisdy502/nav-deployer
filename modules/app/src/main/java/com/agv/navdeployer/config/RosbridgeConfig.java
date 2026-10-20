@@ -1,5 +1,6 @@
 package com.agv.navdeployer.config;
 
+import com.agv.navdeployer.sim.ArmStateMonitor;
 import com.agv.navdeployer.sim.LiveMapCache;
 import com.agv.navdeployer.sim.MapSubscriptionGuard;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
@@ -47,6 +48,14 @@ public class RosbridgeConfig {
         return new RosCommandDispatcher(props);
     }
 
+    /** 机械臂归位联锁：/joint_states 对照归位姿态 + arm_move 在途 → 移动闸门（MoveTaskService/RmsTaskService）。 */
+    @Bean
+    public ArmStateMonitor armStateMonitor(SimAgvTelemetry telemetry,
+                                           RosCommandDispatcher dispatcher,
+                                           SimAgvProperties props) {
+        return new ArmStateMonitor(telemetry, dispatcher::getArmMoveInFlight, props);
+    }
+
     /** /map 按需订阅闸门（MAPPING 模式或 /live 被轮询时才挂载，降低 rosbridge 小消息被挤的延迟）。 */
     @Bean
     public MapSubscriptionGuard mapSubscriptionGuard(SimAgvProperties props) {
@@ -80,6 +89,10 @@ public class RosbridgeConfig {
                                                 RosbridgeClient mapRosbridgeClient,
                                                 MapSubscriptionGuard mapSubscriptionGuard) {
         return args -> {
+            // 收发消息日志参数注入（开关/截断长度/话题节流间隔，见 sim_agv.ws_message_log_*）
+            com.agv.navdeployer.sim.RosbridgeMessageLog.configure(
+                    props.isWsMessageLogEnabled(), props.getWsMessageLogMaxChars(),
+                    props.getWsMessageLogTopicIntervalMs());
             if (!props.isEnabled()) {
                 log.info("sim-agv disabled, rosbridge client stays idle (ws={})", props.getWsUrl());
                 return;

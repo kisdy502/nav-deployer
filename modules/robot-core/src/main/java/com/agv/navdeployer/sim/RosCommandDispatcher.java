@@ -150,6 +150,14 @@ public class RosCommandDispatcher implements RosbridgeHandler {
     public record ArmMoveResult(boolean success, String message) {
     }
 
+    /** arm_move 在途调用数（归位联锁的 MOVING 态数据源） */
+    private final java.util.concurrent.atomic.AtomicInteger armMoveInFlight =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    public int getArmMoveInFlight() {
+        return armMoveInFlight.get();
+    }
+
     /**
      * 机械臂/腰关节运动（仿真侧异步插值执行，进度经 /joint_states 体现）。
      *
@@ -168,12 +176,14 @@ public class RosCommandDispatcher implements RosbridgeHandler {
         if (durationSec != null) {
             args.put("duration_sec", durationSec);
         }
+        armMoveInFlight.incrementAndGet();
         return callService(props.getArmMoveService(), args)
                 .thenApply(values -> new ArmMoveResult(
                         values.path("success").asBoolean(false),
                         values.path("message").asText("")))
                 .exceptionally(throwable -> new ArmMoveResult(false,
-                        "arm_move 调用失败: " + throwable.getMessage()));
+                        "arm_move 调用失败: " + throwable.getMessage()))
+                .whenComplete((result, error) -> armMoveInFlight.decrementAndGet());
     }
 
     /** 指定超时版本：大响应服务（如 get_map 栅格数 MB）需要更长等待。 */

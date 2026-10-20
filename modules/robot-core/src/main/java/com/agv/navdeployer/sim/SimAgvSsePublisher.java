@@ -148,6 +148,8 @@ public class SimAgvSsePublisher {
         var joints = telemetry.getJointStates();
         if (joints != null) {
             ObjectNode node = root.putObject("joints");
+            // 反馈新鲜度判据（仿真侧 >2s 拒绝 arm_move，前端据此提前禁用点动）
+            node.put("received_at", joints.receivedAt().toString());
             ArrayNode names = node.putArray("name");
             ArrayNode positions = node.putArray("position");
             for (int i = 0; i < joints.names().length; i++) {

@@ -5,6 +5,7 @@ import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { MOVE_TASK_STATUS_TAG, MOVE_TASK_TYPE_LABEL } from '@/utils/format'
 import { radToDeg } from '@/utils/coords'
+import { armHomed } from '@/utils/armJoints'
 
 const robot = useRobotStore()
 const tasks = useTasksStore()
@@ -23,6 +24,20 @@ const conn = computed(() => {
 const poseText = computed(() => {
   const p = robot.pose
   return p ? `x ${p.x.toFixed(2)}  y ${p.y.toFixed(2)}  θ ${radToDeg(p.yaw)}°` : '位姿未知'
+})
+
+/** 未定位冷启动警示：机器人无建图无定位，画面仅为存档地图浏览 */
+const notLocalized = computed(() =>
+  !!robot.status && !robot.status.pose_initialized
+  && robot.status.mode !== 'MAPPING' && robot.status.mode !== 'RELOCALIZING')
+
+/** 机械臂归位联锁状态（角色映射 + 单臂 profile 回退，与后端 ArmStateMonitor 同参数；闸门以后端判定为准） */
+const armState = computed<{ label: string; color: string } | null>(() => {
+  const homed = armHomed(robot.joints, 'left') ?? armHomed(robot.joints, 'right')
+  if (homed === null) return null
+  return homed
+    ? { label: '归位', color: '#67c23a' }
+    : { label: '展开', color: '#e6a23c' }
 })
 
 const scanText = computed(() => {
@@ -60,10 +75,22 @@ async function onCancelTask() {
         <span>状态：<b>{{ robot.status.state ?? '-' }}</b></span>
         <el-divider direction="vertical" />
         <span>模式：<b>{{ robot.status.mode ?? '-' }}</b></span>
+        <template v-if="notLocalized">
+          <el-divider direction="vertical" />
+          <span style="color: #e6a23c" title="机器人既无建图也无定位，当前画面仅为上位机存档地图浏览；回到主页可选图启动定位或开始建图">
+            ⚠ 机器人未定位（仅为地图浏览）
+          </span>
+        </template>
         <el-divider direction="vertical" />
         <span>电量：<b>{{ robot.battery ?? '-' }}%</b></span>
         <el-divider direction="vertical" />
         <span>地图：<b>{{ robot.status.map_name ?? '-' }}</b></span>
+        <template v-if="armState">
+          <el-divider direction="vertical" />
+          <span title="机械臂归位联锁：展开状态下移动作业会被后端拒绝（以后端判定为准）">
+            机械臂：<b :style="{ color: armState.color }">{{ armState.label }}</b>
+          </span>
+        </template>
         <el-divider direction="vertical" />
         <span :style="{ color: robot.status.pose_initialized ? '' : '#f56c6c' }">
           {{ poseText }}

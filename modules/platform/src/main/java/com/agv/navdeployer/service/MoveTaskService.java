@@ -62,6 +62,8 @@ public class MoveTaskService {
     private final SimAgvTelemetry telemetry;
     private final SimAgvProperties props;
     private final SimAgvSsePublisher ssePublisher;
+    /** 机械臂归位联锁（可空：测试/独立装配时无此 Bean 则跳过闸门） */
+    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
 
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -80,7 +82,8 @@ public class MoveTaskService {
                            RosbridgeClient rosbridgeClient,
                            SimAgvTelemetry telemetry,
                            SimAgvProperties props,
-                           SimAgvSsePublisher ssePublisher) {
+                           SimAgvSsePublisher ssePublisher,
+                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
         this.moveTaskMapper = moveTaskMapper;
         this.navPointMapper = navPointMapper;
         this.navPathService = navPathService;
@@ -90,6 +93,7 @@ public class MoveTaskService {
         this.telemetry = telemetry;
         this.props = props;
         this.ssePublisher = ssePublisher;
+        this.armStateMonitor = armStateMonitor;
     }
 
     /** 服务重启时把遗留的非终态任务标记为失败（goal 关联已丢失，无法再收到 result）。 */
@@ -124,6 +128,11 @@ public class MoveTaskService {
                 && !"NAVIGATION".equals(status.mode())) {
             throw new IllegalStateException("机器人 mode=" + status.mode()
                     + "（切图/建图中），禁止下发导航指令，请等待回到 NAVIGATION");
+        }
+        // 机械臂归位联锁：臂展开/动作中时移动作业可能撞击人员/设施（真机安全语义）
+        if (armStateMonitor != null && !armStateMonitor.movementAllowed()) {
+            throw new IllegalStateException("机械臂未归位（arm_state=" + armStateMonitor.state()
+                    + "），禁止移动作业，请先收臂归位");
         }
 
         MoveTask task = new MoveTask();

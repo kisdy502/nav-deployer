@@ -172,12 +172,29 @@ sim_agv:
   set_control_service: /agv/set_control
   # 三舵轮全向底盘遥控：geometry_msgs/Twist，linear.x 前进、linear.y 左移、angular.z 左转
   cmd_vel_topic: /cmd_vel
+  # rosbridge 收发消息高亮日志：指令类(goal/service/result)全量；
+  # 话题数据按时间节流（同一话题每 topic_interval_ms 最多 1 条，/tf 实测 ~200Hz）；
+  # 大报文(>10万字符)只打长度；间隔配 0 或负值 = 完全不打话题数据（只留指令日志）
+  ws_message_log_enabled: ${SIM_AGV_WS_MSG_LOG:true}
+  ws_message_log_max_chars: 300
+  ws_message_log_topic_interval_ms: 10000
   service_timeout_ms: 5000
   goal_timeout_s: 600
   default_max_speed: 0.6
   default_step: 0.1
   # FOLLOW_PATH 起点纠偏：机器人距首段起点超过该距离（米）时，自动先插一段"驶向起点"
   follow_path_start_radius: 0.5
+  # 机械臂归位联锁（真机安全语义：臂未归位时移动作业可能撞击人员/设施）。
+  # HOME=各侧臂关节角与归位姿态差 < arm_home_tolerance_rad；UNKNOWN（无关节数据）时
+  # arm_strict_unknown=true 拒绝 / false 放行（兼容不发布 /joint_states 的旧机器人栈）
+  arm_gate_enabled: ${SIM_AGV_ARM_GATE_ENABLED:true}
+  arm_strict_unknown: ${SIM_AGV_ARM_STRICT_UNKNOWN:false}
+  arm_home_tolerance_rad: 0.1
+  # 归位姿态（弧度）：按语义角色顺序 [pan, lift, elbow, wrist1, wrist2, wrist3]。
+  # 机器人侧标定（关节名字母序 [elbow,lift,pan,wrist1..3] = [2.65,-2.6,0,-1.6208,-1.5708,0]）换算；
+  # 运行期可被前端「设为归位位」覆盖
+  arm_home_left:  [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
+  arm_home_right: [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
   # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理，完成看 mode 流转）
   list_maps_service: /agv/list_maps
   get_map_service: /agv/get_map
