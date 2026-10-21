@@ -1,23 +1,28 @@
 import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { NavPointVO, PointType } from '@/types/api'
+import { pointStyle } from '@/utils/pointStyle'
 
-/** 点位半径 0.4m，箭头 = 内接三角形（底=直径 2R，高=半径 R，尖端抵圆周、底为过圆心直径） */
+/** 圆内前半侧显示朝向三角形，后半侧显示缩小的类型符号。 */
 const R = 0.4
+export const pointTypeColor = (t: PointType) => new THREE.Color(pointStyle(t).color).getHex()
 
-const TYPE_COLORS: Record<PointType, number> = {
-  NORMAL: 0x95d475, // 浅绿
-  WORK: 0x409eff, // 作业点用蓝色区分
-  HOME: 0x95d475, // 浅绿
-  CHARGER: 0xe6a23c, // 充电点保留橙色便于辨识
+function symbolGeometry(type: PointType): THREE.ShapeGeometry {
+  const shape = new THREE.Shape()
+  pointStyle(type).outline.forEach(([x, y], i) => {
+    if (i === 0) shape.moveTo(x * R * 0.36, y * R * 0.36)
+    else shape.lineTo(x * R * 0.36, y * R * 0.36)
+  })
+  shape.closePath()
+  return new THREE.ShapeGeometry(shape)
 }
-
-export const pointTypeColor = (t: PointType) => TYPE_COLORS[t] ?? TYPE_COLORS.NORMAL
 
 interface PointVisual {
   root: THREE.Group
   disc: THREE.Mesh
   discMat: THREE.MeshBasicMaterial
+  symbol: THREE.Mesh
+  pointType: PointType
   arrow: THREE.Mesh
   ring: THREE.Mesh
   halo: THREE.Mesh
@@ -62,8 +67,12 @@ export class PointLayer {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(R, 32), discMat)
     disc.position.z = 0.01
     disc.userData.pick = { type: 'point', id: p.id }
-    // 朝向箭头 = 内接三角形：底边=过圆心直径(2R)，高=R，尖端抵圆周
-    // 平面 Shape（+x 朝向）：tip(R,0)、base(0,±R)，旋转 yaw 后指向朝向
+    const symbol = new THREE.Mesh(symbolGeometry(p.point_type),
+      new THREE.MeshBasicMaterial({ color: 0x172b4d, side: THREE.DoubleSide }))
+    symbol.position.z = 0.025
+    symbol.userData.pick = { type: 'point', id: p.id }
+    // 朝向箭头位于圆盘外侧，避免遮挡类型符号。
+    // 仅箭头随 yaw 旋转，类型符号保持地图坐标方向。
     const arrowShape = new THREE.Shape()
     arrowShape.moveTo(R, 0)
     arrowShape.lineTo(0, R)
@@ -71,7 +80,7 @@ export class PointLayer {
     arrowShape.closePath()
     const arrow = new THREE.Mesh(
       new THREE.ShapeGeometry(arrowShape),
-      new THREE.MeshBasicMaterial({ color: 0x2f6b3a, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: 0x172b4d, side: THREE.DoubleSide }),
     )
     arrow.position.z = 0.02
     arrow.userData.pick = { type: 'point', id: p.id }
@@ -83,7 +92,7 @@ export class PointLayer {
     ring.visible = false
     // 路线编辑高亮环（选中的起终点）：蓝色，位于红色选中环外侧
     const halo = new THREE.Mesh(
-      new THREE.RingGeometry(R * 1.12, R * 1.28, 32),
+      new THREE.RingGeometry(R + 0.12, R + 0.18, 32),
       new THREE.MeshBasicMaterial({ color: 0x409eff, side: THREE.DoubleSide }),
     )
     halo.position.z = 0.006
@@ -103,9 +112,9 @@ export class PointLayer {
     el.appendChild(inner)
     const label = new CSS2DObject(el)
 
-    root.add(disc, arrow, ring, halo, handle, label)
+    root.add(disc, symbol, arrow, ring, halo, handle, label)
     this.group.add(root)
-    return { root, disc, discMat, arrow, ring, halo, handle, labelInner: inner, x: p.x, y: p.y, yaw: p.yaw }
+    return { root, disc, discMat, symbol, pointType: p.point_type, arrow, ring, halo, handle, labelInner: inner, x: p.x, y: p.y, yaw: p.yaw }
   }
 
   private updateVisual(v: PointVisual, p: NavPointVO, selected: boolean) {
@@ -115,6 +124,11 @@ export class PointLayer {
     v.root.position.x = p.x
     v.root.position.y = p.y
     v.discMat.color.setHex(pointTypeColor(p.point_type))
+    if (v.pointType !== p.point_type) {
+      v.symbol.geometry.dispose()
+      v.symbol.geometry = symbolGeometry(p.point_type)
+      v.pointType = p.point_type
+    }
     this.setArrow(v, p.yaw)
     v.ring.visible = selected
     v.handle.visible = selected
@@ -124,7 +138,11 @@ export class PointLayer {
   private setArrow(v: PointVisual, yaw: number) {
     v.yaw = yaw
     v.arrow.rotation.z = yaw
-    // 内接三角形以圆心为原点（底边过圆心，尖端沿朝向），无需偏移
+    // 类型符号位于箭头反侧，随朝向保持在后半圆内，避免旋转时重叠。
+    v.symbol.position.x = -Math.cos(yaw) * R * 0.48
+    v.symbol.position.y = -Math.sin(yaw) * R * 0.48
+    v.symbol.rotation.z = yaw
+    // 旋转手柄位于高亮环外侧。
     v.handle.position.x = Math.cos(yaw) * (R + 0.36)
     v.handle.position.y = Math.sin(yaw) * (R + 0.36)
   }

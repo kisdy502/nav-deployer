@@ -42,6 +42,20 @@ public class ArmStateMonitor {
         }
     }
 
+    /** 当前归位（角色顺序 pan..wrist3）：运行时覆盖优先，其次 yaml 侧配置。 */
+    public double[] homePose() {
+        return homeOf(true);
+    }
+
+    /** 臂关节名（排序后，与 arm_move 的 joints 顺序契约一致）：双臂取 left，单臂 profile 回退 ur5e_*。 */
+    public static List<String> armJointNamesSorted(SimAgvTelemetry.JointSnapshot joints) {
+        List<String> dual = sideJointNames(joints, Side.LEFT);
+        if (!dual.isEmpty()) {
+            return dual;
+        }
+        return singleArmJointNames(joints);
+    }
+
     /** 归位来源：运行时覆盖（REST「设为归位位」）优先，其次 yaml 侧配置。 */
     private double[] homeOf(boolean left) {
         double[] override = homeOverride;
@@ -133,7 +147,7 @@ public class ArmStateMonitor {
      * （elbow < lift < pan），按序号对位会把归位角错配到别的关节上。
      * 数值命名兜底：joint_1..6 依次对应 pan/lift/elbow/wrist1/wrist2/wrist3。
      */
-    static int roleIndexOf(String jointName) {
+    public static int roleIndexOf(String jointName) {
         String l = jointName == null ? "" : jointName.toLowerCase(Locale.ROOT);
         if (l.contains("pan")) {
             return 0;
@@ -186,7 +200,7 @@ public class ArmStateMonitor {
         return names;
     }
 
-    private static double positionOf(SimAgvTelemetry.JointSnapshot joints, String name) {
+    public static double positionOf(SimAgvTelemetry.JointSnapshot joints, String name) {
         for (int k = 0; k < joints.names().length; k++) {
             if (name.equals(joints.names()[k])) {
                 return k < joints.positions().length ? joints.positions()[k] : 0;

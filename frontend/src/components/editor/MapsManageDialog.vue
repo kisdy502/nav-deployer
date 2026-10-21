@@ -5,7 +5,7 @@ import { DataLine, Download, Refresh } from '@element-plus/icons-vue'
 import { useMapListStore } from '@/stores/mapList'
 import { useTasksStore } from '@/stores/tasks'
 import { useRobotStore } from '@/stores/robot'
-import { fmtTime, MAP_STATUS_TAG } from '@/utils/format'
+import { fmtTime, fmtNum, MAP_STATUS_TAG } from '@/utils/format'
 
 const visible = defineModel<boolean>({ required: true })
 
@@ -134,7 +134,7 @@ function onExportZip(id: number, mapName: string) {
         </template>
       </el-table-column>
       <el-table-column label="分辨率" width="90">
-        <template #default="{ row }">{{ row.resolution ?? '-' }} m/格</template>
+        <template #default="{ row }">{{ fmtNum(row.resolution) }} m/格</template>
       </el-table-column>
       <el-table-column label="尺寸" width="90">
         <template #default="{ row }">{{ row.width ?? '-' }} × {{ row.height ?? '-' }}</template>

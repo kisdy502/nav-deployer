@@ -1,7 +1,7 @@
 {
   "connect": {
     "endpoints": [
-      "tcp/10.6.43.12:31586"
+      "tcp/10.6.43.12:30586"
     ]
   },
   "mode": "client",
@@ -13,5 +13,5 @@
       "enabled": false
     }
   },
-  "namespace": "sz-test-qc"
+  "namespace": "qc-robot"
 }

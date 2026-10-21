@@ -113,7 +113,8 @@ export class RobotLayer {
 
   constructor() {
     registerRobotLayer(this)
-    this.group.position.z = 0.2
+    // 轮心高度为 WHEEL_R，轮胎最低点落在地图 z=0。
+    this.group.position.z = 0
 
     // 底盘几何由 rebuildChassis 生成（初始按常量，TF 轮位到达后按包络自适应）
     this.rebuildChassis(BODY_L, BODY_W)
@@ -207,6 +208,21 @@ export class RobotLayer {
       // 官方包路径解析机制：package://<pkg>/... → <base>/<pkg>/...（上位机 mesh 代理）。
       // 不设置时 urdf-loader 会剥成相对路径打到页面服务器（SPA fallback 返回 HTML，mesh 全挂）
       ;(loader as any).packages = (pkg: string) => `${base}/${pkg}`
+      // 等异步 mesh 就绪后按模型最低点落地，兼容不同 URDF 原点。
+      const groundRobot = () => {
+        if (this.disposed || !this.urdfRobot) return
+        const model = this.urdfRobot as THREE.Object3D
+        model.position.z = 0
+        model.updateMatrixWorld(true)
+        // 优先按轮组接地，防止机械臂低位姿影响底盘高度。
+        const bounds = new THREE.Box3()
+        model.traverse((node) => {
+          if (/wheel/i.test(node.name)) bounds.union(new THREE.Box3().setFromObject(node))
+        })
+        if (bounds.isEmpty()) bounds.setFromObject(model)
+        if (!bounds.isEmpty() && Number.isFinite(bounds.min.z)) model.position.z = -bounds.min.z
+      }
+      manager.onLoad = groundRobot
       const robot = loader.parse(xml)
       if (!robot || this.disposed) return
       // URDF 本身就是 z-up、x-forward（ROS 语义），与本场景坐标约定一致，直接挂载
@@ -216,6 +232,7 @@ export class RobotLayer {
       this.armSkeletonGroup.visible = false
       this.bodyGroup.add(robot)
       this.applyJoints()
+      groundRobot()
     } catch {
       // URDF 不可用时保持参数化模型，后续遥测到达后重试。
     } finally {
@@ -630,63 +647,79 @@ export class RobotLayer {
       last.getWorldPosition(tcp).applyMatrix4(rootInv)
       const target = tcp.clone().add(new THREE.Vector3(dx, dy, dz))
 
-      const n = names.length
-      const J: number[][] = [new Array<number>(n).fill(0), new Array<number>(n).fill(0), new Array<number>(n).fill(0)]
-      const LAMBDA = 1e-6
-      const MAX_DQ = 0.05
-      const TOL = 5e-4
+        const n = names.length
+        const J: number[][] = [new Array<number>(n).fill(0), new Array<number>(n).fill(0), new Array<number>(n).fill(0)]
+        // 自适应阻尼（Levenberg-Marquardt）：常规位姿 λ 极小保证精度；
+        // 腕部奇异（如 wrist_2≈0 时腕三轴退化）附近条件数爆炸，小 λ 的 det→0，
+        // 此时放大 λ 以最小范数解继续收敛而不是直接放弃（此前"逆解未收敛"的主因之一）
+        let lambda = 1e-6
+        const MAX_DQ = 0.05
+        const TOL = 5e-4
 
-      for (let iter = 0; iter < 50; iter++) {
-        applyQ()
-        last.getWorldPosition(tcp).applyMatrix4(rootInv)
-        const ex = target.x - tcp.x
-        const ey = target.y - tcp.y
-        const ez = target.z - tcp.z
-        if (Math.hypot(ex, ey, ez) < TOL) return names.map((name) => q.get(name)!)
+        for (let iter = 0; iter < 50; iter++) {
+          applyQ()
+          last.getWorldPosition(tcp).applyMatrix4(rootInv)
+          const ex = target.x - tcp.x
+          const ey = target.y - tcp.y
+          const ez = target.z - tcp.z
+          if (Math.hypot(ex, ey, ez) < TOL) return names.map((name) => q.get(name)!)
 
-        for (let k = 0; k < n; k++) {
-          const joint = robot.joints[names[k]]
-          joint.getWorldPosition(pj)
-          pj.applyMatrix4(rootInv)
-          joint.getWorldQuaternion(TMP_QUAT)
-          axisWorld.set(0, 0, 1)
-          if (joint.axis) axisWorld.copy(joint.axis)
-          axisWorld.applyQuaternion(TMP_QUAT).transformDirection(rootInv)
-          axisWorld.normalize()
-          // 旋副：列 = axis × (tcp − joint)；UR5e 全旋副，柱副按轴向量处理即可
-          const rx = tcp.x - pj.x
-          const ry = tcp.y - pj.y
-          const rz = tcp.z - pj.z
-          J[0][k] = axisWorld.y * rz - axisWorld.z * ry
-          J[1][k] = axisWorld.z * rx - axisWorld.x * rz
-          J[2][k] = axisWorld.x * ry - axisWorld.y * rx
-        }
-
-        // dq = Jᵀ (J Jᵀ + λI)⁻¹ err（3×3 克拉默求解）
-        const A = [
-          [0, 0, 0],
-          [0, 0, 0],
-          [0, 0, 0],
-        ]
-        for (let r = 0; r < 3; r++) {
-          for (let c = 0; c < 3; c++) {
-            let s = 0
-            for (let k = 0; k < n; k++) s += J[r][k] * J[c][k]
-            A[r][c] = s + (r === c ? LAMBDA : 0)
+          for (let k = 0; k < n; k++) {
+            const joint = robot.joints[names[k]]
+            joint.getWorldPosition(pj)
+            pj.applyMatrix4(rootInv)
+            joint.getWorldQuaternion(TMP_QUAT)
+            axisWorld.set(0, 0, 1)
+            if (joint.axis) axisWorld.copy(joint.axis)
+            axisWorld.applyQuaternion(TMP_QUAT).transformDirection(rootInv)
+            axisWorld.normalize()
+            // 旋副：列 = axis × (tcp − joint)；UR5e 全旋副，柱副按轴向量处理即可
+            const rx = tcp.x - pj.x
+            const ry = tcp.y - pj.y
+            const rz = tcp.z - pj.z
+            J[0][k] = axisWorld.y * rz - axisWorld.z * ry
+            J[1][k] = axisWorld.z * rx - axisWorld.x * rz
+            J[2][k] = axisWorld.x * ry - axisWorld.y * rx
           }
-        }
-        const b = [ex, ey, ez]
-        const det = A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
-          - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
-          + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])
-        if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null
-        const y = [0, 0, 0]
-        for (let r = 0; r < 3; r++) {
-          const M = A.map((row, i) => row.map((v, j) => (j === r ? b[i] : v)))
-          y[r] = (M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
-            - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
-            + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])) / det
-        }
+
+          // dq = Jᵀ (J Jᵀ + λI)⁻¹ err（3×3 克拉默求解）；det 过小时放大 λ 重试
+          let det = 0
+          let A: number[][] = []
+          let solved = false
+          for (let attempt = 0; attempt < 5; attempt++) {
+            A = [
+              [0, 0, 0],
+              [0, 0, 0],
+              [0, 0, 0],
+            ]
+            for (let r = 0; r < 3; r++) {
+              for (let c = 0; c < 3; c++) {
+                let s = 0
+                for (let k = 0; k < n; k++) s += J[r][k] * J[c][k]
+                A[r][c] = s + (r === c ? lambda : 0)
+              }
+            }
+            det = A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1])
+              - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0])
+              + A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0])
+            if (Number.isFinite(det) && Math.abs(det) > 1e-10) {
+              solved = true
+              break
+            }
+            lambda *= 100
+          }
+          if (!solved) {
+            console.info('[armIk] 逆解发散：雅可比奇异且阻尼 escalated 无效', { lambda })
+            return null
+          }
+          const b = [ex, ey, ez]
+          const y = [0, 0, 0]
+          for (let r = 0; r < 3; r++) {
+            const M = A.map((row, i) => row.map((v, j) => (j === r ? b[i] : v)))
+            y[r] = (M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
+              - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0])
+              + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0])) / det
+          }
 
         for (let k = 0; k < n; k++) {
           let dq = J[0][k] * y[0] + J[1][k] * y[1] + J[2][k] * y[2]

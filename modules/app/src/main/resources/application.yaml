@@ -195,6 +195,8 @@ sim_agv:
   # 运行期可被前端「设为归位位」覆盖
   arm_home_left:  [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
   arm_home_right: [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
+  # 质检展开位姿（角色顺序）：质检任务三阶段序列（展臂→采集→收臂归位）的第一阶段目标
+  arm_inspect_pose: [0.5, -1.2, 1.0, -0.5, 0, 0]
   # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理，完成看 mode 流转）
   list_maps_service: /agv/list_maps
   get_map_service: /agv/get_map

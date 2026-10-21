@@ -11,6 +11,12 @@ import type {
 
 export const fmtTime = (s: string | null | undefined) => (s ? dayjs(s).format('YYYY-MM-DD HH:mm:ss') : '-')
 
+/** 浮点智能显示：去掉二进制精度毛刺（0.05000000000000123 → 0.05），最多保留 max 位小数；无效值返回 '-' */
+export const fmtNum = (v: number | null | undefined, max = 4): string => {
+  if (v == null || !Number.isFinite(v)) return '-'
+  return String(+v.toFixed(max))
+}
+
 /** 按前缀自动生成图内唯一编码：prefix1、prefix2…（跳过已存在的编号） */
 export const nextAutoCode = (existingCodes: string[], prefix: string): string => {
   const existing = new Set(existingCodes)
@@ -66,3 +72,10 @@ export const MOVE_TASK_STATUS_TAG: Record<MoveTaskStatus, { label: string; type:
   CANCELLED: { label: '已取消', type: 'info' },
   TIMEOUT: { label: '超时', type: 'danger' },
 }
+
+/** 待命点使用 Home，避免与作业点 W 混淆。 */
+export const POINT_CODE_PREFIX: Record<PointType, string> = {
+  NORMAL: 'P', CHARGER: 'C', WORK: 'W', HOME: 'Home',
+}
+export const nextPointCode = (codes: string[], type: PointType): string =>
+  nextAutoCode(codes, POINT_CODE_PREFIX[type])

@@ -14,7 +14,7 @@ import TeleopPanel from '@/components/editor/TeleopPanel.vue'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { nextAutoCode } from '@/utils/format'
+import { nextPointCode } from '@/utils/format'
 import type { PickResult } from '@/three/MapScene'
 import type { PointType } from '@/types/api'
 
@@ -121,9 +121,17 @@ const placeDialog = reactive({
   yawDeg: 0,
 })
 
+watch(() => placeDialog.type, (type, previous) => {
+  if (!placeDialog.visible) return
+  const codes = editor.points.map((p) => p.point_code)
+  if (!placeDialog.code.trim() || placeDialog.code === nextPointCode(codes, previous)) {
+    placeDialog.code = nextPointCode(codes, type)
+  }
+}, { flush: 'sync' })
+
 function onPlacePoint(xy: { x: number; y: number }) {
   // 自动生成编码，保存后保持 placePoint 模式，可连续点击放置多个点位（Esc 退出）
-  placeDialog.code = nextAutoCode(editor.points.map((p) => p.point_code), 'P')
+  placeDialog.code = nextPointCode(editor.points.map((p) => p.point_code), 'NORMAL')
   placeDialog.type = 'NORMAL'
   placeDialog.x = xy.x
   placeDialog.y = xy.y

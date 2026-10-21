@@ -8,6 +8,7 @@ import { PathLayer, type PathRenderItem } from '@/three/PathLayer'
 import { RobotLayer } from '@/three/RobotLayer'
 import { ScanLayer } from '@/three/ScanLayer'
 import Map3DViewer from './Map3DViewer.vue'
+import PointLegend from './PointLegend.vue'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 
@@ -574,6 +575,7 @@ async function onKey(ev: KeyboardEvent) {
       <button class="nd-chip nd-chip--btn" @click="cancelReloc">✕ 取消</button>
     </div>
 
+    <PointLegend />
     <el-dialog v-model="show3d" :title="`三维地图 · ${map3dName}`" width="90%" destroy-on-close append-to-body>
       <Map3DViewer v-if="show3d && map3dName" :key="map3dName" :map-name="map3dName" />
     </el-dialog>

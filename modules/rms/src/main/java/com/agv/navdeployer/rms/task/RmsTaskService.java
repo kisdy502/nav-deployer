@@ -6,6 +6,8 @@ import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.rms.protocol.dto.command.TaskCommandRequest;
 import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.service.MoveTaskService;
+import com.agv.navdeployer.sim.RosCommandDispatcher;
+import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.agv.navdeployer.vo.MoveTaskVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +39,10 @@ public class RmsTaskService {
     private final RmsProperties props;
     /** 机械臂归位联锁（可空：独立装配无此 Bean 时跳过受理闸门，MoveTaskService 闸门仍兜底） */
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    /** 机械臂指令通道与遥测（质检三阶段序列用；可空=无臂环境退化为纯停留模拟） */
+    private final com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher;
+    private final com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry;
+    private final com.agv.navdeployer.sim.SimAgvProperties simProps;
 
     /** 执行与轮询线程：与 RMS query 回调线程隔离，保证 queryable 快速回复 */
     private final ScheduledExecutorService worker =
@@ -55,13 +61,19 @@ public class RmsTaskService {
                           RobotStateView stateView,
                           MoveTaskService moveTaskService,
                           RmsProperties props,
-                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
+                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                          com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher,
+                          com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry,
+                          com.agv.navdeployer.sim.SimAgvProperties simProps) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.stateView = stateView;
         this.moveTaskService = moveTaskService;
         this.props = props;
         this.armStateMonitor = armStateMonitor;
+        this.armDispatcher = armDispatcher;
+        this.armTelemetry = armTelemetry;
+        this.simProps = simProps;
     }
 
     /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：质检动作任务不拦。 */
@@ -357,17 +369,142 @@ public class RmsTaskService {
     }
 
     /** 质检占位执行：固定时长后完成（仿真机械臂接入后替换此方法）。 */
+    /**
+     * 质检作业仿真——单任务三阶段（对齐真机本体程序语义，云端只见一个 action 任务）：
+     * ① 展臂到质检位（arm_move + 到位等待）② 采集停留 ③ 收臂归位（arm_move + 到位等待）；
+     * 全部完成后 COMPLETED 并走既有 result_report → 上传 zip 闭环。
+     * 无臂环境（dispatcher/关节数据缺失）退化为纯停留模拟（保留旧行为）；
+     * 序列期间臂为 DEPLOYED/MOVING，移动联锁自动拒绝导航——正是真机安全语义。
+     */
+    private static final double ARM_PHASE_SEC = 6.0;
+
     private void simulateInspection(RmsTask task) {
-        long durationMs = Math.max(0L, props.getBehavior().getInspectionDurationMs());
-        log.info("rms task {} simulated inspection start, duration={}ms", task.taskId(), durationMs);
-        worker.schedule(() -> {
-            RmsTask current = registry.find(task.taskId()).orElse(null);
-            if (current == null || current.status() != RmsTaskStatus.RUNNING) {
+        long dwellMs = Math.max(0L, props.getBehavior().getInspectionDurationMs());
+        boolean armAvailable = armDispatcher != null && armTelemetry != null
+                && armTelemetry.getJointStates() != null;
+        log.info("rms task {} simulated inspection start: armSequence={} dwell={}ms",
+                task.taskId(), armAvailable, dwellMs);
+        worker.execute(() -> {
+            if (armAvailable && runInspectionSequence(task, dwellMs)) {
                 return;
             }
-            registry.transition(current.taskId(), RmsTaskStatus.COMPLETED);
-            resultReporter.report(current);
-        }, durationMs, TimeUnit.MILLISECONDS);
+            if (armAvailable) {
+                return; // 序列内已 fail 上报
+            }
+            // 无臂退化：纯停留
+            if (!dwell(task, dwellMs)) {
+                return;
+            }
+            completeInspection(task);
+        });
+    }
+
+    /** @return true=序列已收尾（成功或已 fail 上报）；false=任务被暂停/取消（各自已上报） */
+    private boolean runInspectionSequence(RmsTask task, long dwellMs) {
+        java.util.List<String> names = com.agv.navdeployer.sim.ArmStateMonitor
+                .armJointNamesSorted(armTelemetry.getJointStates());
+        double[] inspect = roleTargets(names, simProps.getArmInspectPose());
+        double[] home = roleTargets(names,
+                armStateMonitor == null ? simProps.getArmHomeLeft() : armStateMonitor.homePose());
+        if (names.isEmpty() || inspect == null || home == null) {
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, "质检位姿配置与关节角色不匹配（names=" + names.size() + "）");
+            return true;
+        }
+        log.info("rms task {} inspection phase 1/3: deploy to inspect pose", task.taskId());
+        if (!armPhase(task, names, "deploy(展开质检位)", inspect)) {
+            return true;
+        }
+        if (!dwell(task, dwellMs)) {
+            return false;
+        }
+        log.info("rms task {} inspection phase 3/3: retract to home", task.taskId());
+        if (!armPhase(task, names, "retract(收拢归位)", home)) {
+            return true;
+        }
+        completeInspection(task);
+        return true;
+    }
+
+    /** 角色顺序位姿 → 关节名排序顺序目标角；任一关节角色无法识别返回 null。 */
+    private static double[] roleTargets(java.util.List<String> names, double[] rolePose) {
+        if (rolePose == null || rolePose.length < 6) {
+            return null;
+        }
+        double[] targets = new double[names.size()];
+        for (int i = 0; i < names.size(); i++) {
+            int role = com.agv.navdeployer.sim.ArmStateMonitor.roleIndexOf(names.get(i));
+            if (role < 0) {
+                return null;
+            }
+            targets[i] = rolePose[role];
+        }
+        return targets;
+    }
+
+    /** 单个臂阶段：下发 arm_move → 轮询到位（容差同联锁）；拒绝/超时 → 任务 FAILED。 */
+    private boolean armPhase(RmsTask task, java.util.List<String> names, String label, double[] targets) {
+        try {
+            RosCommandDispatcher.ArmMoveResult result = armDispatcher.armMove("left", targets, ARM_PHASE_SEC).join();
+            if (result == null || !result.success()) {
+                fail(task, RmsTaskStatus.AGV_NODE_FAILED,
+                        "arm " + label + " 被拒绝: " + (result == null ? "null" : result.message()));
+                return false;
+            }
+        } catch (Exception exception) {
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, "arm " + label + " 下发失败: " + exception.getMessage());
+            return false;
+        }
+        long deadline = System.currentTimeMillis() + (long) (ARM_PHASE_SEC * 1000) + 8000;
+        while (System.currentTimeMillis() < deadline) {
+            if (!dwell(task, 200)) {
+                return false; // 暂停/取消
+            }
+            SimAgvTelemetry.JointSnapshot joints = armTelemetry.getJointStates();
+            if (joints == null) {
+                continue;
+            }
+            boolean reached = true;
+            for (int i = 0; i < names.size(); i++) {
+                double actual = com.agv.navdeployer.sim.ArmStateMonitor.positionOf(joints, names.get(i));
+                if (Math.abs(actual - targets[i]) > simProps.getArmHomeToleranceRad()) {
+                    reached = false;
+                    break;
+                }
+            }
+            if (reached) {
+                log.info("rms task {} arm {} reached", task.taskId(), label);
+                return true;
+            }
+        }
+        fail(task, RmsTaskStatus.AGV_NODE_FAILED, "arm " + label + " 到位超时（可能被限位截断）");
+        return false;
+    }
+
+    /** 停留/等待：分片睡眠并检查任务仍 RUNNING（暂停/取消即中止，由对应入口上报）。 */
+    private boolean dwell(RmsTask task, long ms) {
+        long deadline = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                TimeUnit.MILLISECONDS.sleep(Math.min(200, Math.max(1, deadline - System.currentTimeMillis())));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            RmsTask current = registry.find(task.taskId()).orElse(null);
+            if (current == null || current.status() != RmsTaskStatus.RUNNING) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void completeInspection(RmsTask task) {
+        RmsTask current = registry.find(task.taskId()).orElse(null);
+        if (current == null || current.status() != RmsTaskStatus.RUNNING) {
+            return;
+        }
+        registry.transition(current.taskId(), RmsTaskStatus.COMPLETED);
+        resultReporter.report(current);
     }
 
     private void fail(RmsTask task, RmsTaskStatus failureStatus, String message) {

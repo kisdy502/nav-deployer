@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Aim, Delete, EditPen, Plus, Position, Promotion, Search } from '@element-plus/icons-vue'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { nextAutoCode, POINT_TYPE_LABEL } from '@/utils/format'
-import { radToDeg } from '@/utils/coords'
+import { nextPointCode, POINT_TYPE_LABEL } from '@/utils/format'
+import { pointStyle } from '@/utils/pointStyle'
 import type { PointType } from '@/types/api'
+import { radToDeg } from '@/utils/coords'
 
 const emit = defineEmits<{
   (e: 'open-place-dialog', xy: { x: number; y: number }): void
@@ -20,8 +21,7 @@ const tasks = useTasksStore()
 
 const keyword = ref('')
 
-const colorOf = (t: string): string =>
-  t === 'WORK' ? '#409eff' : t === 'CHARGER' ? '#e6a23c' : '#95d475'
+const colorOf = (t: PointType): string => pointStyle(t).color
 
 const filtered = computed(() => {
   const k = keyword.value.trim().toLowerCase()
@@ -52,8 +52,19 @@ const robotDialog = reactive({
   remark: '',
 })
 
+// 保留自定义名称，仅在类型切换时更新默认编码。
+for (const dialog of [manualDialog, robotDialog]) {
+  watch(() => dialog.point_type, (type, previous) => {
+    if (!dialog.visible) return
+    const codes = editor.points.map((p) => p.point_code)
+    if (!dialog.point_code.trim() || dialog.point_code === nextPointCode(codes, previous)) {
+      dialog.point_code = nextPointCode(codes, type)
+    }
+  }, { flush: 'sync' })
+}
+
 function openManual(xy?: { x: number; y: number }) {
-  manualDialog.point_code = nextAutoCode(editor.points.map((p) => p.point_code), 'P')
+  manualDialog.point_code = nextPointCode(editor.points.map((p) => p.point_code), 'NORMAL')
   manualDialog.point_type = 'NORMAL'
   manualDialog.x = xy?.x ?? 0
   manualDialog.y = xy?.y ?? 0
@@ -91,7 +102,7 @@ function openRobotDialog() {
     ElMessage.warning('机器人位姿未初始化，无法以当前位姿建点')
     return
   }
-  robotDialog.point_code = ''
+  robotDialog.point_code = nextPointCode(editor.points.map((p) => p.point_code), 'NORMAL')
   robotDialog.point_type = 'NORMAL'
   robotDialog.remark = ''
   robotDialog.visible = true
@@ -195,7 +206,7 @@ defineExpose({ openManual })
     <el-dialog v-model="manualDialog.visible" title="手动创建点位" width="440px">
       <el-form :model="manualDialog" label-width="80px" @submit.prevent>
         <el-form-item label="编码" required>
-          <el-input v-model="manualDialog.point_code" maxlength="64" placeholder="图内唯一，如 P5" />
+          <el-input v-model="manualDialog.point_code" maxlength="64" placeholder="图内唯一，如 P1 / C1 / W1 / Home1" />
         </el-form-item>
         <el-form-item label="类型">
           <el-radio-group v-model="manualDialog.point_type">
@@ -225,7 +236,7 @@ defineExpose({ openManual })
     <el-dialog v-model="robotDialog.visible" title="以机器人当前位姿创建点位" width="420px">
       <el-form :model="robotDialog" label-width="80px" @submit.prevent>
         <el-form-item label="编码" required>
-          <el-input v-model="robotDialog.point_code" maxlength="64" placeholder="图内唯一，如 P5" />
+          <el-input v-model="robotDialog.point_code" maxlength="64" placeholder="图内唯一，如 P1 / C1 / W1 / Home1" />
         </el-form-item>
         <el-form-item label="类型">
           <el-radio-group v-model="robotDialog.point_type">

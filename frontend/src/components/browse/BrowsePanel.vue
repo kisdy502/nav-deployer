@@ -4,7 +4,9 @@ import { Delete, Position, Promotion, VideoPlay } from '@element-plus/icons-vue'
 import { useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { fmtTime, PATH_STATUS_TAG, POINT_TYPE_LABEL } from '@/utils/format'
+import { fmtTime, fmtNum, PATH_STATUS_TAG, POINT_TYPE_LABEL } from '@/utils/format'
+import { pointStyle } from '@/utils/pointStyle'
+import type { PointType } from '@/types/api'
 import { radToDeg } from '@/utils/coords'
 
 const emit = defineEmits<{
@@ -16,8 +18,7 @@ const editor = useEditorStore()
 const robot = useRobotStore()
 const tasks = useTasksStore()
 
-const colorOf = (t: string): string =>
-  t === 'WORK' ? '#409eff' : t === 'CHARGER' ? '#e6a23c' : '#95d475'
+const colorOf = (t: PointType): string => pointStyle(t).color
 
 async function navigateToPoint() {
   const p = editor.selectedPoint
@@ -95,7 +96,7 @@ function locatePath() {
         <el-descriptions v-if="editor.mapInfo" :column="1" size="small" border>
           <el-descriptions-item label="名称">{{ editor.mapInfo.map_name }}</el-descriptions-item>
           <el-descriptions-item label="状态">{{ editor.mapInfo.status === 'ACTIVE' ? '部署中' : editor.mapInfo.status }}</el-descriptions-item>
-          <el-descriptions-item label="分辨率">{{ editor.mapInfo.resolution }} m/格</el-descriptions-item>
+          <el-descriptions-item label="分辨率">{{ fmtNum(editor.mapInfo.resolution) }} m/格</el-descriptions-item>
           <el-descriptions-item label="尺寸">{{ editor.mapInfo.width }} × {{ editor.mapInfo.height }}</el-descriptions-item>
           <el-descriptions-item v-if="editor.mapInfo.robot_map_name" label="机器人地图">{{ editor.mapInfo.robot_map_name }}</el-descriptions-item>
           <el-descriptions-item label="更新时间">{{ fmtTime(editor.mapInfo.updated_at) }}</el-descriptions-item>

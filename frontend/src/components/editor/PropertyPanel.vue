@@ -5,7 +5,7 @@ import { Delete, Position, Promotion, VideoPlay } from '@element-plus/icons-vue'
 import { DEFAULT_MAX_SPEED, useEditorStore } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { fmtTime, PATH_STATUS_TAG } from '@/utils/format'
+import { fmtTime, fmtNum, PATH_STATUS_TAG } from '@/utils/format'
 import { degToRad, radToDeg } from '@/utils/coords'
 import type { PointType } from '@/types/api'
 
@@ -281,9 +281,9 @@ const pointCodeOf = (id: number) => editor.pointsById.get(id)?.point_code ?? `#$
           <el-descriptions v-if="editor.mapInfo" :column="1" size="small" border>
             <el-descriptions-item label="名称">{{ editor.mapInfo.map_name }}</el-descriptions-item>
             <el-descriptions-item label="状态">{{ editor.mapInfo.status }}</el-descriptions-item>
-            <el-descriptions-item label="分辨率">{{ editor.mapInfo.resolution }} m/格</el-descriptions-item>
-            <el-descriptions-item label="尺寸">{{ editor.mapInfo.width }} × {{ editor.mapInfo.height }}</el-descriptions-item>
-            <el-descriptions-item label="原点">({{ editor.mapInfo.origin_x }}, {{ editor.mapInfo.origin_y }}) 朝向 {{ editor.mapInfo.origin_yaw }} rad</el-descriptions-item>
+            <el-descriptions-item label="分辨率">{{ fmtNum(editor.mapInfo.resolution) }} m/格</el-descriptions-item>
+            <el-descriptions-item label="尺寸">{{ editor.mapInfo.width }} 格 × {{ editor.mapInfo.height }}</el-descriptions-item>
+            <el-descriptions-item label="原点">({{ fmtNum(editor.mapInfo.origin_x) }}, {{ fmtNum(editor.mapInfo.origin_y) }}) 朝向 {{ fmtNum(editor.mapInfo.origin_yaw) }} rad</el-descriptions-item>
             <el-descriptions-item label="机器人地图">{{ editor.mapInfo.robot_map_name || '-' }}</el-descriptions-item>
           </el-descriptions>
 

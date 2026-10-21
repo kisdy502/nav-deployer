@@ -1,0 +1,17 @@
+{
+  "connect": {
+    "endpoints": [
+      "tcp/10.6.43.12:30586"
+    ]
+  },
+  "mode": "client",
+  "scouting": {
+    "multicast": {
+      "enabled": false
+    },
+    "gossip": {
+      "enabled": false
+    }
+  },
+  "namespace": "qc-robot"
+}

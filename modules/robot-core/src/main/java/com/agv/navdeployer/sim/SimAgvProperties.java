@@ -85,6 +85,8 @@ public class SimAgvProperties {
     private double[] armHomeLeft = {0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0};
     /** 右臂归位姿态（弧度，同上按角色顺序） */
     private double[] armHomeRight = {0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0};
+    /** 质检展开位姿（弧度，角色顺序 pan..wrist3）：质检任务三阶段序列的第一阶段目标 */
+    private double[] armInspectPose = {0.5, -1.2, 1.0, -0.5, 0, 0};
 
     // ===== 地图管理服务（agv_bridge_v2 v0.3.0+）=====
     private String listMapsService = "/agv/list_maps";
@@ -493,6 +495,14 @@ public class SimAgvProperties {
 
     public void setArmHomeRight(double[] armHomeRight) {
         this.armHomeRight = armHomeRight;
+    }
+
+    public double[] getArmInspectPose() {
+        return armInspectPose;
+    }
+
+    public void setArmInspectPose(double[] armInspectPose) {
+        this.armInspectPose = armInspectPose;
     }
 
     public List<String> getAdvertiseTopics() {
