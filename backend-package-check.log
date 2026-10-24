@@ -1,0 +1,131 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] nav-deployer                                                       [pom]
+[INFO] nav-robot-core                                                     [jar]
+[INFO] nav-platform                                                       [jar]
+[INFO] nav-rms                                                            [jar]
+[INFO] nav-app                                                            [jar]
+[INFO] 
+[INFO] ------------------------< com.agv:nav-deployer >------------------------
+[INFO] Building nav-deployer 0.1.0                                        [1/5]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ nav-deployer ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ nav-deployer ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] -----------------------< com.agv:nav-robot-core >-----------------------
+[INFO] Building nav-robot-core 0.1.0                                      [2/5]
+[INFO]   from modules\robot-core\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ nav-robot-core ---
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\robot-core\src\main\resources
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\robot-core\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ nav-robot-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ nav-robot-core ---
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\robot-core\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ nav-robot-core ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ nav-robot-core ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ nav-robot-core ---
+[INFO] 
+[INFO] ------------------------< com.agv:nav-platform >------------------------
+[INFO] Building nav-platform 0.1.0                                        [3/5]
+[INFO]   from modules\platform\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ nav-platform ---
+[INFO] Copying 0 resource from src\main\resources to target\classes
+[INFO] Copying 2 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ nav-platform ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ nav-platform ---
+[INFO] Copying 0 resource from src\test\resources to target\test-classes
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ nav-platform ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ nav-platform ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ nav-platform ---
+[INFO] 
+[INFO] --------------------------< com.agv:nav-rms >---------------------------
+[INFO] Building nav-rms 0.1.0                                             [4/5]
+[INFO]   from modules\rms\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ nav-rms ---
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\rms\src\main\resources
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\rms\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ nav-rms ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ nav-rms ---
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\rms\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ nav-rms ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ nav-rms ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ nav-rms ---
+[INFO] 
+[INFO] --------------------------< com.agv:nav-app >---------------------------
+[INFO] Building nav-app 0.1.0                                             [5/5]
+[INFO]   from modules\app\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ nav-app ---
+[INFO] Copying 1 resource from src\main\resources to target\classes
+[INFO] Copying 14 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ nav-app ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ nav-app ---
+[INFO] skip non existing resourceDirectory D:\workspace\testDispatch\modules\app\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ nav-app ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ nav-app ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.4.2:jar (default-jar) @ nav-app ---
+[INFO] Building jar: D:\workspace\testDispatch\modules\app\target\nav-app-0.1.0.jar
+[INFO] 
+[INFO] --- spring-boot:3.3.5:repackage (repackage) @ nav-app ---
+[INFO] Replacing main artifact D:\workspace\testDispatch\modules\app\target\nav-app-0.1.0.jar with repackaged archive, adding nested dependencies in BOOT-INF/.
+[INFO] The original artifact has been renamed to D:\workspace\testDispatch\modules\app\target\nav-app-0.1.0.jar.original
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for nav-deployer 0.1.0:
+[INFO] 
+[INFO] nav-deployer ....................................... SUCCESS [  1.205 s]
+[INFO] nav-robot-core ..................................... SUCCESS [  2.056 s]
+[INFO] nav-platform ....................................... SUCCESS [  1.951 s]
+[INFO] nav-rms ............................................ SUCCESS [  0.734 s]
+[INFO] nav-app ............................................ SUCCESS [  3.815 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  10.895 s
+[INFO] Finished at: 2026-10-22T16:07:06+08:00
+[INFO] ------------------------------------------------------------------------

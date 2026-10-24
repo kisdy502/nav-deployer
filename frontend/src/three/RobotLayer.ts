@@ -157,6 +157,8 @@ export class RobotLayer {
 
     // 车体组：模型、描边、朝向符号随 yaw 一起旋转；label 挂在 root 上保持文字不随车体转动
     this.root.add(this.bodyGroup, label)
+    // 机器人可拾取（右键菜单等：以机器人当前位置创建点位）
+    this.root.userData.pick = { type: 'robot' }
     this.group.add(this.root)
 
     const buf = new Float32Array(TRAIL_MAX * 3)

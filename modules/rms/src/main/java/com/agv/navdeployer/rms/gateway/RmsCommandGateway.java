@@ -93,36 +93,75 @@ public class RmsCommandGateway {
             BodySegment.TASK_STATUS.segment(),
             BodySegment.TASK_TEMPLATE_QUERY.segment());
 
+    /**
+     * 闭环指令段（切图 / 重定位）：业务需要等待机器人执行终态后才能给出成败结论，
+     * 在独立线程执行并延迟回包，避免长时间阻塞 zenoh IO 线程（其他 queryable 仍在服务）。
+     * 若 RMS 侧 query 超时先放弃，迟到的回包会被 zenoh 丢弃（reply 抛错仅记日志），不影响链路。
+     */
+    private static final java.util.Set<String> CLOSED_LOOP_SEGMENTS = java.util.Set.of(
+            BodySegment.MAPPING_CHANGE.segment(),
+            BodySegment.AGV_RELOCATE.segment());
+
+    private final java.util.concurrent.ExecutorService closedLoopExecutor =
+            java.util.concurrent.Executors.newFixedThreadPool(2, runnable -> {
+                Thread thread = new Thread(runnable, "rms-closed-loop");
+                thread.setDaemon(true);
+                return thread;
+            });
+
     /** 统一入口（exact 与通配 queryable 都走这里）。reply 为 BodyReply 或 teach 等自定义信封 ObjectNode。 */
     void dispatch(Query query, String declaredSegment) {
         String rawPayload = "{}";
-        Object reply;
+        String actualSegment;
         try {
             rawPayload = ZenohChannel.readPayload(query);
-            String actualSegment = RmsCommandKeys.extractBodySegment(String.valueOf(query.getKeyExpr()));
+            actualSegment = RmsCommandKeys.extractBodySegment(String.valueOf(query.getKeyExpr()));
             if (actualSegment.isBlank() || actualSegment.contains("*")) {
                 actualSegment = declaredSegment;
             }
-            boolean periodic = PERIODIC_SEGMENTS.contains(actualSegment);
-            if (!periodic) {
+            if (!PERIODIC_SEGMENTS.contains(actualSegment)) {
                 RmsMessageLog.inboundQuery(String.valueOf(query.getKeyExpr()), rawPayload);
             }
+        } catch (Exception exception) {
+            log.warn("RMS query read failed key={} msg={}", query.getKeyExpr(), exception.getMessage());
+            replyAndClose(query, declaredSegment,
+                    BodyReply.failure(500, "nav-deployer failed: " + exception.getMessage()));
+            return;
+        }
+        if (CLOSED_LOOP_SEGMENTS.contains(actualSegment)) {
+            final String payload = rawPayload;
+            final String segment = actualSegment;
+            closedLoopExecutor.submit(() -> {
+                Object reply;
+                try {
+                    reply = handle(segment, payload);
+                } catch (Exception exception) {
+                    log.warn("RMS closed-loop query failed key={} payload={} msg={}",
+                            query.getKeyExpr(), payload, exception.getMessage(), exception);
+                    reply = BodyReply.failure(500, "nav-deployer failed: " + exception.getMessage());
+                }
+                replyAndClose(query, segment, reply);
+            });
+            return;
+        }
+        Object reply;
+        try {
             reply = handle(actualSegment, rawPayload);
-            if (periodic) {
-                log.debug("RMS periodic query segment={} reply_status={}", actualSegment, statusOf(reply));
-            } else {
-                log.info("RMS query key={} segment={} reply_status={} reply_msg={}",
-                        query.getKeyExpr(), actualSegment, statusOf(reply), msgOf(reply));
-            }
         } catch (Exception exception) {
             log.warn("RMS query failed key={} payload={} msg={}",
                     query.getKeyExpr(), rawPayload, exception.getMessage(), exception);
             reply = BodyReply.failure(500, "nav-deployer failed: " + exception.getMessage());
         }
+        replyAndClose(query, actualSegment, reply);
+    }
+
+    /** 回包并关闭 query；非周期段打完整日志。 */
+    private void replyAndClose(Query query, String segment, Object reply) {
         try {
             String replyJson = mapper.writeValueAsString(reply);
-            if (!PERIODIC_SEGMENTS.contains(
-                    RmsCommandKeys.extractBodySegment(String.valueOf(query.getKeyExpr())))) {
+            if (!PERIODIC_SEGMENTS.contains(segment)) {
+                log.info("RMS query key={} segment={} reply_status={} reply_msg={}",
+                        query.getKeyExpr(), segment, statusOf(reply), msgOf(reply));
                 RmsMessageLog.outboundReply(String.valueOf(query.getKeyExpr()), replyJson);
             }
             ZenohChannel.replyJson(query, replyJson);
@@ -132,7 +171,7 @@ public class RmsCommandGateway {
             try {
                 query.close();
             } catch (Exception ignored) {
-                // 已关闭
+                // 已关闭（含 RMS 提前超时放弃的迟到回包）
             }
         }
     }

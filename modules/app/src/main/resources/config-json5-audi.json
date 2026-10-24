@@ -1,0 +1,17 @@
+{
+  "connect": {
+    "endpoints": [
+      "tcp/115.191.55.134:30586"
+    ]
+  },
+  "mode": "client",
+  "scouting": {
+    "multicast": {
+      "enabled": false
+    },
+    "gossip": {
+      "enabled": false
+    }
+  },
+  "namespace": "audi-qc"
+}

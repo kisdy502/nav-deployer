@@ -1,7 +1,7 @@
 {
   "connect": {
     "endpoints": [
-      "tcp/10.6.43.12:30586"
+      "tcp/localhost:7447"
     ]
   },
   "mode": "client",
@@ -13,5 +13,5 @@
       "enabled": false
     }
   },
-  "namespace": "qc-robot"
+  "namespace": "test-dispatch"
 }

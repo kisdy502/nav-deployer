@@ -1,5 +1,5 @@
 # ============ 前端阶段：Node 构建 Vue3 前端 ============
-FROM node:20-alpine AS frontend
+FROM node:22-alpine AS frontend
 WORKDIR /web
 
 # 先只拷贝依赖清单安装，利用 Docker 层缓存加速重复构建
@@ -34,7 +34,7 @@ COPY --from=frontend /web/dist ./modules/app/src/main/resources/static
 RUN mvn -B package -DskipTests
 
 # ============ 运行阶段：只需 JRE，镜像更小 ============
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre-noble
 WORKDIR /app
 
 # 非 root 用户运行，更安全
@@ -49,4 +49,4 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Duser.timezone=Asia/Shanghai"
 EXPOSE 8083
 
 USER spring
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

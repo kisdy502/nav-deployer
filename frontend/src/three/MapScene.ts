@@ -10,6 +10,10 @@ export interface PickResult {
   id?: number
   edgeIdx?: number
   cpIdx?: number
+  /** 多边形顶点索引（zoneVertex/shelfVertex 手柄） */
+  vIdx?: number
+  /** 端点切线手柄方向（endpointHandle：'src' 起点 / 'tgt' 终点） */
+  end?: string
   object: THREE.Object3D
 }
 
@@ -89,6 +93,8 @@ export class MapScene {
   readonly labelRenderer: CSS2DRenderer
   /** 需要被拾取的图层挂到这里 */
   readonly pickRoot = new THREE.Group()
+  /** 左键空白拖拽平移开关：绘制类工具（框选/画矩形）接管左键时置 false，中键/右键平移不受影响 */
+  leftDragPanEnabled = true
   /** 地图纹理所在组（含 origin 偏移与 origin_yaw 旋转） */
   readonly mapGroup = new THREE.Group()
   private mapMesh: THREE.Mesh | null = null
@@ -344,11 +350,26 @@ export class MapScene {
     return Math.round((12 / this.viewHeight) * 100)
   }
 
+  /** 视图顺时针旋转角度（0/90/180/270，四次还原） */
+  private viewRotDeg = 0
+
+  /** 视图整体顺时针旋转（步进 90°）：仅翻转相机 up，场景数据不动，地图/机器人/点云整体一致 */
+  setViewRotation(degClockwise: number) {
+    this.viewRotDeg = ((((Math.round(degClockwise / 90) * 90) % 360) + 360) % 360)
+    this.viewRot180 = this.viewRotDeg === 180
+    const rad = (this.viewRotDeg * Math.PI) / 180
+    // up = (-sin θ, cos θ)：θ=90 时内容顺时针转 90°；θ=180 时与旧 setViewRot180 行为一致
+    this.camera.up.set(-Math.sin(rad), Math.cos(rad), 0)
+    this.camera.lookAt(this.camera.position.x, this.camera.position.y, 0)
+  }
+
+  getViewRotation() {
+    return this.viewRotDeg
+  }
+
   /** 视图整体旋转 180°（对齐 RViz 等外部工具的观察方向）：仅翻转相机 up，场景数据不动，地图/机器人/点云/轨迹整体一致 */
   setViewRot180(on: boolean) {
-    this.viewRot180 = on
-    this.camera.up.set(0, on ? -1 : 1, 0)
-    this.camera.lookAt(this.camera.position.x, this.camera.position.y, 0)
+    this.setViewRotation(on ? 180 : 0)
   }
 
   getViewRot180() {
@@ -586,7 +607,7 @@ export class MapScene {
     p.lastY = ev.clientY
     if (Math.hypot(ev.clientX - p.startX, ev.clientY - p.startY) > 4) p.moved = true
     // 3D 环绕模式：左键旋转 / 右键平移均由 OrbitControls 处理，这里只做拾取与编辑回调
-    const canPan = !this.orbitMode && (p.button !== 0 || (!p.downHit && !p.panning))
+    const canPan = !this.orbitMode && this.leftDragPanEnabled && (p.button !== 0 || (!p.downHit && !p.panning))
     // 手动平移（俯视拖拽 / 3D 右键拖拽）视为接管镜头，退出跟随
     if (p.moved && ((canPan) || (this.orbitMode && p.button === 2))) {
       this.followEnabled = false

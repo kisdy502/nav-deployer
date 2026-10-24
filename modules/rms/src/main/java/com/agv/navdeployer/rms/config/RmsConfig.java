@@ -119,9 +119,11 @@ public class RmsConfig {
                                        NavMapMapper navMapMapper,
                                        RosCommandDispatcher dispatcher,
                                        SimAgvTelemetry telemetry,
-                                       RmsMapState mapState) {
+                                       RmsMapState mapState,
+                                       com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
+                                       com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService) {
         return new RmsMapService(mapTaskService, navMapService, navMapMapper,
-                dispatcher, telemetry, mapState);
+                dispatcher, telemetry, mapState, mapMetaService, mapPackageService);
     }
 
     @Bean(destroyMethod = "shutdown")

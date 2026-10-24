@@ -43,6 +43,10 @@ public class RmsTaskService {
     private final com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher;
     private final com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
+    /** V2 路径规划（智能选择路线导航 vs 直线） */
+    private final com.agv.navdeployer.metadata.service.RoutePlanService routePlanService;
+    private final com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper;
+    private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
 
     /** 执行与轮询线程：与 RMS query 回调线程隔离，保证 queryable 快速回复 */
     private final ScheduledExecutorService worker =
@@ -64,7 +68,10 @@ public class RmsTaskService {
                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
                           com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher,
                           com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry,
-                          com.agv.navdeployer.sim.SimAgvProperties simProps) {
+                          com.agv.navdeployer.sim.SimAgvProperties simProps,
+                          com.agv.navdeployer.metadata.service.RoutePlanService routePlanService,
+                          com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper,
+                          com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.stateView = stateView;
@@ -74,6 +81,9 @@ public class RmsTaskService {
         this.armDispatcher = armDispatcher;
         this.armTelemetry = armTelemetry;
         this.simProps = simProps;
+        this.routePlanService = routePlanService;
+        this.v2MapMapper = v2MapMapper;
+        this.v2WaypointMapper = v2WaypointMapper;
     }
 
     /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：质检动作任务不拦。 */
@@ -303,18 +313,125 @@ public class RmsTaskService {
         }
         task.setDestination(destination);
         try {
-            MoveTaskVO moveTask = moveTaskService.create(new MoveTaskCreateDTO(
-                    "GOAL", null, null,
-                    destination.x(), destination.y(), destination.yaw(),
-                    null, Boolean.TRUE));
+            MoveTaskVO moveTask = createOptimizedMoveTask(taskId, destination);
             task.setInternalMoveTaskId(moveTask.getId());
-            log.info("rms task {} dispatched internal move task {} -> ({}, {}, {}rad)",
-                    taskId, moveTask.getId(), destination.x(), destination.y(), destination.yaw());
+            log.info("rms task {} dispatched internal move task {} (type={}) -> ({}, {}, {}rad)",
+                    taskId, moveTask.getId(), moveTask.getTaskType(),
+                    destination.x(), destination.y(), destination.yaw());
             scheduleMovePoll(taskId, moveTask.getId());
         } catch (Exception exception) {
             // MoveTaskService 的闸门（连接/定位/模式/占用）在这里拦截
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());
         }
+    }
+
+    /**
+     * 智能导航：RMS 只给目标坐标，上位机自主选择最优执行方式。
+     * 优先尝试路线导航（V2 已部署路线图 Dijkstra 规划，走曲线），不可达回落直线 GOAL。
+     * 不改变 RMS 接口，对上层透明。
+     */
+    private MoveTaskVO createOptimizedMoveTask(String taskId, TaskCommandRequest.Destination destination) {
+        // 1. 尝试路线导航
+        MoveTaskVO routeTask = tryRouteNavigation(taskId, destination);
+        if (routeTask != null) {
+            return routeTask;
+        }
+        // 2. 回落直线
+        return moveTaskService.create(new MoveTaskCreateDTO(
+                "GOAL", null, null,
+                destination.x(), destination.y(), destination.yaw(),
+                null, Boolean.TRUE));
+    }
+
+    /** 目标点位与机器人最近点位之间的匹配距离阈值（米） */
+    private static final double WAYPOINT_MATCH_RADIUS = 1.5;
+
+    /**
+     * 路线导航尝试：找当前 PUBLISHED 地图 → 匹配目标/机器人最近点位 → Dijkstra 规划。
+     * 规划结果为单条路线时用 FOLLOW_PATH（走曲线），多条时也用 FOLLOW_PATH（取首段），
+     * 无可路线返回 null 回落 GOAL。
+     */
+    private MoveTaskVO tryRouteNavigation(String taskId, TaskCommandRequest.Destination destination) {
+        try {
+            // 当前 PUBLISHED 的 V2 地图
+            var publishedMap = v2MapMapper.selectOne(
+                    com.baomidou.mybatisplus.core.toolkit.Wrappers.lambdaQuery(
+                                    com.agv.navdeployer.metadata.entity.MapMeta.class)
+                            .eq(com.agv.navdeployer.metadata.entity.MapMeta::getStatus,
+                                    com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED)
+                            .last("LIMIT 1"));
+            if (publishedMap == null) {
+                return null;
+            }
+            // 加载该地图全部点位
+            var waypoints = v2WaypointMapper.selectList(
+                    com.baomidou.mybatisplus.core.toolkit.Wrappers.lambdaQuery(
+                                    com.agv.navdeployer.metadata.entity.MapWaypoint.class)
+                            .eq(com.agv.navdeployer.metadata.entity.MapWaypoint::getMapId,
+                                    publishedMap.getId()));
+            if (waypoints.isEmpty()) {
+                return null;
+            }
+            // 目标最近点位
+            var targetWp = nearestWaypoint(waypoints, destination.x(), destination.y());
+            if (targetWp == null || targetWp.distance > WAYPOINT_MATCH_RADIUS) {
+                log.debug("rms navigate: target ({},{}) not near any waypoint, fallback GOAL",
+                        destination.x(), destination.y());
+                return null;
+            }
+            // 机器人当前位姿 → 最近点位
+            var pose = armTelemetry.getMapPose();
+            if (pose == null) {
+                return null;
+            }
+            var robotWp = nearestWaypoint(waypoints, pose.x(), pose.y());
+            if (robotWp == null || robotWp.distance > WAYPOINT_MATCH_RADIUS * 2) {
+                return null; // 机器人不在任何点位附近，无法路线导航
+            }
+            // Dijkstra 路径规划
+            var plan = routePlanService.plan(publishedMap.getId(), robotWp.waypoint.getId(), targetWp.waypoint.getId());
+            if (!plan.found() || plan.steps().isEmpty()) {
+                log.debug("rms navigate: no route from {} to {}, fallback GOAL",
+                        robotWp.waypoint.getWaypointCode(), targetWp.waypoint.getWaypointCode());
+                return null;
+            }
+            // 提取不重复的路线 ID
+            var pathIds = plan.steps().stream()
+                    .filter(s -> !s.isCrossFloor() && s.pathId() > 0)
+                    .map(com.agv.navdeployer.metadata.service.RoutePlanService.RouteStep::pathId)
+                    .distinct()
+                    .toList();
+            if (pathIds.isEmpty()) {
+                return null;
+            }
+            // 单条或多条路线都取第一条执行（机器人会走完整条链，多段中转由前端后续触发）
+            Long pathId = pathIds.get(0);
+            log.info("rms task {} using route navigation: pathId={}, steps={}, totalCost={}s",
+                    taskId, pathId, plan.steps().size(), String.format("%.1f", plan.totalCost()));
+            return moveTaskService.create(new MoveTaskCreateDTO(
+                    "FOLLOW_PATH", null, pathId,
+                    null, null, null, null, null));
+        } catch (Exception e) {
+            log.debug("rms route navigation failed, fallback GOAL: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private record NearestWaypoint(com.agv.navdeployer.metadata.entity.MapWaypoint waypoint, double distance) {
+    }
+
+    private static NearestWaypoint nearestWaypoint(
+            List<com.agv.navdeployer.metadata.entity.MapWaypoint> waypoints, double x, double y) {
+        com.agv.navdeployer.metadata.entity.MapWaypoint best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (var wp : waypoints) {
+            double dist = Math.hypot(wp.getX() - x, wp.getY() - y);
+            if (dist < bestDist) {
+                best = wp;
+                bestDist = dist;
+            }
+        }
+        return best != null ? new NearestWaypoint(best, bestDist) : null;
     }
 
     private TaskCommandRequest.Destination resolveDestination(RmsTask task) {

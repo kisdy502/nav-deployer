@@ -1,0 +1,17 @@
+{
+  "connect": {
+    "endpoints": [
+      "tcp/localhost:7447"
+    ]
+  },
+  "mode": "client",
+  "scouting": {
+    "multicast": {
+      "enabled": false
+    },
+    "gossip": {
+      "enabled": false
+    }
+  },
+  "namespace": "test-dispatch"
+}

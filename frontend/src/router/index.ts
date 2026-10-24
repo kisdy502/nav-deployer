@@ -5,6 +5,7 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: () => import('@/views/HomeView.vue') },
     { path: '/editor/:id', name: 'editor', component: () => import('@/views/EditorView.vue'), props: true },
+    { path: '/map2/:id', name: 'map2-editor', component: () => import('@/views/MapEditor2View.vue'), props: true },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

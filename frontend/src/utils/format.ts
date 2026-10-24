@@ -37,11 +37,25 @@ export const PATH_STATUS_TAG: Record<PathStatus, { label: string; type: 'success
   DISABLED: { label: '已停用', type: 'warning' },
 }
 
-export const POINT_TYPE_LABEL: Record<PointType, string> = {
+export const POINT_TYPE_LABEL: Record<string, string> = {
   NORMAL: '普通点',
   WORK: '作业点',
   CHARGER: '充电点',
   HOME: '待命点',
+  // v2 词表（11 类，与 pointStyle.ts 的 label 一致，两套 key 并存兼容 v1/v2）
+  path: '路径点',
+  charge: '充电点',
+  pickup: '取货点',
+  dropoff: '卸货点',
+  storage: '暂存点',
+  elevator: '电梯口',
+  stairs: '楼梯口',
+  ramp: '坡道口',
+  relocation: '重定位点',
+  parking: '归巢点',
+  workstation: '作业点',
+  dock: '对接点',
+  roller: '滚筒点',
 }
 
 export const MAP_TASK_TYPE_LABEL: Record<MapTaskType, string> = {
@@ -61,6 +75,7 @@ export const MOVE_TASK_TYPE_LABEL: Record<MoveTaskType, string> = {
   TO_POINT: '去点位',
   GOAL: '去目标点',
   FOLLOW_PATH: '循线',
+  FREE: '自由到点',
 }
 
 export const MOVE_TASK_STATUS_TAG: Record<MoveTaskStatus, { label: string; type: 'success' | 'info' | 'warning' | 'danger' }> = {

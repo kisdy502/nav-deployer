@@ -128,7 +128,7 @@ public class RmsProperties {
         private String robotSn = java.util.UUID.nameUUIDFromBytes(
                 "nav-deployer-sim-chassis-001".getBytes())
                 .toString().replace("-", "");
-        private String robotName = "仿真机器人";
+        private String robotName = "robot";
         /** body key 用：zioneer/{robot_type}/robot/{robot_code}/api/v1 */
         private String robotType = "qc-robot";
         private String model;

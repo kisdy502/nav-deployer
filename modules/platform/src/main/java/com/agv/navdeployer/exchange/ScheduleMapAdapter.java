@@ -163,6 +163,12 @@ public class ScheduleMapAdapter {
                               List<NavPointVO> points,
                               List<NavPathVO> paths,
                               Map<Long, List<PathEdgeVO>> edgesByPath) {
+        return buildLxmap(grid, points, paths, edgesByPath, true);
+    }
+
+    /** V2 复用旧格式序列化，并保留路线单向性。 */
+    public byte[] buildLxmap(MapGridVO grid, List<NavPointVO> points, List<NavPathVO> paths,
+                            Map<Long, List<PathEdgeVO>> edgesByPath, boolean forceBidirectional) {
         StringBuilder sb = new StringBuilder();
         sb.append("Topology-Map\n");
         sb.append("MapId: 0\n");
@@ -185,8 +191,8 @@ public class ScheduleMapAdapter {
                     .append(" 0 7 0 \"\" \"0,0,0\" \"0,0,0\" \"0\" \"1\" 0 0 0 0 0 0 ")
                     .append(DEFAULT_GOAL_ATTRIBUTES).append('\n');
         }
-        // 调度服务器把每行 Route 当作单向边；每条通道必须输出 A→B 和 B→A 才会识别为双向。
-        // 按无向点对去重，避免已经同时存在正反边的导入地图再导出时变成四条 Route。
+        // 调度服务器把每行 Route 当作单向边。旧版按无向点对去重并补反向边；
+        // V2 已按路线方向提供边，只按有向点对去重。
         int nextRouteId = 1;
         Set<String> emittedConnections = new LinkedHashSet<>();
         for (NavPathVO path : paths) {
@@ -201,14 +207,15 @@ public class ScheduleMapAdapter {
                             + path.getId() + ", edge=" + edge.getId() + ", source="
                             + edge.getSourcePointId() + ", target=" + edge.getTargetPointId());
                 }
-                String connectionKey = Math.min(src, dst) + ":" + Math.max(src, dst);
+                String connectionKey = forceBidirectional
+                        ? Math.min(src, dst) + ":" + Math.max(src, dst) : src + ":" + dst;
                 if (!emittedConnections.add(connectionKey)) {
                     continue;
                 }
                 double speed = edge.getMaxSpeed() != null ? edge.getMaxSpeed() : DEFAULT_ROUTE_SPEED;
                 boolean reverseDriving = Boolean.TRUE.equals(edge.getReverse());
                 nextRouteId = appendRoute(sb, nextRouteId, src, dst, source, target, speed, reverseDriving);
-                if (!src.equals(dst)) {
+                if (forceBidirectional && !src.equals(dst)) {
                     nextRouteId = appendRoute(sb, nextRouteId, dst, src, target, source, speed, reverseDriving);
                 }
             }

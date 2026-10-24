@@ -64,6 +64,10 @@ public class MoveTaskService {
     private final SimAgvSsePublisher ssePublisher;
     /** 机械臂归位联锁（可空：测试/独立装配时无此 Bean 则跳过闸门） */
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    /** V2 多楼层路线（map_path + map_path_segment），优先于 V1 */
+    private final com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper;
+    private final com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper;
+    private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
 
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -83,7 +87,10 @@ public class MoveTaskService {
                            SimAgvTelemetry telemetry,
                            SimAgvProperties props,
                            SimAgvSsePublisher ssePublisher,
-                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
+                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                           com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper,
+                           com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper,
+                           com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper) {
         this.moveTaskMapper = moveTaskMapper;
         this.navPointMapper = navPointMapper;
         this.navPathService = navPathService;
@@ -94,6 +101,9 @@ public class MoveTaskService {
         this.props = props;
         this.ssePublisher = ssePublisher;
         this.armStateMonitor = armStateMonitor;
+        this.v2PathMapper = v2PathMapper;
+        this.v2SegmentMapper = v2SegmentMapper;
+        this.v2WaypointMapper = v2WaypointMapper;
     }
 
     /** 服务重启时把遗留的非终态任务标记为失败（goal 关联已丢失，无法再收到 result）。 */
@@ -175,15 +185,37 @@ public class MoveTaskService {
                         Double.NaN, Double.NaN, Double.NaN));
                 endPointSingle = dto.endPoint() == null || dto.endPoint();
             }
+            case MoveTask.TYPE_FREE -> {
+                // 自由到点：机器人自主规划路径（edge_type=FREE，走 Nav2 planner 而非边控制器）
+                if (dto.x() == null || dto.y() == null) {
+                    throw new IllegalArgumentException("FREE 任务必须携带 x / y");
+                }
+                double theta = dto.theta() != null ? dto.theta() : 0.0;
+                task.setGoalX(dto.x());
+                task.setGoalY(dto.y());
+                task.setGoalTheta(theta);
+                segments = List.of(new SegmentPlan("", "", dto.x(), dto.y(), theta,
+                        "FREE", List.of(), dto.maxSpeed(), false, false,
+                        Double.NaN, Double.NaN, Double.NaN));
+                endPointSingle = true;
+            }
             case MoveTask.TYPE_FOLLOW_PATH -> {
                 if (dto.pathId() == null) {
                     throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id");
                 }
-                NavPath path = navPathService.requirePath(dto.pathId());
-                if (!NavPath.STATUS_DEPLOYED.equals(path.getStatus())) {
-                    throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + path.getStatus() + "）");
+                // 存在性 + 部署校验：V2 优先（map_path），V1 兜底（nav_path）
+                com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(dto.pathId());
+                if (v2Path != null) {
+                    if (!com.agv.navdeployer.metadata.entity.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
+                        throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + v2Path.getStatus() + "）");
+                    }
+                } else {
+                    NavPath path = navPathService.requirePath(dto.pathId());
+                    if (!NavPath.STATUS_DEPLOYED.equals(path.getStatus())) {
+                        throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + path.getStatus() + "）");
+                    }
                 }
-                segments = buildPathPlan(path.getId(), dto.maxSpeed());
+                segments = buildPathPlan(dto.pathId(), dto.maxSpeed());
                 if (segments.isEmpty()) {
                     throw new IllegalStateException("路线 " + dto.pathId() + " 没有可执行的边");
                 }
@@ -193,7 +225,7 @@ public class MoveTaskService {
                     SegmentPlan lastEdge = segments.get(segments.size() - 1);
                     segments = reversePathPlan(segments);
                     log.info("follow path {} reversed for nearest end: robot=({},{}) start=({},{}) end=({},{})",
-                            path.getId(), pose.x(), pose.y(),
+                            dto.pathId(), pose.x(), pose.y(),
                             firstEdge.sx(), firstEdge.sy(), lastEdge.x(), lastEdge.y());
                 }
                 int edgeCount = segments.size();
@@ -203,12 +235,12 @@ public class MoveTaskService {
                 if (segments.size() > edgeCount && pose != null) {
                     SegmentPlan firstEdge = segments.get(1);
                     log.info("follow path {} start hop prepended: robot=({},{}) start=({},{}), distance={}m > {}m",
-                            path.getId(), pose.x(), pose.y(), firstEdge.sx(), firstEdge.sy(),
+                            dto.pathId(), pose.x(), pose.y(), firstEdge.sx(), firstEdge.sy(),
                             String.format("%.2f", Math.hypot(pose.x() - firstEdge.sx(), pose.y() - firstEdge.sy())),
                             props.getFollowPathStartRadius());
                 }
                 SegmentPlan last = segments.get(segments.size() - 1);
-                task.setPathId(path.getId());
+                task.setPathId(dto.pathId());
                 task.setGoalX(last.x());
                 task.setGoalY(last.y());
                 task.setGoalTheta(last.theta());
@@ -406,6 +438,13 @@ public class MoveTaskService {
     }
 
     private List<SegmentPlan> buildPathPlan(Long pathId, Double maxSpeedOverride) {
+        // 优先尝试 V2 多楼层路线（map_path + map_path_segment，含曲线贝塞尔）
+        List<SegmentPlan> v2Plan = buildV2PathPlan(pathId, maxSpeedOverride);
+        if (!v2Plan.isEmpty()) {
+            log.info("FOLLOW_PATH 使用 V2 路线: pathId={}, segments={}", pathId, v2Plan.size());
+            return v2Plan;
+        }
+        // 回落 V1（nav_path + nav_path_edge）
         List<PathEdgeVO> edges = navPathService.loadEdgeVOs(pathId);
         if (edges.isEmpty()) {
             return List.of();
@@ -437,6 +476,77 @@ public class MoveTaskService {
                     source.getX(), source.getY(), source.getYaw()));
         }
         return plans;
+    }
+
+    /**
+     * V2 路线执行计划（map_path_segment → SegmentPlan）：
+     * 段链 = 途经点位序列，段属性（曲线/限速/倒车等）完整映射；
+     * CURVE 段的 control_points（JSON [[x,y],...]）解析为贝塞尔切点下发机器人。
+     */
+    private List<SegmentPlan> buildV2PathPlan(Long pathId, Double maxSpeedOverride) {
+        com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(pathId);
+        if (v2Path == null) {
+            return List.of();
+        }
+        List<com.agv.navdeployer.metadata.entity.MapPathSegment> segments = v2SegmentMapper.selectList(
+                Wrappers.lambdaQuery(com.agv.navdeployer.metadata.entity.MapPathSegment.class)
+                        .eq(com.agv.navdeployer.metadata.entity.MapPathSegment::getPathId, pathId)
+                        .orderByAsc(com.agv.navdeployer.metadata.entity.MapPathSegment::getSeq));
+        if (segments.isEmpty()) {
+            return List.of();
+        }
+        // 批量加载途经点位
+        List<Long> waypointIds = new ArrayList<>();
+        for (var segment : segments) {
+            waypointIds.add(segment.getSourceWaypointId());
+            waypointIds.add(segment.getTargetWaypointId());
+        }
+        Map<Long, com.agv.navdeployer.metadata.entity.MapWaypoint> waypoints =
+                v2WaypointMapper.selectBatchIds(waypointIds.stream().distinct().toList())
+                        .stream()
+                        .collect(Collectors.toMap(
+                                com.agv.navdeployer.metadata.entity.MapWaypoint::getId,
+                                Function.identity()));
+
+        List<SegmentPlan> plans = new ArrayList<>(segments.size());
+        for (var segment : segments) {
+            var source = waypoints.get(segment.getSourceWaypointId());
+            var target = waypoints.get(segment.getTargetWaypointId());
+            if (source == null || target == null) {
+                throw new IllegalStateException("V2 路线段引用的点位不存在，数据不一致: pathId=" + pathId);
+            }
+            Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride : segment.getMaxSpeed();
+            // 控制点解析（JSON [[x,y],...] → ControlPoint 列表）
+            List<ControlPoint> controlPoints = parseV2ControlPoints(segment.getControlPoints());
+            plans.add(new SegmentPlan(source.getWaypointCode(), target.getWaypointCode(),
+                    target.getX(), target.getY(), target.getYaw(),
+                    segment.getSegmentType(), controlPoints,
+                    maxSpeed,
+                    Boolean.TRUE.equals(segment.getBackUp()),
+                    Boolean.TRUE.equals(segment.getReverse()),
+                    source.getX(), source.getY(), source.getYaw()));
+        }
+        return plans;
+    }
+
+    /** V2 控制点 JSON 解析：[[x1,y1],[x2,y2]] → List<ControlPoint>；空/异常回退空列表。 */
+    private static List<ControlPoint> parseV2ControlPoints(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            JsonNode array = com.agv.navdeployer.metadata.MetadataJson.MAPPER.readTree(json);
+            List<ControlPoint> points = new ArrayList<>();
+            for (JsonNode node : array) {
+                if (node.isArray() && node.size() >= 2) {
+                    points.add(new ControlPoint(node.get(0).asDouble(), node.get(1).asDouble()));
+                }
+            }
+            return points;
+        } catch (Exception e) {
+            log.warn("V2 控制点解析失败（回退空）: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     /**

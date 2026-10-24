@@ -68,8 +68,9 @@ public class RobotController {
     @Operation(summary = "机器人 URDF", description = "转发机器人侧 rosparam robot_description（rosapi/get_param），读不到返回 404，前端回退参数化模型")
     @GetMapping(value = "/api/v1/robot/urdf", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> urdf() {
+        // 未连接/失败时返回空 body：带纯文本 body 的 XML 响应会让浏览器（直接访问/预览时）报 XML 解析错误
         if (!rosbridgeClient.isConnected()) {
-            return ResponseEntity.status(503).body("rosbridge not connected");
+            return ResponseEntity.status(503).header("X-Error", "rosbridge not connected").build();
         }
         try {
             String urdf = dispatcher.getRobotUrdf().join();
@@ -78,7 +79,8 @@ public class RobotController {
             }
             return ResponseEntity.ok(urdf);
         } catch (CompletionException e) {
-            return ResponseEntity.status(502).body("robot_description not available: " + e.getCause().getMessage());
+            return ResponseEntity.status(502).header("X-Error",
+                    "robot_description not available: " + e.getCause().getMessage()).build();
         }
     }
 

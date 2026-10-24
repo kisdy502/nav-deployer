@@ -42,19 +42,25 @@ public class RmsMapService {
     private final RosCommandDispatcher dispatcher;
     private final SimAgvTelemetry telemetry;
     private final RmsMapState mapState;
+    private final com.agv.navdeployer.metadata.service.MapMetaService mapMetaService;
+    private final com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService;
 
     public RmsMapService(MapModeTaskService mapTaskService,
                          NavMapService navMapService,
                          NavMapMapper navMapMapper,
                          RosCommandDispatcher dispatcher,
                          SimAgvTelemetry telemetry,
-                         RmsMapState mapState) {
+                         RmsMapState mapState,
+                         com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
+                         com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService) {
         this.mapTaskService = mapTaskService;
         this.navMapService = navMapService;
         this.navMapMapper = navMapMapper;
         this.dispatcher = dispatcher;
         this.telemetry = telemetry;
         this.mapState = mapState;
+        this.mapMetaService = mapMetaService;
+        this.mapPackageService = mapPackageService;
     }
 
     /** start_mapping：map_name 可选（停止时的默认保存名）。 */
@@ -115,7 +121,11 @@ public class RmsMapService {
         }
     }
 
-    /** mapping/change：按名切换（优先 robot_map_name，其次 map_name）。 */
+    /**
+     * mapping/change：按名切换（优先 robot_map_name，其次 map_name）。
+     * 闭环：受理后等待切图模式任务终态（RELOCALIZING → NAVIGATION 且 map_name=目标 → SUCCEEDED），
+     * 以最终成败回包（由网关 closed-loop 线程执行，不阻塞 zenoh IO）。
+     */
     public BodyReply changeMap(MapNameRequest request) {
         String mapName = request == null ? null : request.mapName();
         if (mapName == null) {
@@ -126,12 +136,47 @@ public class RmsMapService {
             if (map == null) {
                 return BodyReply.failure(404, "地图不存在: " + mapName);
             }
-            mapTaskService.switchMap(map.getId(), null);
-            log.info("RMS mapping/change accepted, mapName={} navMapId={}", mapName, map.getId());
-            return BodyReply.success("change map accepted: " + mapName, null);
+            com.agv.navdeployer.vo.MapModeTaskVO task = mapTaskService.switchMap(map.getId(), null);
+            BodyReply finalReply = awaitMapTaskTerminal(task.id());
+            log.info("RMS mapping/change 终态回包: map={} taskId={} status={} msg={}",
+                    mapName, task.id(), finalReply.status(), finalReply.msg());
+            return finalReply;
         } catch (Exception exception) {
             return failure("change map failed", exception);
         }
+    }
+
+    /**
+     * 等待切图任务到达终态：SUCCEEDED → 成功回包；FAILED → 失败回包（带原因）；
+     * 被其他模式任务取代 → 409；超时（模式任务截止 90s + 余量）→ 504。
+     */
+    private BodyReply awaitMapTaskTerminal(Long taskId) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 100_000L;
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(500);
+            var current = mapTaskService.currentTask();
+            if (current == null || current.id() == null) {
+                continue;
+            }
+            if (!current.id().equals(taskId)) {
+                return BodyReply.failure(409, "切图任务被其他模式任务取代: task="
+                        + current.id() + " (" + current.type() + ")");
+            }
+            switch (current.status()) {
+                case "SUCCEEDED" -> {
+                    return BodyReply.success(
+                            "change map ok: robot now on " + current.robotMapName(), null);
+                }
+                case "FAILED" -> {
+                    return BodyReply.failure(500, "change map failed: "
+                            + (current.errorMessage() == null ? "未知原因" : current.errorMessage()));
+                }
+                default -> {
+                    // DISPATCHED / RELOCATING 继续等待
+                }
+            }
+        }
+        return BodyReply.failure(504, "change map timeout: 切图任务未在时限内到达终态");
     }
 
     /** mapping/get_current：优先机器人实时上报，退回库内 ACTIVE 记录。 */
@@ -174,7 +219,11 @@ public class RmsMapService {
         }
     }
 
-    /** agv/relocate：以当前地图为参照按指定坐标重定位。 */
+    /**
+     * agv/relocate：以当前地图为参照按指定坐标重定位。
+     * 闭环：/agv/relocalize 服务结果（拒绝即失败）+ 收敛确认（mode 回到 NAVIGATION
+     * 且 pose_initialized=true，最多等 10s），以最终结论回包。
+     */
     public BodyReply relocate(RelocateRequest request) {
         if (request == null || request.incomplete()) {
             return BodyReply.failure(400, "重定位参数不完整：需要 x / y / theta");
@@ -190,15 +239,31 @@ public class RmsMapService {
             if (!result.success()) {
                 return BodyReply.failure(500, "机器人拒绝重定位: " + result.message());
             }
-            log.info("RMS relocate accepted, map={} x={} y={} theta={}",
-                    mapName, request.x(), request.y(), request.theta());
-            return BodyReply.success("relocate accepted", null);
+            boolean converged = awaitRelocalizeConverged();
+            String msg = String.format("relocate ok at (%.2f, %.2f, %.2f)%s",
+                    request.x(), request.y(), request.theta(),
+                    converged ? ", localization converged" : ", convergence not confirmed yet");
+            log.info("RMS relocate 终态回包: map={} converged={}", mapName, converged);
+            return BodyReply.success(msg, null);
         } catch (CompletionException exception) {
             Throwable cause = exception.getCause() != null ? exception.getCause() : exception;
             return failure("relocate failed", cause);
         } catch (Exception exception) {
             return failure("relocate failed", exception);
         }
+    }
+
+    /** 重定位收敛等待：mode=NAVIGATION 且位姿已初始化视为收敛；超时返回 false（受理成功但收敛未确认）。 */
+    private boolean awaitRelocalizeConverged() throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 10_000L;
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(300);
+            SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+            if (status != null && "NAVIGATION".equals(status.mode()) && status.poseInitialized()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** mode/set：仿真机器人不支持模式切换，固定回 501。 */
@@ -214,6 +279,9 @@ public class RmsMapService {
     /**
      * mapping/get：从本体导出地图（云端给 upload_url，机器人打包地图上传）。
      * payload: {"map_name": "xxx", "upload_url": "https://...", "method": "POST"}
+     *
+     * <p>优先按名匹配 v2 多楼层地图 → 新格式 zip（map-info.json + global.yaml/pgm/png）；
+     * 未命中再回落旧版 nav_map → 调度六件套 zip。
      */
     public BodyReply exportMap(String rawPayload,
                                com.fasterxml.jackson.databind.ObjectMapper mapper,
@@ -226,6 +294,16 @@ public class RmsMapService {
             String uploadUrl = text(root, "upload_url");
             if (mapName == null || uploadUrl == null) {
                 return BodyReply.failure(400, "map_name 和 upload_url 必填");
+            }
+
+            // v2 多楼层地图 → 新格式 zip
+            var v2Map = mapMetaService.findByUploadName(mapName);
+            if (v2Map != null) {
+                byte[] zip = mapPackageService.exportZip(v2Map.getId());
+                uploadZipToUrl(uploadUrl, v2Map.getMapName(), zip);
+                log.info("RMS mapping/get 新格式上传成功: map={} url={} size={}bytes",
+                        mapName, uploadUrl, zip.length);
+                return BodyReply.success("map exported: " + mapName, null);
             }
 
             NavMap map = findMapByName(mapName);

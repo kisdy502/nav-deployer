@@ -21,6 +21,8 @@ public class MoveTask {
     public static final String TYPE_TO_POINT = "TO_POINT";
     public static final String TYPE_GOAL = "GOAL";
     public static final String TYPE_FOLLOW_PATH = "FOLLOW_PATH";
+    /** 自由到点：不走边控制器，机器人自主规划路径到目标位姿（edge_type=FREE） */
+    public static final String TYPE_FREE = "FREE";
 
     public static final String STATUS_CREATED = "CREATED";
     public static final String STATUS_DISPATCHED = "DISPATCHED";

@@ -89,6 +89,24 @@ export const useTasksStore = defineStore('tasks', () => {
     return activeMoveTask.value
   }
 
+  /** 按位姿导航（v2 点位等无 v1 point_id 的场景）：GOAL + x/y/theta。 */
+  async function navigateToPose(x: number, y: number, theta: number, maxSpeed?: number) {
+    const dto: MoveTaskCreateDTO = { task_type: 'GOAL', x, y, theta }
+    if (maxSpeed) dto.max_speed = maxSpeed
+    activeMoveTask.value = await createMoveTask(dto)
+    ElMessage.success('导航任务已下发')
+    return activeMoveTask.value
+  }
+
+  /** 自由到点：机器人自主规划路径到目标（edge_type=FREE，走 Nav2 planner） */
+  async function freeNavigate(x: number, y: number, theta = 0, maxSpeed?: number) {
+    const dto: MoveTaskCreateDTO = { task_type: 'FREE', x, y, theta }
+    if (maxSpeed) dto.max_speed = maxSpeed
+    activeMoveTask.value = await createMoveTask(dto)
+    ElMessage.success('自由导航任务已下发')
+    return activeMoveTask.value
+  }
+
   async function followPath(pathId: number, maxSpeed?: number) {
     const dto: MoveTaskCreateDTO = { task_type: 'FOLLOW_PATH', path_id: pathId }
     if (maxSpeed) dto.max_speed = maxSpeed
@@ -114,6 +132,8 @@ export const useTasksStore = defineStore('tasks', () => {
     onMapSync,
     refresh,
     navigateToPoint,
+    navigateToPose,
+    freeNavigate,
     followPath,
     cancelActive,
   }

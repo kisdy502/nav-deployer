@@ -14,7 +14,7 @@ npm run dev:mock   # 后端未启动时使用内置 mock（模拟 REST + SSE + �
 npm run build      # 类型检查 + 产物输出 dist/
 ```
 
-需要 Node 18+（推荐 20+）。
+需要 Node 22+（当前锁定依赖要求），Docker 构建也使用 Node 22。
 
 ## 功能
 
@@ -30,5 +30,5 @@ npm run build      # 类型检查 + 产物输出 dist/
 ## 说明
 
 - 后端接口字段为全局 snake_case；前端类型定义见 `src/types/api.ts`，与后端 VO 一一对应。
-- 服务器未配置 CORS，本地开发经 Vite 代理解决；生产部署可将 `dist/` 交给 Nginx，并把 `/api`、`/sse` 反代到 8083。
+- 本地开发经 Vite 代理访问后端；当前 Docker 镜像自动构建前端并嵌入 Spring Boot，8083 提供完整页面、API 和 SSE。详见 [Docker 打包与部署](../docs/docker-deployment.md)。如单独部署 Nginx，需配置 API / SSE 反代及 history 路由回退。
 - 激光只显示摘要（后端不下发全量 ranges）；虚拟墙/区域后端暂无接口，未实现。

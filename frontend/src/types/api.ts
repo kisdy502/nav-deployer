@@ -11,7 +11,7 @@ export type PathStatus = 'DRAFT' | 'DEPLOYED' | 'DISABLED'
 export type EdgeType = 'STRAIGHT' | 'CURVE'
 export type MapTaskType = 'SWITCH_MAP' | 'START_MAPPING' | 'SAVE_MAP'
 export type MapTaskStatus = 'DISPATCHED' | 'RELOCATING' | 'SUCCEEDED' | 'FAILED'
-export type MoveTaskType = 'TO_POINT' | 'GOAL' | 'FOLLOW_PATH'
+export type MoveTaskType = 'TO_POINT' | 'GOAL' | 'FOLLOW_PATH' | 'FREE'
 export type MoveTaskStatus =
   | 'CREATED'
   | 'DISPATCHED'

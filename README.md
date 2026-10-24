@@ -5,7 +5,7 @@
 面向仿真/真实 AGV 的现场部署环节：建图、地图管理、点位与路线部署、机器人移动控制。
 与机器人侧通过 rosbridge WebSocket（agv_bridge_v2）对接，全程 JSON，无 ROS 依赖。
 
-## 功能模块（无页面 MVP）
+## 功能模块
 
 设计文档与接口文档：`docs/nav-deployment.md`；rosbridge 对接细节：`rosbridge_integration.md`。
 
@@ -27,6 +27,20 @@ Swagger：http://localhost:8083/swagger-ui/index.html
 #       rosbridge 在 ws://127.0.0.1:9090
 ./mvnw spring-boot:run
 ```
+
+## Docker 打包与部署
+
+完整步骤见 [Docker 打包与部署](docs/docker-deployment.md)，包括 `.env`、机器人网络、
+Zenoh 文件与质检图片挂载、局域网访问和升级。
+
+```bash
+# 先启动仿真机器人，按文档准备 .env 和挂载目录
+docker compose config --quiet
+bash deploy.sh up  # 已包含构建，无需先单独 build
+# PowerShell 可直接使用：docker compose up -d --build
+```
+
+镜像包含完整前后端，本机访问 http://localhost:8083，其他设备使用宿主机局域网 IP 的 8083 端口。
 
 ## 部署到 k3s（WSL 内）
 

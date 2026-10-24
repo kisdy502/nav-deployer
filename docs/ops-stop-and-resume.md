@@ -1,5 +1,9 @@
 # 环境停止与恢复手册（Docker / WSL k3s）
 
+> 以下分层停止流程适用于原 WSL k3s 环境。当前 Docker Compose 上位机与机器人部署需保持
+> Docker Desktop 运行，不能套用下文“仅构建时需要 Docker”的描述。
+> Compose 的启动、停止与配置更新见 [Docker 打包与部署](docker-deployment.md)。
+
 本机开发环境分四层，卡顿时按 **从上到下** 停，恢复时按 **从下到上** 起。所有操作均保留数据。
 
 ```

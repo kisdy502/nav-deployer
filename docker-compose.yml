@@ -58,7 +58,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: nav-deployer:v0.2.0
+    image: ${APP_IMAGE:-nav-deployer:v0.2.0}
     container_name: nav-deployer-app
     ports:
       - "8083:8083"
@@ -75,26 +75,41 @@ services:
       MINIO_SECRET_KEY: minioadmin123
       MINIO_BUCKET: user-avatars
       MINIO_MAPS_BUCKET: nav-maps
-      # 仿真 AGV rosbridge（compose 单机部署时机器人栈需与本机互通）
-      SIM_AGV_ENABLED: "true"
-      SIM_AGV_WS_URL: ws://host.docker.internal:9090
+      # 与仿真机器人共享网络，直接使用桥接服务的 Docker DNS 名称。
+      SIM_AGV_ENABLED: ${SIM_AGV_ENABLED:-true}
+      SIM_AGV_WS_URL: ${SIM_AGV_WS_URL:-ws://agv-bridge:9090}
+      SIM_AGV_TF_CHILD_FRAME: ${SIM_AGV_TF_CHILD_FRAME:-AGV002/base_link}
+      # 留空时从 rosbridge 主机名推导 HTTP 8089。
+      MAP3D_BASE_URL: ${MAP3D_BASE_URL:-}
       # ---- RMS 对接（zenoh）----
       # 未显式关闭时容器会连接打包内置的 zenoh 路由（config-json5.json）并自动注册
-      RMS_ENABLED: "true"
+      RMS_ENABLED: ${RMS_ENABLED:-true}
       # 多实例/与本机开发同时运行时必须指定不同 SN（默认从固定种子生成，重复会互相顶号）
       RMS_ROBOT_SN: ${RMS_ROBOT_SN:-}
-      # 切换 zenoh 环境时挂载外部配置并取消注释（bj/cc/sz 变体见 src/main/resources）
-      # RMS_ZENOH_CONFIG_FILE: /app/config/zenoh.json5
+      # 切换 zenoh 环境时挂载外部配置并设置此路径（bj/cc/sz 变体见 src/main/resources）
+      RMS_ZENOH_CONFIG_FILE: ${RMS_ZENOH_CONFIG_FILE:-}
       # ---- RMS 日志收集/质检图片/teach 采集样例目录（Linux 容器需挂载真实路径，Windows 默认值无效）----
       RMS_INSPECTION_IMAGE_DIR: ${RMS_INSPECTION_IMAGE_DIR:-}
       RMS_TEACH_SAMPLE_DIR: ${RMS_TEACH_SAMPLE_DIR:-}
+    networks:
+      - default
+      - robot
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # 日志持久化（RMS log/collect 打包的就是这里的文件）
       - app_logs:/app/logs
       # 切换 zenoh 环境时挂载外部配置：
-      # - ./docker/zenoh.json5:/app/config/zenoh.json5:ro
+      - ./modules/app/src/main/resources/config-json5.json:/app/config/zenoh.json5:ro
       # teach 采集 / 质检图片样例目录挂载示例：
       # - ./docker/samples:/app/samples:ro     # 配合 RMS_TEACH_SAMPLE_DIR=/app/samples
+      # Windows 原生终端使用 C:/...；WSL 内的 Compose 使用 /mnt/c/...。
+      - type: bind
+        source: ${INSPECTION_IMAGE_HOST_DIR:-C:/Users/think/Pictures}
+        target: /app/inspection-images
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       postgres:
         condition: service_healthy
@@ -103,6 +118,11 @@ services:
       minio:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  robot:
+    external: true
+    name: ${ROBOT_DOCKER_NETWORK:-simulated_chassis_agv_network}
 
 volumes:
   postgres_data:

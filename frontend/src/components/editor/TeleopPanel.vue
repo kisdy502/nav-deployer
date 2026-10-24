@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive, ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Collection, Coordinate, Van } from '@element-plus/icons-vue'
 import { useRobotStore } from '@/stores/robot'
 import { armMove, setArmHome } from '@/api/robot'
 import { getRobotLayer } from '@/three/robotLayerRef'
@@ -435,8 +436,9 @@ async function saveCurrentAsHome() {
 }
 
 // ==================== 浮窗：无遮罩、标题栏拖拽 ====================
-/** 三页签共用固定尺寸：切页签时窗口大小不变（内容差异用滚动兜底） */
-const WIN_W = 470
+/** 三页签共用固定尺寸：切页签时窗口大小不变（内容差异用滚动兜底）。
+ *  窄窗（约半宽）尽量少遮挡地图：按钮缩小、点动两列多行。 */
+const WIN_W = 250
 const WIN_H = 600
 const win = reactive({ x: 0, y: 0 })
 let dragState: { sx: number; sy: number; ox: number; oy: number } | null = null
@@ -499,9 +501,15 @@ onBeforeUnmount(() => {
       </div>
       <div class="teleop-body">
         <div class="tabbar">
-          <button class="tabbtn" :class="{ on: activeTab === 'chassis' }" @click="activeTab = 'chassis'">底盘遥控</button>
-          <button class="tabbtn" :class="{ on: activeTab === 'arm' }" @click="activeTab = 'arm'">机械臂</button>
-          <button class="tabbtn" :class="{ on: activeTab === 'teach' }" @click="activeTab = 'teach'">示教</button>
+          <button class="tabbtn" :class="{ on: activeTab === 'chassis' }" @click="activeTab = 'chassis'">
+            <el-icon :size="13"><Van /></el-icon>底盘遥控
+          </button>
+          <button class="tabbtn" :class="{ on: activeTab === 'arm' }" @click="activeTab = 'arm'">
+            <el-icon :size="13"><Coordinate /></el-icon>机械臂
+          </button>
+          <button class="tabbtn" :class="{ on: activeTab === 'teach' }" @click="activeTab = 'teach'">
+            <el-icon :size="13"><Collection /></el-icon>示教
+          </button>
         </div>
 
         <el-alert
@@ -513,12 +521,7 @@ onBeforeUnmount(() => {
         />
 
         <template v-if="activeTab === 'chassis'">
-          <el-alert
-            title="按住移动，松开即停车。速度基于机器人车体坐标系，不受地图视图旋转影响。"
-            type="info"
-            :closable="false"
-            show-icon
-          />
+          <el-alert title="按住移动，松开即停车" type="info" :closable="false" show-icon />
 
           <div class="pad">
             <button
@@ -551,7 +554,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="axis-note">
-            指令约定：+X 前进、+Y 左平移、+Z 逆时针左转。若实车方向相反，应在底盘驱动层修正坐标约定。
+            指令：+X 前进 / +Y 左移 / +Z 左转（车体坐标系）
           </div>
         </template>
 
@@ -559,8 +562,7 @@ onBeforeUnmount(() => {
           <el-alert
             v-if="jointsStale"
             type="warning" :closable="false" show-icon
-            title="关节反馈过期（>2s）"
-            description="机器人将拒绝运动指令（joint states stale），请确认仿真机械臂与 /joint_states 正常后重试。"
+            title="关节反馈过期（>2s），指令将被拒绝"
           />
           <div class="arm-row">
             <el-radio-group v-model="armSide" size="small">
@@ -577,10 +579,10 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="arm-presets">
-            <el-button type="success" plain :disabled="armSending || robot.connStatus !== 'open' || jointsStale" @click="sendRolePreset(HOME_BY_ROLE, 6, '收拢归位')">
+            <el-button size="small" type="success" plain :disabled="armSending || robot.connStatus !== 'open' || jointsStale" @click="sendRolePreset(HOME_BY_ROLE, 6, '收拢归位')">
               收拢归位
             </el-button>
-            <el-button type="warning" plain :disabled="armSending || robot.connStatus !== 'open' || jointsStale" @click="sendRolePreset(INSPECT_BY_ROLE, 6, '展开质检位')">
+            <el-button size="small" type="warning" plain :disabled="armSending || robot.connStatus !== 'open' || jointsStale" @click="sendRolePreset(INSPECT_BY_ROLE, 6, '展开质检位')">
               展开质检位
             </el-button>
           </div>
@@ -606,8 +608,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="axis-note">
-            关节顺序 = /joint_states 中该臂关节名排序（pan→lift→elbow→wrist1→wrist2→wrist3），输入单位为角度。
-            「收拢归位」为联锁基准姿态——机械臂不在该位附近时移动作业应被拒绝。
+            关节序 = joint_states 排序（pan→…→wrist3），单位：度
           </div>
         </template>
 
@@ -615,8 +616,7 @@ onBeforeUnmount(() => {
           <el-alert
             v-if="jointsStale"
             type="warning" :closable="false" show-icon
-            title="关节反馈过期（>2s）"
-            description="机器人将拒绝运动指令（joint states stale），请确认仿真机械臂与 /joint_states 正常后重试。"
+            title="关节反馈过期（>2s），指令将被拒绝"
           />
           <div class="arm-row">
             <el-radio-group v-model="tSide" size="small">
@@ -707,9 +707,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="axis-note">
-            按住连续运动、松开立即停止（轻点=微调）。关节模式：匀速点动单个关节（J1=底座回转…J6=腕3）；
-            笛卡尔模式：末端沿机器人基座系每 0.9s 走一个步长（数值逆解，需 URDF 在线）。
-            示教点保存在本机浏览器，"转到"按保存的关节角插值运动（2s）。
+            按住连续动、松开即停（轻点微调）；笛卡尔需 URDF 在线；示教点存本机
           </div>
         </template>
       </div>
@@ -721,7 +719,7 @@ onBeforeUnmount(() => {
 .teleop-win {
   position: fixed;
   z-index: 2200;
-  width: 470px;
+  width: 250px;
   height: min(600px, calc(100vh - 80px));
   background: #fff;
   border: 1px solid #dcdfe6;
@@ -745,7 +743,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
+  padding: 7px 10px;
   cursor: move;
   touch-action: none;
   user-select: none;
@@ -782,47 +780,56 @@ onBeforeUnmount(() => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px;
+  padding: 10px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
   align-content: start;
 }
 
-.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; user-select: none; touch-action: none; }
-.motion-btn { min-height: 62px; border: 1px solid #dcdfe6; border-radius: 10px; background: #fff; color: #303133; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; font: inherit; }
+.pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; user-select: none; touch-action: none; }
+.motion-btn { min-height: 46px; border: 1px solid #dcdfe6; border-radius: 8px; background: #fff; color: #303133; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; font: inherit; font-size: 11px; }
 .motion-btn:hover { border-color: #409eff; color: #409eff; background: #ecf5ff; }
 .motion-btn.active { color: #fff; background: #409eff; border-color: #409eff; transform: scale(.97); }
 .motion-btn.stop { color: #f56c6c; }
 .motion-btn.stop.active { color: #fff; background: #f56c6c; border-color: #f56c6c; }
 .motion-btn:disabled { cursor: not-allowed; opacity: .45; }
-.motion-icon { font-size: 22px; line-height: 1; }
-.speed-row { display: grid; grid-template-columns: 70px 1fr 82px; align-items: center; gap: 10px; font-size: 13px; }
-.speed-row b { text-align: right; font-variant-numeric: tabular-nums; }
-.axis-note { padding: 10px 12px; border-radius: 8px; background: #f5f7fa; color: #606266; font-size: 12px; line-height: 1.6; }
+.motion-icon { font-size: 17px; line-height: 1; }
+.speed-row { display: grid; grid-template-columns: 56px 1fr 64px; align-items: center; gap: 6px; font-size: 12px; }
+.speed-row b { text-align: right; font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.axis-note { padding: 8px 10px; border-radius: 8px; background: #f5f7fa; color: #606266; font-size: 11px; line-height: 1.55; }
 
-.tabbar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-.tabbtn { padding: 7px 0; border: 1px solid #dcdfe6; border-radius: 8px; background: #fff; color: #606266; font: inherit; font-size: 13px; cursor: pointer; }
+.tabbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.tabbtn { padding: 5px 2px; border: 1px solid #dcdfe6; border-radius: 8px; background: #fff; color: #606266; font: inherit; font-size: 12.5px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 3px; white-space: nowrap; }
 .tabbtn:hover { color: #409eff; border-color: #409eff; }
 .tabbtn.on { color: #fff; background: #409eff; border-color: #409eff; font-weight: 600; }
 
-.arm-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.arm-current { font-size: 12px; color: #606266; font-variant-numeric: tabular-nums; text-align: right; max-width: 55%; word-break: break-all; }
-.arm-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.arm-presets .el-button { width: 100%; }
-.arm-joints { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 10px; }
-.arm-joint { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 6px; font-size: 12px; color: #606266; }
-.arm-joint :deep(.el-input-number) { width: 100%; }
-.arm-actions { display: flex; align-items: center; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
-.arm-duration { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #606266; margin-right: auto; }
-.arm-duration :deep(.el-input-number) { width: 88px; }
+/* 窄窗内 Element 组件整体压缩：提示条/按钮高度统一（el-button 一律 small=24px） */
+.teleop-body :deep(.el-alert) { padding: 5px 8px; }
+.teleop-body :deep(.el-alert .el-alert__title) { font-size: 12px; }
+.teleop-body :deep(.el-alert .el-alert__description) { font-size: 11px; margin: 2px 0 0; }
+.teleop-body :deep(.el-button) { height: 24px; padding: 6px 10px; font-size: 12px; }
+.teleop-body :deep(.el-radio-group) { --el-radio-button-checked-bg-color: #409eff; }
 
-.jog-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.jog-grid--cart { grid-template-columns: repeat(3, 1fr); }
-.jog-btn { min-height: 56px; border: 1px solid #dcdfe6; border-radius: 10px; background: #fff; color: #303133; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; user-select: none; touch-action: none; }
+.arm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.arm-current { font-size: 11.5px; color: #606266; font-variant-numeric: tabular-nums; text-align: right; max-width: 100%; word-break: break-all; flex: 1 1 100%; }
+.arm-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.arm-presets .el-button { width: 100%; padding: 5px 2px; font-size: 12px; margin: 0; }
+.arm-joints { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 8px; }
+.arm-joint { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 4px; font-size: 11.5px; color: #606266; }
+.arm-joint :deep(.el-input-number) { width: 100%; }
+.arm-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.arm-duration { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: #606266; margin-right: auto; }
+.arm-duration :deep(.el-input-number) { width: 80px; }
+
+/* 点动：两列多行（窄窗少占宽，行数换宽度）；高度与 el-button small(24px) 拉近，视觉统一 */
+.jog-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
+.jog-grid--cart { grid-template-columns: repeat(2, 1fr); }
+.jog-btn { min-height: 30px; border: 1px solid #dcdfe6; border-radius: 7px; background: #fff; color: #303133; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; user-select: none; touch-action: none; }
 .jog-btn:hover:not(:disabled) { border-color: #409eff; color: #409eff; background: #ecf5ff; }
 .jog-btn:active:not(:disabled) { color: #fff; background: #409eff; border-color: #409eff; }
 .jog-btn:disabled { cursor: not-allowed; opacity: .45; }
-.divider-text { font-size: 12px; color: #909399; }
-.teach-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.teach-actions :deep(.el-select) { flex: 1 1 140px; min-width: 140px; }
+.divider-text { font-size: 11.5px; color: #909399; }
+.teach-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.teach-actions :deep(.el-select) { flex: 1 1 100%; min-width: 0; }
+.teach-actions :deep(.el-button) { padding: 6px 8px; font-size: 12px; }
 </style>

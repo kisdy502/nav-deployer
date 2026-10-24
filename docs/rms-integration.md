@@ -161,7 +161,8 @@ MoveTaskService，无需 CoordinateTransformer。
 - 注册失败策略可配置：`continue-without-register` / 启动失败。
 
 ### 3.6 与现有功能并行
-`rms.enabled=false` 默认关闭；开启后与 rosbridge 通道互不影响。
+当前默认启用 RMS；Docker 可在根目录 `.env` 设置 `RMS_ENABLED=false` 关闭，
+重新创建 app 容器后生效。与 rosbridge 通道互不影响，操作见 [Docker 打包与部署](docker-deployment.md)。
 SSE/前端不动；后续可在前端加 RMS 任务面板（读 RmsTaskRegistry）。
 
 ## 4. 依赖与部署注意
