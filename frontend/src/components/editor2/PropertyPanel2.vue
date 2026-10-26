@@ -100,8 +100,10 @@ const connForm = reactive({
   ramp: { slope: null as number | null, length: null as number | null, surface: 'concrete' },
 })
 
+// 仅在"选中的实体 ID"变化时重置表单（切换选中项时填充）；
+// 不监听实体数据变化——patchWaypoint 更新 store 后不能重置表单，否则未保存的编辑被覆盖
 watch(
-  () => [store.selection, store.selectedWaypoint, store.selectedZone, store.selectedShelf, store.selectedPath, store.selectedConn],
+  () => [store.selection?.kind, store.selection?.id],
   () => {
     const waypoint = store.selectedWaypoint
     if (waypoint) {
@@ -150,25 +152,6 @@ watch(
         })),
       })
     }
-    const path = store.selectedPath
-    if (path) {
-      Object.assign(pathForm, {
-        name: path.name,
-        is_bidirectional: path.is_bidirectional,
-        max_speed: path.max_speed,
-        enable_obstacle_avoidance: path.enable_obstacle_avoidance,
-        status: path.status,
-        segments: (path.segments ?? []).map((segment) => ({
-          source_waypoint_id: segment.source_waypoint_id,
-          target_waypoint_id: segment.target_waypoint_id,
-          segment_type: segment.segment_type,
-          control_points: segment.control_points?.map((cp) => [...cp]) ?? [],
-          max_speed: segment.max_speed,
-          back_up: segment.back_up,
-          reverse: segment.reverse,
-        })),
-      })
-    }
     const conn = store.selectedConn
     if (conn) {
       Object.assign(connForm, {
@@ -185,7 +168,33 @@ watch(
       })
     }
   },
-  { immediate: true, deep: true },
+  { immediate: true },
+)
+
+// 路线表单专用：监听 selectedPath 对象引用（选中切换 / 画布拖拽保存 patchPath / reloadMap 都会替换引用）。
+// 若只在选中 ID 变化时同步，画布上拖好的贝塞尔曲线会被表单里的旧快照（STRAIGHT）在点「保存」时覆盖回直线。
+watch(
+  () => store.selectedPath,
+  (path) => {
+    if (!path) return
+    Object.assign(pathForm, {
+      name: path.name,
+      is_bidirectional: path.is_bidirectional,
+      max_speed: path.max_speed,
+      enable_obstacle_avoidance: path.enable_obstacle_avoidance,
+      status: path.status,
+      segments: (path.segments ?? []).map((segment) => ({
+        source_waypoint_id: segment.source_waypoint_id,
+        target_waypoint_id: segment.target_waypoint_id,
+        segment_type: segment.segment_type,
+        control_points: segment.control_points?.map((cp) => [...cp]) ?? [],
+        max_speed: segment.max_speed,
+        back_up: segment.back_up,
+        reverse: segment.reverse,
+      })),
+    })
+  },
+  { immediate: true },
 )
 
 // ---------- 保存动作 ----------
@@ -193,8 +202,14 @@ watch(
 async function saveWaypoint() {
   const waypoint = store.selectedWaypoint
   if (!waypoint) return
+  // 前端预校验编码格式
+  const code = waypointForm.name.trim()
+  if (code && !/^[A-Za-z0-9_]+$/.test(code)) {
+    ElMessage.warning('编码只能包含字母、数字、下划线')
+    return
+  }
   await store.patchWaypoint(waypoint.id, {
-    name: waypointForm.name,
+    name: code, // name 即编码/显示名（后端改 code 并级联更新引用）
     wp_type: waypointForm.wp_type,
     x: waypointForm.x,
     y: waypointForm.y,
@@ -202,6 +217,8 @@ async function saveWaypoint() {
     remark: waypointForm.remark || undefined,
     modified_by: store.modifiedBy,
   })
+  // 改名后刷新全图（路线段/连接中的引用编码已级联更新）
+  await store.reloadMap()
   ElMessage.success('点位已保存')
 }
 
@@ -322,7 +339,8 @@ function toggleSegmentType(segment: PathSegmentDTO) {
 }
 
 function waypointCode(id: number) {
-  return store.waypointById.get(id)?.waypoint_code ?? id
+  const w = store.waypointById.get(id)
+  return (w?.name || w?.waypoint_code) ?? id
 }
 
 function addConnEndpoint() {
@@ -367,11 +385,12 @@ function floorWaypoints(floorCode: string) {
   <div class="prop-panel">
     <template v-if="kind === 'waypoint' && store.selectedWaypoint">
       <div class="panel-head">
-        <h4>点位 · {{ store.selectedWaypoint.waypoint_code }}</h4>
         <el-button size="small" text type="primary" class="locate-btn" @click="locateSelected">定位</el-button>
       </div>
       <el-form label-width="72px" size="small">
-        <el-form-item label="名称"><el-input v-model="waypointForm.name" /></el-form-item>
+        <el-form-item label="编码/名称">
+          <el-input v-model="waypointForm.name" maxlength="64" placeholder="字母/数字/下划线，图内唯一" />
+        </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="waypointForm.wp_type">
             <el-option v-for="(label, value) in WAYPOINT_TYPE_LABELS" :key="value" :value="value" :label="label" />
@@ -595,12 +614,26 @@ function floorWaypoints(floorCode: string) {
 .panel-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
+  margin-bottom: 4px;
 }
 
 .panel-head h4 {
-  margin: 4px 0 12px;
+  margin: 4px 0 0;
   color: #303133;
+}
+
+.head-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.head-code {
+  display: block;
+  font-size: 11px;
+  color: #c0c4cc;
+  font-family: monospace;
+  margin-bottom: 8px;
 }
 
 .prop-actions {

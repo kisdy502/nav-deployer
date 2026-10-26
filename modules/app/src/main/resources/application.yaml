@@ -13,10 +13,10 @@ spring:
     ansi:
       enabled: always
   datasource:
-    # 本地开发用默认值，Docker 部署时由环境变量覆盖
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/nav_deployer}
-    username: ${SPRING_DATASOURCE_USERNAME:appuser}
-    password: ${SPRING_DATASOURCE_PASSWORD:app123456}
+    # 本地开发用默认值（platform 共享库 robot-postgres :55432），Docker 部署时由环境变量覆盖
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:55432/nav_deployer}
+    username: ${SPRING_DATASOURCE_USERNAME:robot_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:robot_password}
     driver-class-name: org.postgresql.Driver
   sql:
     init:
@@ -55,14 +55,14 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 minio:
-  # 应用数据操作用的地址（Docker 内为 http://minio:9000）
-  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  # 应用数据操作用的地址（platform 共享 ceph-rgw :7480；Docker 内为 http://host.docker.internal:7480）
+  endpoint: ${MINIO_ENDPOINT:http://localhost:7480}
   # 预签名 URL 的 MinIO 外部端口，host 部分按浏览器请求的 Host 动态推导
-  external-port: ${MINIO_EXTERNAL_PORT:9000}
+  external-port: ${MINIO_EXTERNAL_PORT:7480}
   # 可选：MinIO 独立域名（如 https://minio.example.com）。配置后固定用它签名；留空则动态推导
   external-endpoint: ${MINIO_EXTERNAL_ENDPOINT:}
-  access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:minioadmin123}
+  access-key: ${MINIO_ACCESS_KEY:cephadmin}
+  secret-key: ${MINIO_SECRET_KEY:cephpassword}
   bucket: ${MINIO_BUCKET:user-avatars}
   region: ${MINIO_REGION:us-east-1}
   # 部署程序：建图快照（gzip OccupancyGrid）存储桶
@@ -119,11 +119,13 @@ rms:
     publish_legacy_status: true
     publish_body_status: true
     # 排查开关：逐条打印心跳/状态上报（排查云端机器人掉线时临时打开）
-    verbose_log: ${RMS_VERBOSE_LOG:false}
+    verbose_log: ${RMS_VERBOSE_LOG:true}
   behavior:
     # 仿真质检：任务正常完成时 action_status=3，业务质检结果独立为 OK / NG
     inspection_duration_ms: 8000
     inspection_result: OK
+    # 行为树 action 占位执行时长（fetch_cable 等无专用执行器的模板，协议不携带 destination）
+    action_duration_ms: 3000
     # 仿真质检图片目录（含子目录）：打 zip 时随机取 2~3 张真实图片；为空或无图时回退占位图
     inspection_image_dir: ${RMS_INSPECTION_IMAGE_DIR:C:/Users/think/Pictures}
     # teach 2D/3D 采集样例目录（含子目录）：teach/capture 打 zip 时取前几个文件；为空回退 application.yaml+runtime 信息

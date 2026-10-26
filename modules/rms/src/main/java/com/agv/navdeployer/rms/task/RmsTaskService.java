@@ -47,6 +47,8 @@ public class RmsTaskService {
     private final com.agv.navdeployer.metadata.service.RoutePlanService routePlanService;
     private final com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper;
     private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
+    /** 机器人运营状态（停用/恢复）：停用时拒绝新任务 */
+    private final com.agv.navdeployer.service.RobotOperationalService operationalService;
 
     /** 执行与轮询线程：与 RMS query 回调线程隔离，保证 queryable 快速回复 */
     private final ScheduledExecutorService worker =
@@ -71,7 +73,8 @@ public class RmsTaskService {
                           com.agv.navdeployer.sim.SimAgvProperties simProps,
                           com.agv.navdeployer.metadata.service.RoutePlanService routePlanService,
                           com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper,
-                          com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper) {
+                          com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper,
+                          com.agv.navdeployer.service.RobotOperationalService operationalService) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.stateView = stateView;
@@ -84,11 +87,12 @@ public class RmsTaskService {
         this.routePlanService = routePlanService;
         this.v2MapMapper = v2MapMapper;
         this.v2WaypointMapper = v2WaypointMapper;
+        this.operationalService = operationalService;
     }
 
-    /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：质检动作任务不拦。 */
+    /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：行为树 action 任务不拦。 */
     private BodyReply armGate(RmsTask task) {
-        if (armStateMonitor == null || task.isInspectionAction()) {
+        if (armStateMonitor == null || task.isArmGateExempt()) {
             return null;
         }
         if (armStateMonitor.movementAllowed()) {
@@ -193,6 +197,12 @@ public class RmsTaskService {
     public BodyReply startTask(TaskCommandRequest request) {
         if (request.taskId() == null || request.taskId().isBlank()) {
             return BodyReply.failure(400, "task_id must not be blank");
+        }
+        // 停用校验：维修中/退役的机器人拒绝新任务
+        if (operationalService.isDecommissioned()) {
+            log.warn("rms task {} rejected: robot decommissioned ({})", request.taskId(), operationalService.getReason());
+            return BodyReply.failure(503,
+                    "robot is decommissioned (" + operationalService.getReason() + "), not accepting tasks");
         }
         RmsTask task = registry.find(request.taskId()).orElse(null);
         if (task == null || task.status().terminal()) {
@@ -302,6 +312,11 @@ public class RmsTaskService {
         }
         if (task.isInspectionAction()) {
             simulateInspection(task);
+            return;
+        }
+        // 行为树 action 任务（fetch_cable 等）：协议不携带 destination，占位仿真执行
+        if (task.isArmGateExempt()) {
+            simulateAction(task);
             return;
         }
         // navigate / charge / replace_battery / return_home 统一走移动
@@ -485,6 +500,19 @@ public class RmsTaskService {
         }
     }
 
+    /** 行为树 action 占位执行（fetch_cable 等无专用执行器的模板）：固定时长后完成，不移动。 */
+    private void simulateAction(RmsTask task) {
+        long dwellMs = Math.max(0L, props.getBehavior().getActionDurationMs());
+        log.info("rms task {} simulated action start: template={} dwell={}ms",
+                task.taskId(), task.taskTemplateType(), dwellMs);
+        worker.execute(() -> {
+            if (!dwell(task, dwellMs)) {
+                return;
+            }
+            completeTask(task);
+        });
+    }
+
     /** 质检占位执行：固定时长后完成（仿真机械臂接入后替换此方法）。 */
     /**
      * 质检作业仿真——单任务三阶段（对齐真机本体程序语义，云端只见一个 action 任务）：
@@ -512,7 +540,7 @@ public class RmsTaskService {
             if (!dwell(task, dwellMs)) {
                 return;
             }
-            completeInspection(task);
+            completeTask(task);
         });
     }
 
@@ -538,7 +566,7 @@ public class RmsTaskService {
         if (!armPhase(task, names, "retract(收拢归位)", home)) {
             return true;
         }
-        completeInspection(task);
+        completeTask(task);
         return true;
     }
 
@@ -615,7 +643,7 @@ public class RmsTaskService {
         return true;
     }
 
-    private void completeInspection(RmsTask task) {
+    private void completeTask(RmsTask task) {
         RmsTask current = registry.find(task.taskId()).orElse(null);
         if (current == null || current.status() != RmsTaskStatus.RUNNING) {
             return;

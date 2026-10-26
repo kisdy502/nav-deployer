@@ -145,6 +145,7 @@ result_report。**禁止**在 zenoh 回调线程里发起 follow_edge 等待。
 | charge / replace_battery | navigate 到充电点点位（charge 桩坐标，配置或 CHARGE 点）→ 置 is_charging → 完成 |
 | return_home | navigate 到 home 点位 → is_homing → 完成 |
 | quality_inspection | **占位执行器（已确认）**：仿真机械臂后续接入；当前固定延时后上报模拟结果，接臂时只换 executor |
+| 其他 task_type=action 模板（fetch_cable 等） | **占位执行器**：协议规定 parameters.destination 仅 navigate 有效（RMS startActivity 下发 parameters 恒为空），故不校验 destination，固定延时后 COMPLETED；真实执行器接入时替换 |
 | pause_task / resume_task | 见 3.3 |
 
 ### 3.3 暂停/恢复的降级语义（已确认：简化实现）

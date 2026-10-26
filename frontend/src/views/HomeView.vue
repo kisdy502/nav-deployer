@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  CircleClose,
   FullScreen,
   Aim,
   Odometer,
@@ -24,6 +25,7 @@ import { useEditorStore } from '@/stores/editor'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { useMapListStore } from '@/stores/mapList'
 import { useRobotStore } from '@/stores/robot'
+import { getOperational, decommission, recommission } from '@/api/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { startMapping } from '@/api/tasks'
 import { switchMap } from '@/api/maps'
@@ -83,6 +85,41 @@ watch(manage2Visible, (visible, was) => {
   if (!visible && was) void loadV2Maps()
 })
 const guide = reactive({ visible: false, starting: false })
+
+// ---------- 机器人停用/恢复 ----------
+const decommissioned = ref(false)
+const decommissionReason = ref('')
+
+async function loadOperational() {
+  try {
+    const status = await getOperational()
+    decommissioned.value = status.decommissioned
+    decommissionReason.value = status.reason ?? ''
+  } catch { /* 忽略 */ }
+}
+
+async function toggleDecommission() {
+  try {
+    if (decommissioned.value) {
+      await recommission()
+      decommissioned.value = false
+      decommissionReason.value = ''
+      ElMessage.success('机器人已恢复可用')
+    } else {
+      const { value } = await ElMessageBox.prompt('停用原因（如：维修中、退役、故障）', '停用机器人', {
+        confirmButtonText: '停用',
+        cancelButtonText: '取消',
+        inputValue: 'maintenance',
+        inputPattern: /\S+/,
+        inputErrorMessage: '请输入停用原因',
+      })
+      const status = await decommission(value.trim())
+      decommissioned.value = status.decommissioned
+      decommissionReason.value = status.reason ?? ''
+      ElMessage.warning(`机器人已停用（${decommissionReason.value}），RMS 不再接收新任务`)
+    }
+  } catch { /* 取消 */ }
+}
 /** 用户手动切换过地图后，不再自动跟随机器人地图 */
 const manualSelected = ref(false)
 
@@ -185,6 +222,7 @@ onMounted(async () => {
   // 先加载 v2 列表（有 v2 地图则主页默认展示 v2），再决定是否需要 v1 兜底
   await loadV2Maps()
   await pickDefaultMap()
+  void loadOperational()
 })
 
 function editMap() {
@@ -449,6 +487,16 @@ onBeforeUnmount(closeCtx)
         <el-tooltip content="适应视图" placement="right">
           <button class="rail-btn" @click="v2MapId ? mapCanvas2Ref?.fitView() : mapCanvasRef?.fitView()">
             <el-icon :size="18"><FullScreen /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip :content="decommissioned ? `恢复可用（当前停用: ${decommissionReason}）` : '停用机器人（维修中/退役，拒接新任务）'" placement="right">
+          <button
+            class="rail-btn"
+            :class="{ 'rail-btn-danger': decommissioned }"
+            :style="decommissioned ? { color: '#f56c6c', background: '#fef0f0' } : {}"
+            @click="toggleDecommission"
+          >
+            <el-icon :size="18"><CircleClose /></el-icon>
           </button>
         </el-tooltip>
       </aside>

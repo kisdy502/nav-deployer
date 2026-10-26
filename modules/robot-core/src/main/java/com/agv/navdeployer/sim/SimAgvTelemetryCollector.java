@@ -799,12 +799,12 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                 : String.format(Locale.ROOT, "%s, %d pts, range %.2f~%.2fm",
                         scan2.frameId(), scan2.rangeCount(), scan2.minRange(), scan2.maxRange());
 
-        log.info("Sim AGV summary | conn={} | status={} ({} msg) | pose {} ({} msg) | scan1 [{}] ({} msg) | scan2 [{}] ({} msg)",
-                telemetry.isConnected(),
-                statusText, telemetry.getStatusCount(),
-                poseText, telemetry.getTfCount(),
-                scan1Text, telemetry.getScan1Count(),
-                scan2Text, telemetry.getScan2Count());
+//        log.info("Sim AGV summary | conn={} | status={} ({} msg) | pose {} ({} msg) | scan1 [{}] ({} msg) | scan2 [{}] ({} msg)",
+//                telemetry.isConnected(),
+//                statusText, telemetry.getStatusCount(),
+//                poseText, telemetry.getTfCount(),
+//                scan1Text, telemetry.getScan1Count(),
+//                scan2Text, telemetry.getScan2Count());
     }
 
     /** 平面运动 yaw = 2*atan2(z, w)（roll/pitch 近似为 0）。 */

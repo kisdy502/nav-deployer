@@ -45,7 +45,8 @@ class RmsNavigationExecutionTest {
             return state;
         });
         RmsTaskService service = new RmsTaskService(registry, reporter,
-                mock(RobotStateView.class), moves, properties, null, null, null, null);
+                mock(RobotStateView.class), moves, properties, null, null, null, null,
+                null, null, null, mock(com.agv.navdeployer.service.RobotOperationalService.class));
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "workflow-1", "18", null, "navigate", "quality_inspection",

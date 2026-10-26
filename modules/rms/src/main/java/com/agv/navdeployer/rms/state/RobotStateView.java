@@ -67,6 +67,8 @@ public class RobotStateView {
     private final HostStats hostStats;
     /** 机械臂归位联锁（可空：无 Bean 时状态上报不带 arm 模块） */
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    /** 机器人运营状态（停用时 exceptionStatus 标记异常） */
+    private final com.agv.navdeployer.service.RobotOperationalService operationalService;
 
     /**
      * RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值）。落盘持久化。
@@ -76,12 +78,14 @@ public class RobotStateView {
 
     public RobotStateView(SimAgvTelemetry telemetry, RmsTaskRegistry taskRegistry,
                           RmsProperties props, HostStats hostStats,
-                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
+                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                          com.agv.navdeployer.service.RobotOperationalService operationalService) {
         this.telemetry = telemetry;
         this.taskRegistry = taskRegistry;
         this.props = props;
         this.hostStats = hostStats;
         this.armStateMonitor = armStateMonitor;
+        this.operationalService = operationalService;
         this.codeStoreFile = Path.of(System.getProperty("user.home"),
                 ".nav-deployer", "rms-robot-code");
         this.effectiveRobotCode = loadPersistedCode();
@@ -157,7 +161,9 @@ public class RobotStateView {
                 mapName,
                 "auto",
                 taskStatus,
-                "normal",
+                // 停用时标记异常（RMS 不再派任务）
+                operationalService.isDecommissioned()
+                        ? operationalService.getReason() : "normal",
                 "offline",
                 mode,
                 mode,
@@ -247,12 +253,24 @@ public class RobotStateView {
                 batteryPack(2, pct, charging, now),
                 batteryPack(1, pct, charging, now));
 
+        // 急停/停用时：agv_status 标记异常状态码 + exceptions 填充错误详情
+        boolean decommissioned = operationalService.isDecommissioned();
+        String agvState = decommissioned ? operationalService.getReason() : taskStatus;
+        int statusCode = decommissioned ? -1 : (active == null ? 0 : active.status().actionStatusCode());
+        List<Map<String, Object>> exceptions = decommissioned
+                ? List.of(Map.of(
+                        "level", 2,
+                        "status", operationalService.getReason(),
+                        "description", "robot decommissioned: " + operationalService.getReason(),
+                        "update_time", now))
+                : List.of();
+
         BodyFullStatusData data = new BodyFullStatusData(
                 new BodyFullStatusData.AgvStatus(
-                        taskStatus, active == null ? 0 : active.status().actionStatusCode(),
-                        true, 0, now),
+                        agvState, statusCode,
+                        !decommissioned, 0, now),
                 battery,
-                List.of(),
+                exceptions,
                 INSPECTION_REPORT,
                 new BodyFullStatusData.MapInfo(mapName, now),
                 new BodyFullStatusData.Memory(

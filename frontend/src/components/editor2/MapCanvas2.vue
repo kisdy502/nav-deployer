@@ -1307,6 +1307,13 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
             if (guardNav()) void tasks.navigateToPose(waypoint.x, waypoint.y, waypoint.yaw)
           },
         })
+        // 自由到点：同空白处右键，但目标为点位位姿（朝向取点位朝向）
+        items.push({
+          label: `自由到点（θ ${Math.round((waypoint.yaw * 180) / Math.PI)}°）`,
+          action: () => {
+            if (guardNav()) void tasks.freeNavigate(waypoint.x, waypoint.y, waypoint.yaw)
+          },
+        })
       }
       items.push({ label: '定位到此', action: () => scene?.flyTo(waypoint.x, waypoint.y) })
       if (props.editable) {

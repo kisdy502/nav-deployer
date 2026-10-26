@@ -36,6 +36,8 @@ export interface MapPointLike {
   yaw: number
   point_code: string
   point_type: string
+  /** 显示名称（优先于 point_code 显示在画布标签上） */
+  name?: string
 }
 
 interface PointVisual {
@@ -156,7 +158,9 @@ export class PointLayer {
     this.setArrow(v, p.yaw)
     v.ring.visible = selected
     v.handle.visible = selected
-    if (v.labelInner.textContent !== p.point_code) v.labelInner.textContent = p.point_code
+    // 画布标签：统一显示名称（优先 name，回退 code）
+    const label = (p.name && p.name.trim()) ? p.name.trim() : p.point_code
+    if (v.labelInner.textContent !== label) v.labelInner.textContent = label
   }
 
   private setArrow(v: PointVisual, yaw: number) {

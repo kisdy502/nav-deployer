@@ -305,6 +305,8 @@ public class RmsProperties {
     public static class Behavior {
         /** 质检占位执行时长（仿真机械臂就位前的模拟时长） */
         private long inspectionDurationMs = 8000;
+        /** 行为树 action 占位执行时长（fetch_cable 等无专用执行器的模板） */
+        private long actionDurationMs = 3000;
         /** 质检模拟结果：OK / NG */
         private String inspectionResult = "OK";
         /** 仿真质检图片目录（含子目录）：打包 zip 时随机取 2~3 张真实图片；为空或无图时回退占位图 */
@@ -324,6 +326,14 @@ public class RmsProperties {
 
         public void setInspectionDurationMs(long inspectionDurationMs) {
             this.inspectionDurationMs = inspectionDurationMs;
+        }
+
+        public long getActionDurationMs() {
+            return actionDurationMs;
+        }
+
+        public void setActionDurationMs(long actionDurationMs) {
+            this.actionDurationMs = actionDurationMs;
         }
 
         public String getInspectionResult() {

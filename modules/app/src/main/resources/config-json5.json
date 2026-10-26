@@ -1,7 +1,7 @@
 {
   "connect": {
     "endpoints": [
-      "tcp/localhost:7447"
+      "tcp/10.8.2.107:30586"
     ]
   },
   "mode": "client",
@@ -13,5 +13,5 @@
       "enabled": false
     }
   },
-  "namespace": "test-dispatch"
+  "namespace": "bj_qc"
 }

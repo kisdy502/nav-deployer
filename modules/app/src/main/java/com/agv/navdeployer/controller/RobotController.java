@@ -38,6 +38,7 @@ public class RobotController {
     private final SimAgvTelemetry telemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    private final com.agv.navdeployer.service.RobotOperationalService operationalService;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
@@ -46,7 +47,8 @@ public class RobotController {
                            ObjectMapper objectMapper,
                            SimAgvTelemetry telemetry,
                            com.agv.navdeployer.sim.SimAgvProperties simProps,
-                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor) {
+                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                           com.agv.navdeployer.service.RobotOperationalService operationalService) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
@@ -55,6 +57,37 @@ public class RobotController {
         this.telemetry = telemetry;
         this.simProps = simProps;
         this.armStateMonitor = armStateMonitor;
+        this.operationalService = operationalService;
+    }
+
+    // ==================== 运营状态（停用/恢复） ====================
+
+    public record DecommissionDTO(String reason) {
+    }
+
+    @Operation(summary = "停用机器人（维修中/退役）",
+            description = "停用后：RMS 不再接收新任务，状态上报标记异常。重启后自动恢复。")
+    @PostMapping("/api/v1/robot/decommission")
+    public ApiResponse<Object> decommission(@RequestBody(required = false) DecommissionDTO dto) {
+        operationalService.decommission(dto == null ? null : dto.reason());
+        return ApiResponse.ok(Map.of(
+                "decommissioned", true,
+                "reason", operationalService.getReason()));
+    }
+
+    @Operation(summary = "恢复机器人可用", description = "解除停用状态，机器人重新可以接收任务。")
+    @PostMapping("/api/v1/robot/recommission")
+    public ApiResponse<Object> recommission() {
+        operationalService.recommission();
+        return ApiResponse.ok(Map.of("decommissioned", false));
+    }
+
+    @Operation(summary = "查询运营状态")
+    @GetMapping("/api/v1/robot/operational")
+    public ApiResponse<Object> operational() {
+        return ApiResponse.ok(Map.of(
+                "decommissioned", operationalService.isDecommissioned(),
+                "reason", operationalService.getReason()));
     }
 
     @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数 / 地图对齐状态")
@@ -164,14 +197,21 @@ public class RobotController {
         }
     }
 
-    @Operation(summary = "任务闸门", description = "start 恢复接单 / stop 停车暂停 / reset 复位（同步等 service_response）")
+    @Operation(summary = "任务闸门", description = "start 恢复接单 / stop 急停（联动停用标志，RMS 拒接新任务）/ reset 复位（恢复可用）")
     @PostMapping("/api/v1/robot/control")
     public ApiResponse<SetControlResult> control(@Valid @RequestBody RobotControlDTO dto) {
         if (!rosbridgeClient.isConnected()) {
             throw new IllegalStateException("rosbridge 未连接，无法调用 set_control");
         }
         try {
-            return ApiResponse.ok(dispatcher.setControl(dto.action()).join());
+            SetControlResult result = dispatcher.setControl(dto.action()).join();
+            // 联动停用标志：stop → 停用（RMS 拒接新任务）；start/reset → 恢复
+            if ("stop".equals(dto.action())) {
+                operationalService.decommission("emergency_stop");
+            } else {
+                operationalService.recommission();
+            }
+            return ApiResponse.ok(result);
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException(cause.getMessage(), cause);

@@ -640,6 +640,14 @@ onBeforeUnmount(() => {
   border-radius: 3px;
 }
 
+/* 编码副标签：名称与编码不同时才显示 */
+.item-code {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #c0c4cc;
+  font-family: monospace;
+}
+
 .list-item.active .item-type {
   color: #409eff;
 }

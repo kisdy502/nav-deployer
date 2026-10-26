@@ -20,11 +20,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Set;
-
-/** 点位管理：类型扩展（charge/pickup/dropoff/storage/elevator/stairs/ramp/normal）。 */
+import java.util.Set;/** 点位管理：类型扩展（charge/pickup/dropoff/storage/elevator/stairs/ramp/normal）。 */
 @Service
 public class MapWaypointService {
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(MapWaypointService.class);
 
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             MapWaypoint.TYPE_PATH, MapWaypoint.TYPE_CHARGE, MapWaypoint.TYPE_PICKUP,
@@ -61,16 +62,12 @@ public class MapWaypointService {
     public WaypointVO create(WaypointCreateDTO dto) {
         requireFloorOfMap(dto.floorId(), dto.mapId());
         String code = dto.waypointCode().trim();
-        if (waypointMapper.selectCount(Wrappers.lambdaQuery(MapWaypoint.class)
-                .eq(MapWaypoint::getMapId, dto.mapId())
-                .eq(MapWaypoint::getWaypointCode, code)) > 0) {
-            throw new IllegalStateException("点位编码已存在: " + code);
-        }
+        requireValidCode(dto.mapId(), code);
         MapWaypoint waypoint = new MapWaypoint();
         waypoint.setMapId(dto.mapId());
         waypoint.setFloorId(dto.floorId());
         waypoint.setWaypointCode(code);
-        waypoint.setName(dto.name() == null || dto.name().isBlank() ? code : dto.name().trim());
+        waypoint.setName(code);
         waypoint.setWpType(normalizeType(dto.wpType()));
         waypoint.setX(dto.x());
         waypoint.setY(dto.y());
@@ -81,11 +78,36 @@ public class MapWaypointService {
         return WaypointVO.from(waypoint);
     }
 
+    /** 点位编码格式：字母/数字/下划线 */
+    private static final java.util.regex.Pattern CODE_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9_]+$");
+
+    /** 校验点位编码格式 + 图内唯一。 */
+    private void requireValidCode(Long mapId, String code) {
+        if (!CODE_PATTERN.matcher(code).matches()) {
+            throw new IllegalArgumentException("点位编码只能包含字母、数字、下划线: " + code);
+        }
+        if (waypointMapper.selectCount(Wrappers.lambdaQuery(MapWaypoint.class)
+                .eq(MapWaypoint::getMapId, mapId)
+                .eq(MapWaypoint::getWaypointCode, code)) > 0) {
+            throw new IllegalStateException("点位编码已存在: " + code);
+        }
+    }
+
+    /** 更新点位：code 可改名（级联更新楼层连接引用），name 始终跟随 code 保持一致。 */
     @Transactional(rollbackFor = Exception.class)
     public WaypointVO update(Long id, WaypointUpdateDTO dto) {
         MapWaypoint waypoint = requireWaypoint(id);
-        if (dto.name() != null) {
-            waypoint.setName(dto.name().isBlank() ? waypoint.getWaypointCode() : dto.name().trim());
+        // 改名（通过 name 字段改 code）：校验格式+图内唯一 + 级联更新楼层连接中的编码引用
+        if (dto.name() != null && !dto.name().isBlank()) {
+            String newCode = dto.name().trim();
+            if (!newCode.equals(waypoint.getWaypointCode())) {
+                requireValidCode(waypoint.getMapId(), newCode);
+                String oldCode = waypoint.getWaypointCode();
+                waypoint.setWaypointCode(newCode);
+                waypoint.setName(newCode);
+                cascadeUpdateConnections(waypoint.getMapId(), oldCode, newCode);
+            }
         }
         if (dto.wpType() != null) {
             waypoint.setWpType(normalizeType(dto.wpType()));
@@ -106,6 +128,25 @@ public class MapWaypointService {
         waypointMapper.updateById(waypoint);
         ticker.touch(waypoint.getMapId(), dto.modifiedBy());
         return WaypointVO.from(waypoint);
+    }
+
+    /** 点位编码改名后，级联更新楼层间连接 JSON 中的编码引用。 */
+    private void cascadeUpdateConnections(Long mapId, String oldCode, String newCode) {
+        List<MapInterFloorConn> conns = connMapper.selectList(
+                Wrappers.lambdaQuery(MapInterFloorConn.class)
+                        .eq(MapInterFloorConn::getMapId, mapId));
+        for (MapInterFloorConn conn : conns) {
+            if (conn.getConnections() != null
+                    && conn.getConnections().contains("\"waypointId\":\"" + oldCode + "\"")) {
+                String updated = conn.getConnections().replace(
+                        "\"waypointId\":\"" + oldCode + "\"",
+                        "\"waypointId\":\"" + newCode + "\"");
+                conn.setConnections(updated);
+                conn.setUpdatedAt(null);
+                connMapper.updateById(conn);
+                log.info("点位编码改名级联更新连接: conn={}, {} -> {}", conn.getConnCode(), oldCode, newCode);
+            }
+        }
     }
 
     /** 删除点位：被路线（起终点/段）或楼层间连接引用时拒绝。 */

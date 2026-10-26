@@ -1,58 +1,11 @@
+# 基础设施（PostgreSQL/Redis/MinIO/zenoh/Nacos）全部复用 qc-robot 平台栈：
+#   D:\workspace\qc-robot\root-manager-platform-run\infrastructure\docker-compose.yml
+#   启动：docker compose -f infrastructure/docker-compose.yml up -d postgres redis nacos ceph-rgw ceph-init zenoh-router-1 zenoh-router-2 zenoh-router-3
+#   - PostgreSQL: robot-postgres   (localhost:55432, robot_user/robot_password, 库 nav_deployer)
+#   - Redis:      robot-redis      (localhost:6379)
+#   - MinIO:      robot-ceph-rgw   (localhost:7480, cephadmin/cephpassword)
+# 本文件只负责应用容器（IDEA 本地跑时无需本文件）。
 services:
-  # PostgreSQL 数据库
-  postgres:
-    image: postgres:16
-    container_name: nav-deployer-postgres
-    environment:
-      POSTGRES_DB: nav_deployer
-      POSTGRES_USER: appuser
-      POSTGRES_PASSWORD: app123456
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U appuser -d nav_deployer"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  # Redis 缓存
-  redis:
-    image: redis:7
-    container_name: nav-deployer-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  # MinIO 对象存储（9000 API，9001 Web 控制台）
-  minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
-    container_name: nav-deployer-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   # Spring Boot 应用（镜像内已包含前端构建产物，8083 直接访问完整 UI）
   app:
     build:
@@ -61,18 +14,19 @@ services:
     image: ${APP_IMAGE:-nav-deployer:v0.2.0}
     container_name: nav-deployer-app
     ports:
-      - "8083:8083"
+      # 宿主机端口 18084：8083 留给 IDEA 本地实例，18083 已被 RMS(robot-management-service) 占用
+      - "18084:8083"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nav_deployer
-      SPRING_DATASOURCE_USERNAME: appuser
-      SPRING_DATASOURCE_PASSWORD: app123456
-      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:55432/nav_deployer
+      SPRING_DATASOURCE_USERNAME: robot_user
+      SPRING_DATASOURCE_PASSWORD: robot_password
+      SPRING_DATA_REDIS_HOST: host.docker.internal
       SPRING_DATA_REDIS_PORT: "6379"
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://host.docker.internal:7480
       # 预签名 URL 的 MinIO 对外端口（host 按浏览器访问地址自动推导）
-      MINIO_EXTERNAL_PORT: "9000"
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
+      MINIO_EXTERNAL_PORT: "7480"
+      MINIO_ACCESS_KEY: cephadmin
+      MINIO_SECRET_KEY: cephpassword
       MINIO_BUCKET: user-avatars
       MINIO_MAPS_BUCKET: nav-maps
       # 与仿真机器人共享网络，直接使用桥接服务的 Docker DNS 名称。
@@ -86,6 +40,8 @@ services:
       RMS_ENABLED: ${RMS_ENABLED:-true}
       # 多实例/与本机开发同时运行时必须指定不同 SN（默认从固定种子生成，重复会互相顶号）
       RMS_ROBOT_SN: ${RMS_ROBOT_SN:-}
+      # 多实例时给不同显示名，便于 RMS 页面区分
+      RMS_ROBOT_NAME: ${RMS_ROBOT_NAME:-JY历飞雨}
       # 切换 zenoh 环境时挂载外部配置并设置此路径（bj/cc/sz 变体见 src/main/resources）
       RMS_ZENOH_CONFIG_FILE: ${RMS_ZENOH_CONFIG_FILE:-}
       # ---- RMS 日志收集/质检图片/teach 采集样例目录（Linux 容器需挂载真实路径，Windows 默认值无效）----
@@ -110,13 +66,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
     restart: unless-stopped
 
 networks:
@@ -125,7 +74,4 @@ networks:
     name: ${ROBOT_DOCKER_NETWORK:-simulated_chassis_agv_network}
 
 volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
   app_logs:

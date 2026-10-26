@@ -68,6 +68,8 @@ public class MoveTaskService {
     private final com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper;
     private final com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper;
     private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
+    /** 机器人运营状态（急停/停用拦截） */
+    private final RobotOperationalService operationalService;
 
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -90,7 +92,8 @@ public class MoveTaskService {
                            com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
                            com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper,
                            com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper,
-                           com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper) {
+                           com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper,
+                           RobotOperationalService operationalService) {
         this.moveTaskMapper = moveTaskMapper;
         this.navPointMapper = navPointMapper;
         this.navPathService = navPathService;
@@ -104,6 +107,7 @@ public class MoveTaskService {
         this.v2PathMapper = v2PathMapper;
         this.v2SegmentMapper = v2SegmentMapper;
         this.v2WaypointMapper = v2WaypointMapper;
+        this.operationalService = operationalService;
     }
 
     /** 服务重启时把遗留的非终态任务标记为失败（goal 关联已丢失，无法再收到 result）。 */
@@ -123,6 +127,11 @@ public class MoveTaskService {
 
     /** 创建并下发移动任务。 */
     public MoveTaskVO create(MoveTaskCreateDTO dto) {
+        // 停用（急停/维修中）拦截：不下发，直接报错给用户
+        if (operationalService.isDecommissioned()) {
+            throw new IllegalStateException(
+                    "机器人已停用（" + operationalService.getReason() + "），无法下发移动任务，请先点击「启动」恢复");
+        }
         if (!activeRuntimes.isEmpty()) {
             throw new IllegalStateException("已有在途任务（" + activeRuntimes.size() + " 条），机器人同一时刻只允许一个 goal，请先取消或等待完成");
         }

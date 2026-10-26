@@ -129,6 +129,21 @@ public final class RmsTask {
                 || "navigate".equalsIgnoreCase(taskType);
     }
 
+    /** task_type=action 的行为树任务：协议规定 parameters 仅在此类任务中不要求 destination。 */
+    public boolean isAction() {
+        return "action".equalsIgnoreCase(taskType);
+    }
+
+    /** 移动语义模板：目标取自本机 pose 配置（charge/home），缺配置才回退报文 destination。 */
+    public boolean isMoveBehavior() {
+        return isTemplate("charge") || isTemplate("replace_battery") || isTemplate("return_home");
+    }
+
+    /** 无移动语义的行为树 action 任务（质检、fetch_cable 等）：不受机械臂归位联锁约束。 */
+    public boolean isArmGateExempt() {
+        return isAction() && !isMoveBehavior();
+    }
+
     /** 模板可包含导航步骤；只有当前 action 步骤才执行并上报质检。 */
     public boolean isInspectionAction() {
         return isTemplate("quality_inspection") && "action".equalsIgnoreCase(taskType);

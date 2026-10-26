@@ -1,14 +1,32 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { MOVE_TASK_STATUS_TAG, MOVE_TASK_TYPE_LABEL } from '@/utils/format'
 import { radToDeg } from '@/utils/coords'
 import { armHomed } from '@/utils/armJoints'
+import { getOperational } from '@/api/robot'
 
 const robot = useRobotStore()
 const tasks = useTasksStore()
+
+// 停用状态（急停联动）
+const decommissioned = ref(false)
+const decommissionReason = ref('')
+
+async function refreshOperational() {
+  try {
+    const s = await getOperational()
+    decommissioned.value = s.decommissioned
+    decommissionReason.value = s.reason ?? ''
+  } catch { /* 忽略 */ }
+}
+
+onMounted(() => {
+  void refreshOperational()
+  window.setInterval(refreshOperational, 3000)
+})
 
 const conn = computed(() => {
   switch (robot.connStatus) {
@@ -54,7 +72,13 @@ async function onControl(action: 'start' | 'stop' | 'reset') {
   const label = action === 'start' ? '启动' : action === 'stop' ? '急停' : '复位'
   await ElMessageBox.confirm(`确认对机器人执行「${label}」？`, '机器人控制', { type: 'warning' })
   const r = await robot.control(action)
-  r.success ? ElMessage.success(`已${label}：${r.message}`) : ElMessage.error(r.message)
+  if (r.success) {
+    ElMessage.success(`已${label}：${r.message}`)
+    // 急停/启动联动停用标志，立即刷新
+    await refreshOperational()
+  } else {
+    ElMessage.error(r.message)
+  }
 }
 
 async function onCancelTask() {
@@ -104,6 +128,9 @@ async function onCancelTask() {
     </div>
 
     <div class="status-right">
+      <el-tag v-if="decommissioned" size="small" type="danger" effect="dark" class="decommission-tag">
+        ⛔ 停用（{{ decommissionReason }}）
+      </el-tag>
       <template v-if="tasks.activeMoveTask">
         <el-tag
           size="small"
@@ -119,8 +146,8 @@ async function onCancelTask() {
         <el-button v-if="tasks.moveTaskInFlight" size="small" type="danger" plain @click="onCancelTask">取消任务</el-button>
         <el-divider direction="vertical" />
       </template>
-      <el-button size="small" @click="onControl('start')">启动</el-button>
-      <el-button size="small" type="danger" @click="onControl('stop')">急停</el-button>
+      <el-button size="small" :type="decommissioned ? 'success' : 'default'" @click="onControl('start')">启动</el-button>
+      <el-button size="small" :type="decommissioned ? 'default' : 'danger'" :disabled="decommissioned" @click="onControl('stop')">急停</el-button>
       <el-button size="small" @click="onControl('reset')">复位</el-button>
     </div>
   </div>
@@ -172,7 +199,15 @@ async function onCancelTask() {
 .status-right {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 6px;
+}
+
+.decommission-tag {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 </style>

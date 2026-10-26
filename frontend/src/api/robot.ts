@@ -21,3 +21,14 @@ export const armMove = (arm: string, joints: number[], durationSec?: number) =>
 /** 设置机械臂归位（联锁基准）：home 为角色顺序 [pan,lift,elbow,wrist1,wrist2,wrist3] 弧度 */
 export const setArmHome = (home: number[]) =>
   post<{ success: boolean; message: string }>('/robot/arm-home', { home })
+
+// ---------- 运营状态（停用/恢复） ----------
+
+export interface OperationalStatus {
+  decommissioned: boolean
+  reason: string
+}
+
+export const getOperational = () => get<OperationalStatus>('/robot/operational')
+export const decommission = (reason?: string) => post<OperationalStatus>('/robot/decommission', { reason })
+export const recommission = () => post<OperationalStatus>('/robot/recommission')
