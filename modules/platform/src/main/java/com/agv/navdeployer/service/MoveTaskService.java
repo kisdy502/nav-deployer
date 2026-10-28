@@ -70,6 +70,8 @@ public class MoveTaskService {
     private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
     /** 机器人运营状态（急停/停用拦截） */
     private final RobotOperationalService operationalService;
+    /** 地图一致性闸门（可空：测试/独立装配时无此 Bean 则跳过；机器人地图 vs 导航基准图） */
+    private final MapAlignmentGuard mapAlignmentGuard;
 
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -93,7 +95,8 @@ public class MoveTaskService {
                            com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper,
                            com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper,
                            com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper,
-                           RobotOperationalService operationalService) {
+                           RobotOperationalService operationalService,
+                           MapAlignmentGuard mapAlignmentGuard) {
         this.moveTaskMapper = moveTaskMapper;
         this.navPointMapper = navPointMapper;
         this.navPathService = navPathService;
@@ -108,6 +111,7 @@ public class MoveTaskService {
         this.v2SegmentMapper = v2SegmentMapper;
         this.v2WaypointMapper = v2WaypointMapper;
         this.operationalService = operationalService;
+        this.mapAlignmentGuard = mapAlignmentGuard;
     }
 
     /** 服务重启时把遗留的非终态任务标记为失败（goal 关联已丢失，无法再收到 result）。 */
@@ -152,6 +156,11 @@ public class MoveTaskService {
         if (armStateMonitor != null && !armStateMonitor.movementAllowed()) {
             throw new IllegalStateException("机械臂未归位（arm_state=" + armStateMonitor.state()
                     + "），禁止移动作业，请先收臂归位");
+        }
+        // 地图一致性闸门：机器人加载的地图必须与上位机导航基准一致
+        // （同名点位在两张图上坐标对不上 → 导航到错误物理位置乱撞）
+        if (mapAlignmentGuard != null) {
+            mapAlignmentGuard.requireAligned();
         }
 
         MoveTask task = new MoveTask();

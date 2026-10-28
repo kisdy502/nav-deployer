@@ -921,7 +921,8 @@ function onClick(hit: PickResult | null, world: THREE.Vector3) {
     return
   }
   if (store.tool === 'path' && props.editable) {
-    if (hit?.type === 'point' && hit.id != null) {
+    // 点位整体（圆盘 + 朝向三角 + 旋转手柄）都算选中该点位；拖动旋转等编辑手势在 onDown 处理，互不影响
+    if ((hit?.type === 'point' || hit?.type === 'pointArrow' || hit?.type === 'rotateHandle') && hit.id != null) {
       // 再点链尾最后一点 = 完成绘制；其余点击（含重复点，支持回环 A→B→C→A）追加
       if (store.draftPath.length > 0 && store.draftPath[store.draftPath.length - 1] === hit.id) {
         store.submitDraftPath().catch(() => {
@@ -1282,6 +1283,24 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
             return false
           }
           return true
+        }
+        // 充电点：去充电（导航到桩 → 开始充电 → 充到目标电量，后端 ChargeService 与 RMS 充电任务共用链路）
+        if (waypoint.wp_type === 'charge') {
+          items.push({
+            label: '⚡ 去充电',
+            action: () => {
+              if (!guardNav()) return
+              if (tasks.chargeTaskInFlight) {
+                ElMessage.warning('已有进行中的充电任务，请先取消')
+                return
+              }
+              if (robot.status?.charging === true) {
+                ElMessage.warning('机器人已在充电中')
+                return
+              }
+              void tasks.goCharge(waypoint.id)
+            },
+          })
         }
         // 沿路线导航：调后端规划，有路则显示，无路提示
         items.push({

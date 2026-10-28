@@ -49,6 +49,16 @@ public class RmsRobotSession {
     private ScheduledFuture<?> heartbeatTask;
     private ScheduledFuture<?> statusTask;
 
+    /** 是否已向 RMS 注册成功（配置页连接状态展示用）。 */
+    public boolean isRegistered() {
+        return registered;
+    }
+
+    /** zenoh 会话是否已建立。 */
+    public boolean isSessionOpen() {
+        return channel != null;
+    }
+
     private static ScheduledThreadPoolExecutor createReportScheduler() {
         ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
             Thread thread = new Thread(runnable, "rms-report-scheduler");

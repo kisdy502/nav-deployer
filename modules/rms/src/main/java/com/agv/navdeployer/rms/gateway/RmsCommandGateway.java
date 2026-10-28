@@ -41,6 +41,7 @@ public class RmsCommandGateway {
     private final ObjectMapper mapper;
     private volatile RmsCommandKeys keys;
     private volatile ZenohChannel currentChannel;
+
     public RmsCommandGateway(RmsTaskService taskService,
                              RmsMapService mapService,
                              RmsTelemetryService telemetryService,
@@ -64,12 +65,16 @@ public class RmsCommandGateway {
         this.keys = keys;
     }
 
-    /** 注册后更新 key（RMS 分配了新 robot_code 时调用） */
+    /**
+     * 注册后更新 key（RMS 分配了新 robot_code 时调用）
+     */
     public void updateKeys(RmsCommandKeys newKeys) {
         this.keys = newKeys;
     }
 
-    /** 会话建立后声明全部指令端点（exact + 通配；重建时重调）。 */
+    /**
+     * 会话建立后声明全部指令端点（exact + 通配；重建时重调）。
+     */
     public void attach(ZenohChannel channel) throws Exception {
         this.currentChannel = channel;
         for (String segment : RmsCommandKeys.exactSegments()) {
@@ -109,7 +114,9 @@ public class RmsCommandGateway {
                 return thread;
             });
 
-    /** 统一入口（exact 与通配 queryable 都走这里）。reply 为 BodyReply 或 teach 等自定义信封 ObjectNode。 */
+    /**
+     * 统一入口（exact 与通配 queryable 都走这里）。reply 为 BodyReply 或 teach 等自定义信封 ObjectNode。
+     */
     void dispatch(Query query, String declaredSegment) {
         String rawPayload = "{}";
         String actualSegment;
@@ -155,7 +162,9 @@ public class RmsCommandGateway {
         replyAndClose(query, actualSegment, reply);
     }
 
-    /** 回包并关闭 query；非周期段打完整日志。 */
+    /**
+     * 回包并关闭 query；非周期段打完整日志。
+     */
     private void replyAndClose(Query query, String segment, Object reply) {
         try {
             String replyJson = mapper.writeValueAsString(reply);
@@ -219,7 +228,9 @@ public class RmsCommandGateway {
         };
     }
 
-    /** 自定义信封（teach 等）的 status/msg 提取，统一日志格式。 */
+    /**
+     * 自定义信封（teach 等）的 status/msg 提取，统一日志格式。
+     */
     private static String statusOf(Object reply) {
         if (reply instanceof BodyReply bodyReply) {
             return String.valueOf(bodyReply.status());
@@ -240,7 +251,9 @@ public class RmsCommandGateway {
         return "";
     }
 
-    /** 地图/模式段分发；非地图段返回 null 走原有任务链路。 */
+    /**
+     * 地图/模式段分发；非地图段返回 null 走原有任务链路。
+     */
     private BodyReply dispatchMap(BodySegment bodySegment, String rawPayload) {
         return switch (bodySegment) {
             case START_MAPPING -> mapService.startMapping(parseMapNameRequest(rawPayload));
@@ -250,7 +263,8 @@ public class RmsCommandGateway {
             case MAPPING_CHANGE -> mapService.changeMap(parseMapNameRequest(rawPayload));
             case MAPPING_GET_CURRENT -> mapService.getCurrentMap();
             case MAPPING_DELETE -> mapService.deleteMap(parseMapNameRequest(rawPayload));
-            case MAPPING_GET -> mapService.exportMap(rawPayload, mapper, scheduleAdapter, navPointService, navPathService);
+            case MAPPING_GET ->
+                    mapService.exportMap(rawPayload, mapper, scheduleAdapter, navPointService, navPathService);
             case AGV_RELOCATE -> mapService.relocate(parseRelocateRequest(rawPayload));
             case MODE_SET -> mapService.modeSet();
             case MODE_GET -> mapService.modeGet();

@@ -149,6 +149,33 @@ class ArmStateMonitorTest {
     }
 
     @Test
+    void gripperJointsIgnoredInSingleArmProfile() {
+        // 机器人侧新增夹爪关节（ur5e_gripper_*_joint）：六主轴归位时夹爪不参与判定，
+        // 不能因角色无法识别而退化成 UNKNOWN（旧实现 ur5e_*_joint 通配误收）
+        String[] names = {
+                "ur5e_elbow_joint", "ur5e_gripper_left_joint", "ur5e_gripper_right_joint",
+                "ur5e_shoulder_lift_joint", "ur5e_shoulder_pan_joint",
+                "ur5e_wrist_1_joint", "ur5e_wrist_2_joint", "ur5e_wrist_3_joint",
+        };
+        double[] positions = {
+                LEFT_HOME_ALPHABETICAL[0], 0.03, 0.03,
+                LEFT_HOME_ALPHABETICAL[1], LEFT_HOME_ALPHABETICAL[2],
+                LEFT_HOME_ALPHABETICAL[3], LEFT_HOME_ALPHABETICAL[4], LEFT_HOME_ALPHABETICAL[5],
+        };
+        SimAgvTelemetry telemetry = new SimAgvTelemetry();
+        telemetry.setJointStates(new SimAgvTelemetry.JointSnapshot(names, positions, Instant.now()));
+        ArmStateMonitor monitor = monitor(telemetry, new AtomicInteger(0), new SimAgvProperties());
+        assertThat(monitor.state()).isEqualTo(ArmStateMonitor.ArmState.HOME);
+        assertThat(monitor.movementAllowed()).isTrue();
+
+        // arm_move 关节顺序契约同样只含六主轴
+        var sorted = ArmStateMonitor.armJointNamesSorted(telemetry.getJointStates());
+        assertThat(sorted).containsExactly(
+                "ur5e_elbow_joint", "ur5e_shoulder_lift_joint", "ur5e_shoulder_pan_joint",
+                "ur5e_wrist_1_joint", "ur5e_wrist_2_joint", "ur5e_wrist_3_joint");
+    }
+
+    @Test
     void sidePositionsSortedByName() {
         SimAgvTelemetry.JointSnapshot snapshot = joints(0, 0);
         double[] left = ArmStateMonitor.sidePositions(snapshot, "left");

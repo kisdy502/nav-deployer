@@ -154,6 +154,21 @@ function state() {
       mapName: 'demo_map',
     },
     motion: null as null | { taskId: number; waypoints: { x: number; y: number }[]; segIdx: number; lastPush: number },
+    charge: null as null | {
+      id: number
+      status: 'MOVING' | 'STARTING' | 'CHARGING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED'
+      waypointId: number | null
+      x: number
+      y: number
+      yaw: number
+      target: number
+      batteryAtStart: number | null
+      message: string | null
+      createdAt: string
+      updatedAt: string
+      finishedAt: string | null
+      startedAtMs: number
+    },
   }
 
   // 种子地图
@@ -254,8 +269,33 @@ function readBody(req: IncomingMessage): Promise<any> {
   })
 }
 
+const CHARGE_TERMINAL = ['SUCCEEDED', 'FAILED', 'CANCELLED']
+
+function chargeVO(s: State) {
+  const c = s.charge
+  if (!c) return null
+  return {
+    id: c.id,
+    source: 'manual',
+    status: c.status,
+    waypoint_id: c.waypointId,
+    x: c.x,
+    y: c.y,
+    yaw: c.yaw,
+    target_battery_pct: c.target,
+    battery_at_start: c.batteryAtStart,
+    battery_now: s.robot.battery,
+    message: c.message,
+    internal_move_task_id: null,
+    created_at: c.createdAt,
+    updated_at: c.updatedAt,
+    finished_at: c.finishedAt,
+  }
+}
+
 function snapshot(s: State) {
   const r = s.robot
+  const charging = s.charge?.status === 'CHARGING' || s.charge?.status === 'SUCCEEDED'
   return {
     timestamp: new Date().toISOString(),
     connected: true,
@@ -264,6 +304,10 @@ function snapshot(s: State) {
       agv_id: 'AGV001',
       state: r.state,
       battery: r.battery,
+      battery_state: charging ? 'CHARGING' : 'DISCHARGING',
+      charging,
+      charge_connected: charging,
+      battery_data_valid: true,
       pose_initialized: r.poseInitialized,
       active_command_id: null,
       active_node_id: null,
@@ -359,6 +403,39 @@ export function mockPlugin(): Plugin {
         }
       }, 100)
 
+      // 充电任务状态机（mock 简化时序：2s 到桩 → 0.6s 对接 → 1%/s 充到目标）
+      const bumpCharge = () => {
+        if (!s.charge) return
+        s.charge.updatedAt = new Date().toISOString()
+        if (CHARGE_TERMINAL.includes(s.charge.status)) s.charge.finishedAt = s.charge.updatedAt
+        broadcast('charge', chargeVO(s))
+      }
+      setInterval(() => {
+        const c = s.charge
+        if (!c || CHARGE_TERMINAL.includes(c.status)) return
+        const age = Date.now() - c.startedAtMs
+        if (c.status === 'MOVING' && age > 2000) {
+          c.status = 'STARTING'
+          c.message = '已到充电点，正在开始充电'
+          bumpCharge()
+        } else if (c.status === 'STARTING' && age > 2600) {
+          c.status = 'CHARGING'
+          c.batteryAtStart = s.robot.battery
+          c.message = '充电中'
+          bumpCharge()
+        } else if (c.status === 'CHARGING') {
+          if (s.robot.battery < c.target) {
+            s.robot.battery = Math.min(c.target, s.robot.battery + 1)
+            bumpCharge()
+          }
+          if (s.robot.battery >= c.target) {
+            c.status = 'SUCCEEDED'
+            c.message = `已达到目标电量 ${c.target}%，留桩待命`
+            bumpCharge()
+          }
+        }
+      }, 1000)
+
       // SSE 心跳 + 遥测
       setInterval(() => {
         for (const c of [...sseClients]) {
@@ -438,6 +515,55 @@ export function mockPlugin(): Plugin {
             s.robot.yaw = Number(body.theta) || 0
             s.robot.poseInitialized = true
             return ok(res, null)
+          }
+        }
+
+        // ---------- 充电 ----------
+        if (seg[0] === 'charge') {
+          if (seg[1] === 'start' && method === 'POST') {
+            if (s.charge && !CHARGE_TERMINAL.includes(s.charge.status)) {
+              return fail(res, 400, '已有进行中的充电任务，请先取消')
+            }
+            const wid = body.waypoint_id != null ? Number(body.waypoint_id) : null
+            const wp = wid != null ? s.points.find((p) => p.id === wid) : null
+            const x = wp ? wp.x : Number(body.x)
+            const y = wp ? wp.y : Number(body.y)
+            if (x == null || y == null || Number.isNaN(x) || Number.isNaN(y)) {
+              return fail(res, 400, '缺少充电目标（waypoint_id 或 x/y）')
+            }
+            const target = body.target_battery_pct != null ? Number(body.target_battery_pct) : 100
+            if (!(target > 0 && target <= 100)) return fail(res, 400, 'target_battery_pct 必须在 (0, 100]')
+            const now = new Date().toISOString()
+            s.charge = {
+              id: s.nextId(),
+              status: 'MOVING',
+              waypointId: wid,
+              x,
+              y,
+              yaw: wp ? wp.yaw : Number(body.theta) || 0,
+              target,
+              batteryAtStart: null,
+              message: '导航到充电点',
+              createdAt: now,
+              updatedAt: now,
+              finishedAt: null,
+              startedAtMs: Date.now(),
+            }
+            broadcast('charge', chargeVO(s))
+            return ok(res, chargeVO(s), 201)
+          }
+          if (seg[1] === 'active' && method === 'GET') {
+            const vo = chargeVO(s)
+            return ok(res, vo && !CHARGE_TERMINAL.includes(vo.status) ? vo : null)
+          }
+          if (seg[1] === 'cancel' && method === 'POST') {
+            if (!s.charge || CHARGE_TERMINAL.includes(s.charge.status)) {
+              return fail(res, 400, '没有进行中的充电任务')
+            }
+            s.charge.status = 'CANCELLED'
+            s.charge.message = '手动取消'
+            bumpCharge()
+            return ok(res, chargeVO(s))
           }
         }
 

@@ -125,6 +125,11 @@ public class SimAgvSsePublisher {
             // v0.3.0+ 字段（旧版机器人为 null）：业务模式与当前地图
             node.put("mode", status.mode());
             node.put("map_name", status.mapName());
+            // 电量接入字段（battery_simulator / 真机 BMS 同格式；旧版机器人为 null）
+            node.put("battery_state", status.batteryState());
+            node.put("charging", status.charging());
+            node.put("charge_connected", status.chargeConnected());
+            node.put("battery_data_valid", status.batteryDataValid());
             node.put("received_at", status.receivedAt().toString());
             node.put("age_ms", telemetry.statusAgeMs());
         } else {
@@ -140,8 +145,26 @@ public class SimAgvSsePublisher {
             node.put("y", round(pose.y()));
             node.put("yaw", round(pose.yaw()));
             node.put("yaw_deg", round(Math.toDegrees(pose.yaw())));
+            // 机器人上报的当前所在点位（/agv/pose topo_name；离开点位后为 null）
+            String topoName = telemetry.getTopoName();
+            if (topoName == null || topoName.isBlank()) {
+                node.putNull("topo_name");
+            } else {
+                node.put("topo_name", topoName);
+            }
         } else {
             root.putNull("pose");
+        }
+
+        // /odom twist（车体系速度，全向底盘含横移 linear_y）：状态栏速度显示；
+        // 未启用 /odom 订阅（odom_enabled=false）时恒为 null，前端显示 '-'
+        if (telemetry.getOdomCount() > 0) {
+            ObjectNode velocity = root.putObject("velocity");
+            velocity.put("linear_x", round(telemetry.getOdomLinearX()));
+            velocity.put("linear_y", round(telemetry.getOdomLinearY()));
+            velocity.put("angular_z", round(telemetry.getOdomAngularZ()));
+        } else {
+            root.putNull("velocity");
         }
 
         // 关节状态（舵轮转向/机械臂）：names 全量随包（10Hz 快照限频，几十字节/关节可接受）
@@ -185,6 +208,7 @@ public class SimAgvSsePublisher {
 
         root.put("msg_status", telemetry.getStatusCount());
         root.put("msg_pose", telemetry.getTfCount());
+        root.put("msg_odom", telemetry.getOdomCount());
         root.put("msg_scan1", telemetry.getScan1Count());
         root.put("msg_scan2", telemetry.getScan2Count());
         return root;

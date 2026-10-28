@@ -119,15 +119,17 @@ public class RmsProperties {
      * 机器人身份。
      * robot_code：不配置（留空）——由 RMS 注册时分配，注册后自动切换到分配值。
      * robot_sn：唯一硬件标识（RMS 去重键），跨重启不变 → RMS 按 SN 找到已有机器人走更新。
-     * 默认从固定种子自动生成 32 位 hex（模拟硬件 UUID），格式与真机一致。
+     * 配置优先：rms.robot.robot_sn（yml 直接写值，或 ${RMS_ROBOT_SN:} 环境变量占位）非空即强制覆盖；
+     * 留空才回退 {@link #defaultSn()}——注意默认值所有实例共享，多机联调会汇到同一台机器人。
      */
     public static class Robot {
+        /** 默认 SN 的固定种子：模拟一台"出厂"仿真底盘，所有实例生成相同 SN（见 {@link #defaultSn()}） */
+        private static final String DEFAULT_SN_SEED = "nav-deployer-sim-chassis-001";
+
         /** 留空 = RMS 分配（推荐） */
         private String robotCode = "";
-        /** 硬件唯一标识，跨重启不变（RMS 用此去重；改了就会创建新机器人） */
-        private String robotSn = java.util.UUID.nameUUIDFromBytes(
-                "nav-deployer-sim-chassis-001".getBytes())
-                .toString().replace("-", "");
+        /** 配置注入的 SN（已 trim）；null/blank = 未配置，getter 回退共享默认值 */
+        private String robotSn;
         private String robotName = "robot";
         /** body key 用：zioneer/{robot_type}/robot/{robot_code}/api/v1 */
         private String robotType = "qc-robot";
@@ -148,16 +150,27 @@ public class RmsProperties {
             this.robotCode = robotCode;
         }
 
+        /** 固定种子生成的默认 SN（32 位 hex，格式与真机一致；所有实例相同）。 */
+        public static String defaultSn() {
+            return java.util.UUID.nameUUIDFromBytes(DEFAULT_SN_SEED.getBytes())
+                    .toString().replace("-", "");
+        }
+
+        /** SN 是否由配置显式指定（false = 使用共享默认值，多机联调会共用同一台机器人）。 */
+        public boolean isRobotSnConfigured() {
+            return robotSn != null && !robotSn.isBlank();
+        }
+
         public String getRobotSn() {
-            return robotSn;
+            return isRobotSnConfigured() ? robotSn : defaultSn();
         }
 
         public void setRobotSn(String robotSn) {
-            // 空配置（如 ${RMS_ROBOT_SN:} 展开为空串）不应覆盖默认生成的 SN
+            // 空配置（如 ${RMS_ROBOT_SN:} 展开为空串）不覆盖：保持未配置状态，getter 回退默认 SN
             if (robotSn == null || robotSn.isBlank()) {
                 return;
             }
-            this.robotSn = robotSn;
+            this.robotSn = robotSn.trim();
         }
 
         public String getRobotName() {
@@ -305,6 +318,9 @@ public class RmsProperties {
     public static class Behavior {
         /** 质检占位执行时长（仿真机械臂就位前的模拟时长） */
         private long inspectionDurationMs = 8000;
+        /** 机械臂阶段到位等待的墙钟总时长下限：arm_move 时长是仿真时间，宿主机过载 RTF<1 时
+         *  需按墙钟给足（RTF 0.1 时 6 仿真秒≈60 墙钟秒），可按机器负载调整 */
+        private long armPhaseWallClockTimeoutMs = 60000;
         /** 行为树 action 占位执行时长（fetch_cable 等无专用执行器的模板） */
         private long actionDurationMs = 3000;
         /** 质检模拟结果：OK / NG */
@@ -326,6 +342,14 @@ public class RmsProperties {
 
         public void setInspectionDurationMs(long inspectionDurationMs) {
             this.inspectionDurationMs = inspectionDurationMs;
+        }
+
+        public long getArmPhaseWallClockTimeoutMs() {
+            return armPhaseWallClockTimeoutMs;
+        }
+
+        public void setArmPhaseWallClockTimeoutMs(long armPhaseWallClockTimeoutMs) {
+            this.armPhaseWallClockTimeoutMs = armPhaseWallClockTimeoutMs;
         }
 
         public long getActionDurationMs() {

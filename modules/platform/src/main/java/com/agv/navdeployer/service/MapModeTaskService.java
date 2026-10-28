@@ -65,6 +65,13 @@ public class MapModeTaskService {
     private final Deque<MapModeStateMachine> history = new ArrayDeque<>();
     private MapModeStateMachine current;
 
+    /**
+     * 本次建图会话开始前机器人所在地图（start_mapping 受理时快照）。
+     * 放弃建图（DISCARD_MAPPING）的回载目标优先用它；为空（冷启动建图）时回退 DB ACTIVE。
+     * 每次 start_mapping 覆盖记录，天然跟随最新一次建图会话。
+     */
+    private volatile String mappingPreMapName;
+
     /** 保存成功后的栅格同步线程（get_map 数 MB 不阻塞调度线程）。 */
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "map-mode-worker");
@@ -134,6 +141,7 @@ public class MapModeTaskService {
     /** 进入在线建图（调 /agv/start_mapping，停托管定位、拉起建图；遥控不受影响）；未定位冷启动同样受理。 */
     public MapModeTaskVO startMapping() {
         requireIdleAndGates(MODE_NAVIGATION, true);
+        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
 
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.START_MAPPING,
@@ -149,6 +157,64 @@ public class MapModeTaskService {
         }
         if (!result.success()) {
             throw new IllegalStateException("机器人拒绝建图: " + result.message());
+        }
+
+        // 快照建图前地图（放弃建图的回载目标；冷启动建图为 null——无旧图可回）
+        mappingPreMapName = status == null ? null : status.mapName();
+        if (mappingPreMapName != null && mappingPreMapName.isBlank()) {
+            mappingPreMapName = null;
+        }
+
+        return registerAndPublish(machine);
+    }
+
+    /**
+     * 放弃建图：不保存新图，机器人退出建图并回载建图前地图恢复定位。
+     * 实现：调 /agv/load_map(旧图)（bridge 终止建图轨迹、加载旧图 pbstream、重启定位），
+     * 成功条件与切图同构（mode 回 NAVIGATION 且 map_name=旧图），成功后 DB ACTIVE 回旧图。
+     * 旧图来源：start_mapping 时的快照优先；快照缺失（服务重启/外部进入建图）回退 DB ACTIVE；
+     * 都没有（冷启动建图）无图可回，拒绝放弃。
+     */
+    public MapModeTaskVO discardMapping() {
+        requireIdleAndGates("MAPPING");
+
+        // 回载目标：本会话快照 → DB ACTIVE 兜底
+        String target = mappingPreMapName;
+        Long targetNavMapId = null;
+        if (target == null) {
+            NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
+                    .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE).last("LIMIT 1"));
+            if (active != null) {
+                target = active.getRobotMapName() != null && !active.getRobotMapName().isBlank()
+                        ? active.getRobotMapName() : active.getMapName();
+                targetNavMapId = active.getId();
+            }
+        } else {
+            NavMap match = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
+                    .eq(NavMap::getRobotMapName, target)
+                    .orderByDesc(NavMap::getId).last("LIMIT 1"));
+            targetNavMapId = match == null ? null : match.getId();
+        }
+        if (target == null || target.isBlank()) {
+            throw new IllegalStateException(
+                    "建图前没有已定位地图（冷启动建图），无旧图可回，请使用「完成建图并保存」");
+        }
+        requireValidRobotMapName(target);
+
+        MapModeStateMachine machine = new MapModeStateMachine(
+                idSequence.incrementAndGet(), MapModeStateMachine.Type.DISCARD_MAPPING,
+                targetNavMapId, target, target,
+                Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
+
+        MapServiceResult result;
+        try {
+            result = dispatcher.loadMap(target).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new IllegalStateException("load_map（放弃建图回旧图）调用失败: " + cause.getMessage(), cause);
+        }
+        if (!result.success()) {
+            throw new IllegalStateException("机器人拒绝放弃建图回载旧图 " + target + ": " + result.message());
         }
 
         return registerAndPublish(machine);
@@ -299,17 +365,19 @@ public class MapModeTaskService {
     private void publishAndFinalize(MapModeStateMachine machine) {
         if (machine.getStatus() == MapModeStateMachine.Status.SUCCEEDED
                 && machine.getNavMapId() != null) {
-            // SWITCH_MAP / SAVE_MAP 成功后对齐档案（SAVE_MAP 的 navMapId 由同步阶段回填前为 null，
-            // 激活放在同步完成处；SWITCH_MAP 在此直接激活）
-            if (machine.getType() == MapModeStateMachine.Type.SWITCH_MAP) {
+            // SWITCH_MAP / DISCARD_MAPPING 成功后对齐档案（SAVE_MAP 的 navMapId 由同步阶段回填前为 null，
+            // 激活放在同步完成处；SWITCH_MAP 在此直接激活；DISCARD_MAPPING 机器人已回旧图，同步激活回旧图）
+            if (machine.getType() == MapModeStateMachine.Type.SWITCH_MAP
+                    || machine.getType() == MapModeStateMachine.Type.DISCARD_MAPPING) {
                 try {
                     navMapService.activate(machine.getNavMapId());
-                    log.info("switch map task succeeded: id={}, map={} activated as ACTIVE",
-                            machine.getId(), machine.getMapName());
+                    log.info("{} task succeeded: id={}, map={} activated as ACTIVE",
+                            machine.getType(), machine.getId(), machine.getMapName());
                 } catch (Exception e) {
-                    log.error("activate map {} failed after switch success: {}",
-                            machine.getNavMapId(), e.getMessage(), e);
-                    machine.fail("切图已成功，但激活地图档案失败: " + e.getMessage());
+                    log.error("activate map {} failed after {} success: {}",
+                            machine.getNavMapId(), machine.getType(), e.getMessage(), e);
+                    machine.fail((machine.getType() == MapModeStateMachine.Type.DISCARD_MAPPING
+                            ? "放弃建图已回旧图" : "切图已成功") + "，但激活地图档案失败: " + e.getMessage());
                 }
             }
         } else if (machine.getStatus() == MapModeStateMachine.Status.FAILED) {

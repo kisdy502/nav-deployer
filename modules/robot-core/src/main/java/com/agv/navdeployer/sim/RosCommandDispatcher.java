@@ -338,11 +338,27 @@ public class RosCommandDispatcher implements RosbridgeHandler {
             return;
         }
         JsonNode values = message.path("values");
+        // Older rosbridge versions wrap GoalStatus and the action result in values.
+        JsonNode status = message.has("status") ? message.path("status") : values.path("status");
+        JsonNode result = values.has("result") ? values.path("result") : values;
+        String detail = result.isTextual() ? result.asText() : result.path("message").asText("");
+        if (detail.isBlank()) {
+            detail = message.path("message").asText("");
+        }
+        int goalStatus = status.asInt(-1);
+        if (goalStatus != 4) {
+            // Keep rejection/transport errors visible even when WS message logging is disabled.
+            log.warn("follow_edge result: goal={}, payload={}", goalId, message);
+            if (detail.isBlank()) {
+                detail = "机器人未正常完成导航，请检查机器人 action 服务（result="
+                        + message.path("result") + "，status=" + status + "）";
+            }
+        }
         listener.onResult(
-                message.path("status").asInt(-1),
-                values.path("success").asBoolean(false),
-                values.path("message").asText(""),
-                values.path("command_id").asText(""));
+                goalStatus,
+                result.path("success").asBoolean(false),
+                detail,
+                result.path("command_id").asText(""));
     }
 
     private void completeService(JsonNode message) {

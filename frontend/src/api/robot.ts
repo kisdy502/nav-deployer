@@ -24,9 +24,19 @@ export const setArmHome = (home: number[]) =>
 
 // ---------- 运营状态（停用/恢复） ----------
 
+/** 地图一致性（机器人当前加载地图 vs 上位机导航基准图）；state: ALIGNED / MISMATCH / UNKNOWN */
+export interface MapAlignStatus {
+  state: 'ALIGNED' | 'MISMATCH' | 'UNKNOWN'
+  robot_map_name: string
+  ref_map_name: string
+  ref_source: string
+  message: string
+}
+
 export interface OperationalStatus {
   decommissioned: boolean
   reason: string
+  map_align?: MapAlignStatus
 }
 
 export const getOperational = () => get<OperationalStatus>('/robot/operational')

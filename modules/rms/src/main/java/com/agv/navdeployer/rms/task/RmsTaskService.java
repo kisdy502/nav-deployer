@@ -43,12 +43,14 @@ public class RmsTaskService {
     private final com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher;
     private final com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
-    /** V2 路径规划（智能选择路线导航 vs 直线） */
-    private final com.agv.navdeployer.metadata.service.RoutePlanService routePlanService;
-    private final com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper;
-    private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
+    /** 智能导航（路线优先，回落直线；navigate / return_home 用） */
+    private final com.agv.navdeployer.service.SmartNavigationService smartNavigation;
+    /** 充电任务编排（charge / replace_battery 用；与前端「去充电」共用底层链路） */
+    private final com.agv.navdeployer.service.ChargeService chargeService;
     /** 机器人运营状态（停用/恢复）：停用时拒绝新任务 */
     private final com.agv.navdeployer.service.RobotOperationalService operationalService;
+    /** 地图一致性闸门（可空：独立装配无此 Bean 时跳过；机器人地图 vs 导航基准图，不一致时错误透传 RMS） */
+    private final com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard;
 
     /** 执行与轮询线程：与 RMS query 回调线程隔离，保证 queryable 快速回复 */
     private final ScheduledExecutorService worker =
@@ -71,10 +73,10 @@ public class RmsTaskService {
                           com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher,
                           com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry,
                           com.agv.navdeployer.sim.SimAgvProperties simProps,
-                          com.agv.navdeployer.metadata.service.RoutePlanService routePlanService,
-                          com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper,
-                          com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper,
-                          com.agv.navdeployer.service.RobotOperationalService operationalService) {
+                           com.agv.navdeployer.service.SmartNavigationService smartNavigation,
+                           com.agv.navdeployer.service.ChargeService chargeService,
+                           com.agv.navdeployer.service.RobotOperationalService operationalService,
+                           com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.stateView = stateView;
@@ -84,10 +86,24 @@ public class RmsTaskService {
         this.armDispatcher = armDispatcher;
         this.armTelemetry = armTelemetry;
         this.simProps = simProps;
-        this.routePlanService = routePlanService;
-        this.v2MapMapper = v2MapMapper;
-        this.v2WaypointMapper = v2WaypointMapper;
+        this.smartNavigation = smartNavigation;
+        this.chargeService = chargeService;
         this.operationalService = operationalService;
+        this.mapAlignmentGuard = mapAlignmentGuard;
+    }
+
+    /** 地图一致性前置闸门：机器人地图 ≠ 导航基准图时拒绝并透传原因（同名点位坐标错位会乱撞）。 */
+    private BodyReply mapGate() {
+        if (mapAlignmentGuard == null) {
+            return null;
+        }
+        try {
+            mapAlignmentGuard.requireAligned();
+            return null;
+        } catch (IllegalStateException exception) {
+            log.warn("rms task rejected by map alignment gate: {}", exception.getMessage());
+            return BodyReply.failure(409, exception.getMessage());
+        }
     }
 
     /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：行为树 action 任务不拦。 */
@@ -166,6 +182,7 @@ public class RmsTaskService {
         return List.of(
                 template("rmf_navigate", "navigate"),
                 template("quality_inspection", "action"),
+                template("fetch_cable", "action"),
                 template("charge", "action"),
                 template("replace_battery", "action"),
                 template("return_home", "action"),
@@ -223,6 +240,10 @@ public class RmsTaskService {
         if (task.status() == RmsTaskStatus.RUNNING) {
             return BodyReply.failure(409, "task already running");
         }
+        BodyReply mapRejected = mapGate();
+        if (mapRejected != null) {
+            return mapRejected;
+        }
         BodyReply armRejected = armGate(task);
         if (armRejected != null) {
             return armRejected;
@@ -257,6 +278,10 @@ public class RmsTaskService {
         if (task.status() != RmsTaskStatus.PAUSED) {
             return BodyReply.failure(409, "task not paused (status=" + task.status().wireName() + ")");
         }
+        BodyReply mapRejected = mapGate();
+        if (mapRejected != null) {
+            return mapRejected;
+        }
         BodyReply armRejected = armGate(task);
         if (armRejected != null) {
             return armRejected;
@@ -278,9 +303,68 @@ public class RmsTaskService {
         logRmsCommand("task/stop", task);
         registry.transition(taskId, RmsTaskStatus.CANCELED);
         task.setMessage("task cancelled");
+        registry.save(task);
         cancelInternalMove(task);
         resultReporter.report(task);
         return BodyReply.success("stopped", task.toInfoReport());
+    }
+
+    // ==================== 运维查询/复位（任务管理页 REST 用） ====================
+
+    /** 唯一在途任务（RUNNING/PAUSED），无则 null。 */
+    public RmsTaskVO activeTaskView() {
+        RmsTask active = registry.activeTask();
+        return active == null ? null : RmsTaskVO.from(active);
+    }
+
+    /** 执行历史（DB 记录，新→旧；含本会话与跨重启）。 */
+    public List<RmsTaskVO> listTasks(int limit) {
+        return registry.history(limit).stream()
+                .map(record -> new RmsTaskVO(
+                        record.getTaskId(), record.getActionId(), record.getTaskType(),
+                        record.getTaskTemplateType(), record.getTemplateCode(), record.getTemplateId(),
+                        parseParameters(record.getParameters()), record.getStatus(),
+                        RmsTaskStatus.fromWire(record.getStatus()).actionStatusCode(),
+                        record.getMessage(), record.getDestX(), record.getDestY(), record.getDestYaw(),
+                        record.getInternalMoveTaskId(), record.getInternalChargeTaskId(),
+                        record.getCreatedAt(), record.getStartedAt(), record.getFinishedAt()))
+                .toList();
+    }
+
+    /**
+     * 人工复位：把所有非终态任务强制收口为 canceled（取消内部移动/充电、上报 RMS），
+     * 释放 busy 闸门让上层可继续下发新任务。适用：任务卡中间态、状态错乱自愈。
+     */
+    public synchronized List<RmsTaskVO> resetInFlight(String reason) {
+        List<RmsTask> inFlight = registry.all().stream()
+                .filter(task -> !task.status().terminal())
+                .toList();
+        for (RmsTask task : inFlight) {
+            log.warn("rms task {} manual reset from ops page: status={} reason={}",
+                    task.taskId(), task.status(), reason);
+            cancelInternalMove(task);
+            task.setMessage(reason);
+            registry.transition(task.taskId(), RmsTaskStatus.CANCELED);
+            try {
+                resultReporter.report(task);
+            } catch (Exception exception) {
+                log.warn("rms task {} reset result_report failed: {}", task.taskId(), exception.getMessage());
+            }
+        }
+        return inFlight.stream().map(RmsTaskVO::from).toList();
+    }
+
+    private Map<String, Object> parseParameters(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                    });
+        } catch (Exception exception) {
+            return Map.of();
+        }
     }
 
     public BodyReply taskStatus(String taskId) {
@@ -314,12 +398,19 @@ public class RmsTaskService {
             simulateInspection(task);
             return;
         }
-        // 行为树 action 任务（fetch_cable 等）：协议不携带 destination，占位仿真执行
+        // 行为树 action 任务（fetch_cable 取放线束等）：协议不携带 destination，
+        // 占位仿真执行（固定延时后 COMPLETED，仅上报简单状态信封，无 result_report）
         if (task.isArmGateExempt()) {
             simulateAction(task);
             return;
         }
-        // navigate / charge / replace_battery / return_home 统一走移动
+        // charge / replace_battery：走充电任务编排（导航到桩 → 开始充电 → 充到目标电量），
+        // 与前端「去充电」共用 ChargeService 底层链路
+        if (task.isTemplate("charge") || task.isTemplate("replace_battery")) {
+            executeCharge(task);
+            return;
+        }
+        // navigate / return_home 统一走移动
         TaskCommandRequest.Destination destination = resolveDestination(task);
         if (destination == null) {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, "no destination for task (template=" + task.taskTemplateType()
@@ -328,8 +419,10 @@ public class RmsTaskService {
         }
         task.setDestination(destination);
         try {
-            MoveTaskVO moveTask = createOptimizedMoveTask(taskId, destination);
+            MoveTaskVO moveTask = smartNavigation.createOptimizedMoveTask(taskId,
+                    destination.x(), destination.y(), destination.yaw());
             task.setInternalMoveTaskId(moveTask.getId());
+            registry.save(task);
             log.info("rms task {} dispatched internal move task {} (type={}) -> ({}, {}, {}rad)",
                     taskId, moveTask.getId(), moveTask.getTaskType(),
                     destination.x(), destination.y(), destination.yaw());
@@ -341,112 +434,83 @@ public class RmsTaskService {
     }
 
     /**
-     * 智能导航：RMS 只给目标坐标，上位机自主选择最优执行方式。
-     * 优先尝试路线导航（V2 已部署路线图 Dijkstra 规划，走曲线），不可达回落直线 GOAL。
-     * 不改变 RMS 接口，对上层透明。
+     * 充电任务执行：目标 = charge-pose 配置（缺省回退报文 destination），
+     * 目标电量 = parameters.target_battery_pct（缺省用 charge.target_battery_pct 配置，默认 100）。
      */
-    private MoveTaskVO createOptimizedMoveTask(String taskId, TaskCommandRequest.Destination destination) {
-        // 1. 尝试路线导航
-        MoveTaskVO routeTask = tryRouteNavigation(taskId, destination);
-        if (routeTask != null) {
-            return routeTask;
+    private void executeCharge(RmsTask task) {
+        TaskCommandRequest.Destination destination = resolveDestination(task);
+        if (destination == null) {
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, "no destination for charge task（charge-pose 未配置且 parameters.destination 缺失）");
+            return;
         }
-        // 2. 回落直线
-        return moveTaskService.create(new MoveTaskCreateDTO(
-                "GOAL", null, null,
-                destination.x(), destination.y(), destination.yaw(),
-                null, Boolean.TRUE));
-    }
-
-    /** 目标点位与机器人最近点位之间的匹配距离阈值（米） */
-    private static final double WAYPOINT_MATCH_RADIUS = 1.5;
-
-    /**
-     * 路线导航尝试：找当前 PUBLISHED 地图 → 匹配目标/机器人最近点位 → Dijkstra 规划。
-     * 规划结果为单条路线时用 FOLLOW_PATH（走曲线），多条时也用 FOLLOW_PATH（取首段），
-     * 无可路线返回 null 回落 GOAL。
-     */
-    private MoveTaskVO tryRouteNavigation(String taskId, TaskCommandRequest.Destination destination) {
+        task.setDestination(destination);
         try {
-            // 当前 PUBLISHED 的 V2 地图
-            var publishedMap = v2MapMapper.selectOne(
-                    com.baomidou.mybatisplus.core.toolkit.Wrappers.lambdaQuery(
-                                    com.agv.navdeployer.metadata.entity.MapMeta.class)
-                            .eq(com.agv.navdeployer.metadata.entity.MapMeta::getStatus,
-                                    com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED)
-                            .last("LIMIT 1"));
-            if (publishedMap == null) {
-                return null;
-            }
-            // 加载该地图全部点位
-            var waypoints = v2WaypointMapper.selectList(
-                    com.baomidou.mybatisplus.core.toolkit.Wrappers.lambdaQuery(
-                                    com.agv.navdeployer.metadata.entity.MapWaypoint.class)
-                            .eq(com.agv.navdeployer.metadata.entity.MapWaypoint::getMapId,
-                                    publishedMap.getId()));
-            if (waypoints.isEmpty()) {
-                return null;
-            }
-            // 目标最近点位
-            var targetWp = nearestWaypoint(waypoints, destination.x(), destination.y());
-            if (targetWp == null || targetWp.distance > WAYPOINT_MATCH_RADIUS) {
-                log.debug("rms navigate: target ({},{}) not near any waypoint, fallback GOAL",
-                        destination.x(), destination.y());
-                return null;
-            }
-            // 机器人当前位姿 → 最近点位
-            var pose = armTelemetry.getMapPose();
-            if (pose == null) {
-                return null;
-            }
-            var robotWp = nearestWaypoint(waypoints, pose.x(), pose.y());
-            if (robotWp == null || robotWp.distance > WAYPOINT_MATCH_RADIUS * 2) {
-                return null; // 机器人不在任何点位附近，无法路线导航
-            }
-            // Dijkstra 路径规划
-            var plan = routePlanService.plan(publishedMap.getId(), robotWp.waypoint.getId(), targetWp.waypoint.getId());
-            if (!plan.found() || plan.steps().isEmpty()) {
-                log.debug("rms navigate: no route from {} to {}, fallback GOAL",
-                        robotWp.waypoint.getWaypointCode(), targetWp.waypoint.getWaypointCode());
-                return null;
-            }
-            // 提取不重复的路线 ID
-            var pathIds = plan.steps().stream()
-                    .filter(s -> !s.isCrossFloor() && s.pathId() > 0)
-                    .map(com.agv.navdeployer.metadata.service.RoutePlanService.RouteStep::pathId)
-                    .distinct()
-                    .toList();
-            if (pathIds.isEmpty()) {
-                return null;
-            }
-            // 单条或多条路线都取第一条执行（机器人会走完整条链，多段中转由前端后续触发）
-            Long pathId = pathIds.get(0);
-            log.info("rms task {} using route navigation: pathId={}, steps={}, totalCost={}s",
-                    taskId, pathId, plan.steps().size(), String.format("%.1f", plan.totalCost()));
-            return moveTaskService.create(new MoveTaskCreateDTO(
-                    "FOLLOW_PATH", null, pathId,
-                    null, null, null, null, null));
-        } catch (Exception e) {
-            log.debug("rms route navigation failed, fallback GOAL: {}", e.getMessage());
-            return null;
+            com.agv.navdeployer.vo.ChargeTaskVO chargeTask = chargeService.start(
+                    new com.agv.navdeployer.service.ChargeService.ChargeCommand(
+                            "rms:" + task.taskId(), null,
+                            destination.x(), destination.y(), destination.yaw(),
+                            targetBatteryOf(task)));
+            task.setInternalChargeTaskId(chargeTask.id());
+            registry.save(task);
+            log.info("rms task {} dispatched charge task {} -> ({}, {}, {}rad, target={}%)",
+                    task.taskId(), chargeTask.id(), destination.x(), destination.y(),
+                    destination.yaw(), chargeTask.targetBatteryPct());
+            scheduleChargePoll(task.taskId(), chargeTask.id());
+        } catch (Exception exception) {
+            // ChargeService/MoveTaskService 的闸门（连接/定位/模式/占用/已在充电）在这里拦截
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());
         }
     }
 
-    private record NearestWaypoint(com.agv.navdeployer.metadata.entity.MapWaypoint waypoint, double distance) {
-    }
-
-    private static NearestWaypoint nearestWaypoint(
-            List<com.agv.navdeployer.metadata.entity.MapWaypoint> waypoints, double x, double y) {
-        com.agv.navdeployer.metadata.entity.MapWaypoint best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (var wp : waypoints) {
-            double dist = Math.hypot(wp.getX() - x, wp.getY() - y);
-            if (dist < bestDist) {
-                best = wp;
-                bestDist = dist;
+    /** RMS 充电目标电量：parameters.target_battery_pct / target_battery / target_soc（可缺省）。 */
+    private Double targetBatteryOf(RmsTask task) {
+        for (String key : new String[]{"target_battery_pct", "target_battery", "target_soc"}) {
+            String text = task.parameterText(key);
+            if (text != null && !text.isBlank()) {
+                try {
+                    return Double.parseDouble(text.trim());
+                } catch (NumberFormatException ignored) {
+                    log.warn("rms task {} parameter {}={} 不是数字，忽略", task.taskId(), key, text);
+                }
             }
         }
-        return best != null ? new NearestWaypoint(best, bestDist) : null;
+        return null;
+    }
+
+    private void scheduleChargePoll(String taskId, Long chargeTaskId) {
+        worker.schedule(() -> pollChargeTask(taskId, chargeTaskId), MOVE_POLL_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void pollChargeTask(String taskId, Long chargeTaskId) {
+        RmsTask task = registry.find(taskId).orElse(null);
+        // 任务被 pause/stop/删除：静默停止轮询（终态迁移由指令入口完成）
+        if (task == null || task.status() != RmsTaskStatus.RUNNING
+                || !java.util.Objects.equals(task.internalChargeTaskId(), chargeTaskId)) {
+            return;
+        }
+        com.agv.navdeployer.vo.ChargeTaskVO chargeTask = chargeService.get(chargeTaskId);
+        if (chargeTask == null) {
+            // 充电任务实例被覆盖/消失（理论不该发生）：按失败收口
+            fail(task, RmsTaskStatus.AGV_NODE_FAILED, "内部充电任务丢失: id=" + chargeTaskId);
+            return;
+        }
+        switch (chargeTask.status()) {
+            case "SUCCEEDED" -> {
+                registry.transition(taskId, RmsTaskStatus.COMPLETED);
+                resultReporter.report(registry.find(taskId).orElse(task));
+            }
+            case "FAILED" -> fail(task, RmsTaskStatus.AGV_NODE_FAILED,
+                    chargeTask.message() == null || chargeTask.message().isBlank()
+                            ? "charge task failed" : chargeTask.message());
+            case "CANCELLED" -> {
+                // 充电被打断/取消但 RMS 任务仍在跑（如新移动任务顶掉、底层手动取消）
+                task.setMessage(chargeTask.message() == null || chargeTask.message().isBlank()
+                        ? "charge task cancelled" : chargeTask.message());
+                registry.transition(taskId, RmsTaskStatus.CANCELED);
+                resultReporter.report(registry.find(taskId).orElse(task));
+            }
+            default -> scheduleChargePoll(taskId, chargeTaskId);
+        }
     }
 
     private TaskCommandRequest.Destination resolveDestination(RmsTask task) {
@@ -496,7 +560,28 @@ public class RmsTaskService {
             case "FAILED", "TIMEOUT" -> fail(task, RmsTaskStatus.AGV_NODE_FAILED,
                     moveError != null && !moveError.isBlank()
                             ? moveError : "move task " + moveStatus.toLowerCase());
-            default -> scheduleMovePoll(taskId, moveTaskId);
+            case "CANCELLED" -> {
+                // 内部移动被取消但 RMS 任务仍在跑（前端手动取消/被抢占；pause/stop 路径不会走到这里）：
+                // 必须收口上报，否则任务永远 RUNNING，后续所有 task/start 被 busy 闸门拒绝
+                log.warn("rms task {} internal move task {} cancelled by external command, abort rms task",
+                        taskId, moveTaskId);
+                task.setMessage(moveError != null && !moveError.isBlank() ? moveError
+                        : "内部移动任务 " + moveTaskId + " 被取消（非 RMS 指令），任务中止");
+                registry.transition(taskId, RmsTaskStatus.CANCELED);
+                resultReporter.report(registry.find(taskId).orElse(task));
+            }
+            default -> {
+                // 防御：非活跃状态一律收口（避免未知终态导致无限轮询），活跃状态继续等
+                if (!"CREATED".equals(moveStatus) && !"DISPATCHED".equals(moveStatus)
+                        && !"EXECUTING".equals(moveStatus)) {
+                    log.warn("rms task {} internal move task {} unexpected status {}, abort rms task",
+                            taskId, moveTaskId, moveStatus);
+                    fail(task, RmsTaskStatus.AGV_NODE_FAILED,
+                            "内部移动任务异常状态: " + moveStatus);
+                    return;
+                }
+                scheduleMovePoll(taskId, moveTaskId);
+            }
         }
     }
 
@@ -599,7 +684,11 @@ public class RmsTaskService {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, "arm " + label + " 下发失败: " + exception.getMessage());
             return false;
         }
-        long deadline = System.currentTimeMillis() + (long) (ARM_PHASE_SEC * 1000) + 8000;
+        // arm_move 时长是仿真时间；宿主机过载时 Gazebo RTF<1（如 0.3 时 6 仿真秒≈20 墙钟秒），
+        // 到位等待必须按墙钟给足余量，否则仿真侧还在走就被判超时（AGV_NODE_FAILED 到位超时）。
+        long deadline = System.currentTimeMillis() + Math.max(
+                (long) (ARM_PHASE_SEC * 1000) + 8000,
+                props.getBehavior().getArmPhaseWallClockTimeoutMs());
         while (System.currentTimeMillis() < deadline) {
             if (!dwell(task, 200)) {
                 return false; // 暂停/取消
@@ -664,15 +753,24 @@ public class RmsTaskService {
 
     private void cancelInternalMove(RmsTask task) {
         Long moveTaskId = task.internalMoveTaskId();
-        if (moveTaskId == null) {
-            return;
+        if (moveTaskId != null) {
+            try {
+                moveTaskService.cancel(moveTaskId);
+            } catch (Exception exception) {
+                // 已完成/已取消的内部任务会抛异常，属正常
+                log.debug("cancel internal move task {} for rms task {}: {}",
+                        moveTaskId, task.taskId(), exception.getMessage());
+            }
         }
-        try {
-            moveTaskService.cancel(moveTaskId);
-        } catch (Exception exception) {
-            // 已完成/已取消的内部任务会抛异常，属正常
-            log.debug("cancel internal move task {} for rms task {}: {}",
-                    moveTaskId, task.taskId(), exception.getMessage());
+        Long chargeTaskId = task.internalChargeTaskId();
+        if (chargeTaskId != null) {
+            try {
+                chargeService.cancel("rms task pause/stop: " + task.taskId());
+            } catch (Exception exception) {
+                // 充电任务已终态时抛异常，属正常
+                log.debug("cancel internal charge task {} for rms task {}: {}",
+                        chargeTaskId, task.taskId(), exception.getMessage());
+            }
         }
     }
 

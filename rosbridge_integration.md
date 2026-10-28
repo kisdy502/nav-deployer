@@ -141,13 +141,14 @@ flowchart LR
 
 ### 3.1 业务接口总表
 
-`agv_nav_server` 是 rosbridge 架构下的「瘦节点」，对外只有 3 个业务接口 + 1 条 TF：
+`agv_nav_server` 是 rosbridge 架构下的「瘦节点」，对外只有 4 个业务接口 + 1 条 TF：
 
 | 接口 | 类型 | 方向 | 说明 |
 |---|---|---|---|
 | `/agv/follow_edge` | action（`agv_bridge_v2_interfaces/action/FollowEdge`） | 下发 | **移动控制唯一入口**：直线 / 贝塞尔曲线 / 倒车，带指令 ID 对账、400ms 位姿反馈、可取消 |
 | `/agv/set_control` | service（`agv_bridge_v2_interfaces/srv/SetControl`） | 下发 | `start`（恢复接单）/ `stop`（停车+暂停接单）/ `reset`（复位） |
-| `/agv/status` | topic（`agv_bridge_v2_interfaces/msg/AgvStatus`，1Hz） | 上报 | 业务状态（含「定位是否收敛」门控） |
+| `/agv/set_charging` | service（`std_srvs/srv/SetBool`） | 下发 | 充电控制：`data=true` 开始充电 / `data=false` 停止充电；响应 `success` 仅代表操作受理，充电真值以 `/agv/status` 遥测（`charging`/`charge_connected`/`battery_data_valid`）为准 |
+| `/agv/status` | topic（`agv_bridge_v2_interfaces/msg/AgvStatus`，1Hz） | 上报 | 业务状态（含「定位是否收敛」门控与电量/充电字段，见 4.1） |
 | TF `map → AGV001/base_link` | tf（10Hz） | 上报 | 机器人全局位姿（走 `/tf` 话题透出） |
 
 ### 3.2 原生话题透传（白名单内）
@@ -185,14 +186,24 @@ bridge 未加工、rosbridge 直接透传的标准话题：
   "header":{"stamp":{"sec":1772445676,"nanosec":0},"frame_id":"map"},
   "agv_id":"AGV001",
   "state":"EXECUTING",
-  "battery":100.0,
+  "battery":65.0,
+  "battery_state":"CHARGING",
+  "charging":true,
+  "charge_connected":true,
+  "battery_data_valid":true,
   "pose_initialized":true,
   "active_command_id":"move_0ca1e7b0-9a9f-470e-9a16-10035ac4237c",
-  "active_node_id":"I006"
+  "active_node_id":"I006",
+  "mode":"NAVIGATION",
+  "map_name":"map1025L"
 }}
 ```
 
 `state` 取值：`IDLE / PRE_ROTATING / EXECUTING / BACKING_UP / END_ROTATING / COMPLETED / FAILED / CANCELLED / STOPPED`。
+电量字段（battery_simulator 节点上报，后续真机换 BMS 数据源、格式不变）：
+`battery` 电量百分比；`battery_state` 电池状态（如 `CHARGING` / `DISCHARGING` / `FULL`）；
+`charging` 是否充电中；`charge_connected` 充电桩是否对接；`battery_data_valid` 电量数据是否有效
+（false = 电池节点未就绪，上位机应显示占位而非数值）。
 `pose_initialized=false` 时**不要下发导航指令**（节点会直接 abort）。
 该话题使用 `transient_local` QoS：rosbridge 的订阅会持续收到 1Hz 数据流，客户端接入后最多等一个周期即可拿到状态。
 
@@ -679,7 +690,9 @@ launch 里已配好，这里说明为什么（`agv_rosbridge.launch.py`）：
 
 ### AgvStatus（/agv/status）
 `header` · `agv_id:string` · `state:string`（见 4.1 枚举）· `battery:float64` ·
-`pose_initialized:bool` · `active_command_id:string` · `active_node_id:string`
+`battery_state:string` · `charging:bool` · `charge_connected:bool` · `battery_data_valid:bool` ·
+`pose_initialized:bool` · `active_command_id:string` · `active_node_id:string` ·
+`mode:string` · `map_name:string`
 
 ### FollowEdge action（/agv/follow_edge）
 - **Goal**：`command_id` `node_id` `x` `y` `theta` `edge_id` `edge_type`

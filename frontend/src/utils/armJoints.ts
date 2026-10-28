@@ -88,8 +88,12 @@ export function armRoleOf(name: string): ArmRole | null {
 
 /**
  * 该侧臂的 [关节名, 角度] 列表（按名排序，与 arm_move 的 joints 顺序约定一致）。
- * 双臂按 arm+side 匹配；无匹配时回退单臂 profile（ur5e_*_joint），左右都指向同一物理臂。
+ * 双臂按 arm+side 匹配；无匹配时回退单臂 profile（UR5e 六主轴），左右都指向同一物理臂。
+ * 注意：单臂兜底用六主轴白名单——ur5e_*_joint 通配会把夹爪（gripper）等附加关节
+ * 误收进来，其角色无法识别会让归位判定恒为「展开」。
  */
+const SINGLE_ARM_JOINT = /^ur5e_(shoulder_pan|shoulder_lift|elbow|wrist_1|wrist_2|wrist_3)_joint$/
+
 export function armJointPairs(
   joints: { name: string[]; position: number[] } | null,
   side: 'left' | 'right',
@@ -103,7 +107,7 @@ export function armJointPairs(
   if (pairs.length === 0) {
     for (let i = 0; i < joints.name.length && i < joints.position.length; i++) {
       const n = joints.name[i]
-      if (n.startsWith('ur5e_') && n.endsWith('_joint')) pairs.push([n, joints.position[i]])
+      if (SINGLE_ARM_JOINT.test(n)) pairs.push([n, joints.position[i]])
     }
   }
   return pairs.sort((a, b) => a[0].localeCompare(b[0]))

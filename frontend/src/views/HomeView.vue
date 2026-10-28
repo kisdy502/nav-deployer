@@ -10,7 +10,9 @@ import {
   OfficeBuilding,
   Operation,
   ScaleToOriginal,
+  Setting,
   Share,
+  Tickets,
 } from '@element-plus/icons-vue'
 import MapCanvas from '@/components/editor/MapCanvas.vue'
 import MapCanvas2 from '@/components/editor2/MapCanvas2.vue'
@@ -439,6 +441,8 @@ onBeforeUnmount(closeCtx)
         <el-button :icon="Odometer" @click="toggleMappingPanel">建图</el-button>
         <el-button :icon="Operation" @click="teleopVisible = true">遥控器</el-button>
         <el-button :icon="OfficeBuilding" type="primary" plain @click="manage2Visible = true">地图管理</el-button>
+        <el-button :icon="Tickets" plain @click="router.push('/tasks')">任务</el-button>
+        <el-button :icon="Setting" plain @click="router.push('/config')">配置</el-button>
       </div>
     </header>
 

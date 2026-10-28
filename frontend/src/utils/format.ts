@@ -62,6 +62,7 @@ export const MAP_TASK_TYPE_LABEL: Record<MapTaskType, string> = {
   SWITCH_MAP: '切换地图',
   START_MAPPING: '开始建图',
   SAVE_MAP: '保存地图',
+  DISCARD_MAPPING: '放弃建图',
 }
 
 export const MAP_TASK_STATUS_TAG: Record<MapTaskStatus, { label: string; type: 'success' | 'info' | 'warning' | 'danger' }> = {

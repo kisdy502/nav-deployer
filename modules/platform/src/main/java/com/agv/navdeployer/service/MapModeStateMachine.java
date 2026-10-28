@@ -22,6 +22,12 @@ import java.util.Optional;
  *   --mode=NAVIGATION 且 map_name=目标--> SUCCEEDED（成功后服务层自动同步栅格入库）
  *   异常：RELOCIZING 后回到 NAVIGATION 但不是目标 / 超时（保存/转换失败时机器人维持 MAPPING，只能超时兜底）
  *
+ * DISCARD_MAPPING（放弃建图，/agv/load_map 回建图前地图）：
+ *   与 SAVE_MAP 同构——load_map 终止建图轨迹并回载旧图，mode 流转一致；
+ *   成功即回到建图前地图的定位（不落盘、不同步栅格、DB ACTIVE 回旧图）。
+ *   异常：RELOCIZING 后回到 NAVIGATION 但不是旧图 / 超时（机器人侧不支持 MAPPING 下
+ *   load_map 时受理即失败，在服务层抛出）
+ *
  * 状态失联（/agv/status 断流）不判死：保存地图 → 重启定位的窗口里链路可能短暂中断
  * （rosbridge 重连、CPU 高负载等），机器人侧流程往往仍在推进。失联期间挂起不迁移，
  * 恢复后继续跟踪；真失败由任务 deadline（modeTaskTimeoutMs）兜底。
@@ -34,7 +40,9 @@ public final class MapModeStateMachine {
         /** 进入建图（/agv/start_mapping）。 */
         START_MAPPING,
         /** 保存建图并回定位（/agv/save_map）。 */
-        SAVE_MAP
+        SAVE_MAP,
+        /** 放弃建图并回建图前地图定位（/agv/load_map 旧图，不落盘）。 */
+        DISCARD_MAPPING
     }
 
     public enum Status {
@@ -107,7 +115,7 @@ public final class MapModeStateMachine {
         }
     }
 
-    /** SWITCH_MAP 与 SAVE_MAP 共用：目标都是 NAVIGATION 且 map_name=目标。 */
+    /** SWITCH_MAP / SAVE_MAP / DISCARD_MAPPING 共用：目标都是 NAVIGATION 且 map_name=目标。 */
     private Optional<Status> onStatusForMapSwitchLike(String mode, String mapName) {
         switch (mode) {
             case "RELOCALIZING" -> {
@@ -118,6 +126,7 @@ public final class MapModeStateMachine {
                     return transition(Status.FAILED, "机器人进入建图模式（MAPPING），切图被抢占");
                 }
                 // SAVE_MAP：保存/转换执行中，mode 维持 MAPPING 是正常过程
+                // DISCARD_MAPPING：load_map 终止建图轨迹执行中，同样维持 MAPPING
                 return Optional.empty();
             }
             case "NAVIGATION" -> {

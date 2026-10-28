@@ -173,4 +173,44 @@ class MapModeStateMachineTest {
         assertEquals(java.util.Optional.of(MapModeStateMachine.Status.FAILED),
                 machine.onDeadline(Instant.now()));
     }
+
+    // ==================== DISCARD_MAPPING（放弃建图回旧图） ====================
+
+    private MapModeStateMachine discardMachine(long deadlineMillis) {
+        return new MapModeStateMachine(4, MapModeStateMachine.Type.DISCARD_MAPPING,
+                9L, "map_old", "map_old", Instant.now().plusMillis(deadlineMillis));
+    }
+
+    @Test
+    void discardHappyPathMappingThenRelocatingThenBackToOldMap() {
+        MapModeStateMachine machine = discardMachine(90_000);
+
+        // load_map 终止建图轨迹执行中：mode 维持 MAPPING 是正常过程
+        assertEquals(java.util.Optional.empty(), machine.onStatus("MAPPING", "", 100, STALE_LIMIT));
+        assertEquals(MapModeStateMachine.Status.DISPATCHED, machine.getStatus());
+
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.RELOCATING),
+                machine.onStatus("RELOCALIZING", "map_old", 100, STALE_LIMIT));
+        // 回到旧图定位收敛 -> 成功（服务层随后把 DB ACTIVE 对齐回旧图）
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.SUCCEEDED),
+                machine.onStatus("NAVIGATION", "map_old", 100, STALE_LIMIT));
+    }
+
+    @Test
+    void discardRelayingThenNavigationWithWrongMapFails() {
+        MapModeStateMachine machine = discardMachine(90_000);
+        machine.onStatus("MAPPING", "", 100, STALE_LIMIT);
+        machine.onStatus("RELOCALIZING", "map_old", 100, STALE_LIMIT);
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.FAILED),
+                machine.onStatus("NAVIGATION", "other_map", 100, STALE_LIMIT));
+    }
+
+    @Test
+    void discardTimeoutWhenRobotStaysMapping() {
+        // 机器人侧未处理 load_map（建图终止失败）时维持 MAPPING，只能靠超时兜底
+        MapModeStateMachine machine = discardMachine(-1); // 已过期
+        machine.onStatus("MAPPING", "", 100, STALE_LIMIT);
+        assertEquals(java.util.Optional.of(MapModeStateMachine.Status.FAILED),
+                machine.onDeadline(Instant.now()));
+    }
 }

@@ -55,6 +55,12 @@ function send(m: Motion) {
 function start(m: Motion, ev: PointerEvent) {
   ev.currentTarget && (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
   stop(false)
+  // 按钮抢占键盘循环（清按住键集合，避免两套输入叠加）
+  if (keyTimer) {
+    window.clearInterval(keyTimer)
+    keyTimer = undefined
+  }
+  heldKeys.clear()
   // 清掉上一次松手排队的停车重试，避免迟到的零速指令杀掉新一轮运动
   stopRetryTimers.forEach(t => window.clearTimeout(t))
   stopRetryTimers = []
@@ -82,22 +88,138 @@ function sendZeroOnce() {
   void robot.teleop(0, 0, 0).catch(() => {})
 }
 
+// ==================== 键盘遥控 ====================
+// 方案沿用两个成熟惯例的组合，不自创协议：
+// - ROS teleop_twist_keyboard：固定节拍重发当前速度向量 + 空格急停；
+// - Foxglove Teleop Panel / 游戏 WASD：keydown/keyup 维护按住键集合，循环合成 twist，
+//   天然支持组合键斜向、免 key-repeat 抖动；失焦/切页/输入框聚焦即失效。
+// 键位：W/S 前后 · A/D 平移（全向底盘）· ←/→ 旋转 · 空格急停；组合自动合成（W+←=左前曲线）。
+const KEY_MOTIONS: Record<string, { x: number; y: number; z: number; btn: string }> = {
+  w: { x: 1, y: 0, z: 0, btn: 'forward' },
+  arrowup: { x: 1, y: 0, z: 0, btn: 'forward' },
+  s: { x: -1, y: 0, z: 0, btn: 'backward' },
+  arrowdown: { x: -1, y: 0, z: 0, btn: 'backward' },
+  a: { x: 0, y: 1, z: 0, btn: 'strafe-left' },
+  d: { x: 0, y: -1, z: 0, btn: 'strafe-right' },
+  arrowleft: { x: 0, y: 0, z: 1, btn: 'spin-left' },
+  arrowright: { x: 0, y: 0, z: -1, btn: 'spin-right' },
+}
+const heldKeys = new Set<string>()
+let keyTimer: number | undefined
+
+/** 焦点在可交互控件上时按键不进遥控（输入框打字/滑杆调值/空格触发按钮——避免误操作） */
+function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null
+  if (!el || typeof el.closest !== 'function') return false
+  return !!el.closest('input, textarea, select, [contenteditable], .el-slider, .el-input-number, .el-select')
+}
+
+function onKeyDown(e: KeyboardEvent) {
+  // 仅底盘页签开放键盘遥控；连接断开不响应
+  if (activeTab.value !== 'chassis' || robot.connStatus !== 'open') return
+  const k = e.key.toLowerCase()
+  if (k === ' ') {
+    // 焦点在按钮上时空格是"点击"（如弹窗确认），不劫持
+    if (isTypingTarget(e.target) || (e.target as HTMLElement)?.tagName === 'BUTTON') return
+    e.preventDefault()
+    heldKeys.clear()
+    stopKeyLoop()
+    return
+  }
+  if (!(k in KEY_MOTIONS) || isTypingTarget(e.target)) return
+  e.preventDefault() // 阻止方向键滚动页面
+  const wasIdle = heldKeys.size === 0
+  heldKeys.add(k)
+  if (wasIdle) startKeyLoop()
+}
+
+function onKeyUp(e: KeyboardEvent) {
+  const k = e.key.toLowerCase()
+  if (heldKeys.delete(k) && heldKeys.size === 0) {
+    stopKeyLoop()
+  }
+}
+
+/** 按住键集合 → 合成 Motion（斜向归一化，合成速度不超过设定速度档，游戏等距惯例） */
+function composeKeyMotion(): Motion | null {
+  if (heldKeys.size === 0) return null
+  let x = 0
+  let y = 0
+  let z = 0
+  let btn = ''
+  for (const k of heldKeys) {
+    const m = KEY_MOTIONS[k]
+    if (!m) continue
+    x += m.x
+    y += m.y
+    z += m.z
+    btn = btn || m.btn
+  }
+  if (x === 0 && y === 0 && z === 0) return null
+  const len = Math.hypot(x, y)
+  if (len > 1) {
+    x /= len
+    y /= len
+  }
+  if (Math.abs(z) > 1) z = Math.sign(z)
+  const v = linearSpeed.value
+  const w = angularSpeed.value
+  // 单键时高亮对应按钮，组合键（无对应按钮）不高亮、不误导
+  const key = heldKeys.size === 1 ? btn : 'key-combo'
+  return { key, label: '', hint: '', x: x * v, y: y * v, z: z * w }
+}
+
+function startKeyLoop() {
+  // 抢占按钮运动（同 token 机制，松键盘三连零速兜底）
+  stop(false)
+  commandToken++
+  const frame = () => {
+    const m = composeKeyMotion()
+    if (m) {
+      active.value = m.key
+      send(m)
+    }
+  }
+  frame()
+  keyTimer = window.setInterval(frame, 150)
+}
+
+function stopKeyLoop() {
+  if (keyTimer) window.clearInterval(keyTimer)
+  keyTimer = undefined
+  heldKeys.clear()
+  active.value = ''
+  stop() // 复用三连零速停车
+}
+
 function close() {
   stop()
   emit('close')
 }
 
 function onVisibilityChange() {
-  if (document.hidden) stop()
+  if (document.hidden) {
+    stopKeyLoop()
+    stop()
+  }
 }
 
 function onWindowBlur() {
+  // 失焦收不到 keyup：清按住键并停车（键盘循环里 stopKeyLoop 已含三连零速）
+  if (keyTimer || heldKeys.size > 0) {
+    stopKeyLoop()
+  }
   stop()
   jogHoldStop()
 }
 
-// 离开示教页签时停止连续点动
-watch(activeTab, () => jogHoldStop())
+// 离开底盘页签 / 离开示教页签时停止连续点动与键盘遥控
+watch(activeTab, () => {
+  if (keyTimer || heldKeys.size > 0) {
+    stopKeyLoop()
+  }
+  jogHoldStop()
+})
 
 // ==================== 机械臂控制（/agv/arm_move 调试入口） ====================
 /** 关节顺序契约：/joint_states 中该臂关节名排序后的第 i 个（ur5e 即 pan→lift→elbow→wrist1→wrist2→wrist3） */
@@ -472,13 +594,22 @@ function onDragEnd() {
 
 window.addEventListener('blur', onWindowBlur)
 document.addEventListener('visibilitychange', onVisibilityChange)
+window.addEventListener('keydown', onKeyDown)
+window.addEventListener('keyup', onKeyUp)
 onBeforeUnmount(() => {
   stop()
   jogHoldStop()
+  if (keyTimer) {
+    window.clearInterval(keyTimer)
+    keyTimer = undefined
+  }
+  heldKeys.clear()
   stopRetryTimers.forEach(t => window.clearTimeout(t))
   stopRetryTimers = []
   window.removeEventListener('blur', onWindowBlur)
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('keyup', onKeyUp)
 })
 </script>
 
@@ -521,7 +652,7 @@ onBeforeUnmount(() => {
         />
 
         <template v-if="activeTab === 'chassis'">
-          <el-alert title="按住移动，松开即停车" type="info" :closable="false" show-icon />
+          <el-alert title="按住按钮移动，松开即停车；键盘可遥控（见下方键位）" type="info" :closable="false" show-icon />
 
           <div class="pad">
             <button
@@ -554,7 +685,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="axis-note">
-            指令：+X 前进 / +Y 左移 / +Z 左转（车体坐标系）
+            指令：+X 前进 / +Y 左移 / +Z 左转（车体坐标系）<br />
+            键盘：<b>W/S</b> 前进后退 · <b>A/D</b> 左右平移 · <b>←/→</b> 原地旋转 · <b>空格</b> 急停；
+            组合键自动合成（如 <b>W+←</b>=左前曲线）；焦点在输入框时键盘不生效，切页/失焦自动停车
           </div>
         </template>
 

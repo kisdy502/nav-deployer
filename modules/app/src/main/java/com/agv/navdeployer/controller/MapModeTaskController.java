@@ -55,4 +55,14 @@ public class MapModeTaskController {
     public ApiResponse<MapModeTaskVO> saveMap(@Valid @RequestBody SaveMapDTO dto) {
         return ApiResponse.ok(mapModeTaskService.saveMap(dto.mapName()));
     }
+
+    @Operation(summary = "放弃建图并回旧图定位",
+            description = "不保存新图，调 /agv/load_map 回载建图前地图：机器人终止建图轨迹、加载旧图并恢复定位"
+                    + "（MAPPING -> RELOCALIZING -> NAVIGATION，map_name=旧图）。成功后 DB ACTIVE 回旧图；"
+                    + "新图栅格不入库。回载目标 = start-mapping 时快照的旧图，缺失时回退当前 ACTIVE 地图。"
+                    + "前置：mode=MAPPING；冷启动建图（无旧图）将被拒绝")
+    @PostMapping("/discard-mapping")
+    public ApiResponse<MapModeTaskVO> discardMapping() {
+        return ApiResponse.ok(mapModeTaskService.discardMapping());
+    }
 }

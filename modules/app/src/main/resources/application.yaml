@@ -100,8 +100,11 @@ rms:
   robot:
     # robot_code 留空 = RMS 注册时自动分配（推荐，与真机行为一致）
     robot_code: ${RMS_ROBOT_CODE:}
-    # robot_sn 是 RMS 去重键（跨重启不变→更新而非新建），默认从固定种子生成 32 位 hex
-    robot_sn: ${RMS_ROBOT_SN:}
+    # robot_sn 是 RMS 去重键（跨重启不变→更新而非新建）。非空即强制生效，两种改法随时可换：
+    #   1) 环境变量：RMS_ROBOT_SN=dev-think-01（CI / 容器部署）
+    #   2) 直接写值：robot_sn: dev-think-01（本机联调；多机联调时各自写不同值）
+    # 留空 = 固定种子生成的默认 SN（所有实例相同 → 会共用同一台 RMS 机器人，启动时有 WARN 提示）
+    robot_sn: ${RMS_ROBOT_SN:jy-devlopment-202610270955-lifeiyu}
     robot_name: ${RMS_ROBOT_NAME:JY历飞雨}
     robot_type: ${RMS_ROBOT_TYPE:qc-robot}
     # 注册信息展示（RMS 机器人详情页）：型号 / 固件版本 / API 版本 / 厂商
@@ -119,10 +122,12 @@ rms:
     publish_legacy_status: true
     publish_body_status: true
     # 排查开关：逐条打印心跳/状态上报（排查云端机器人掉线时临时打开）
-    verbose_log: ${RMS_VERBOSE_LOG:true}
+    verbose_log: ${RMS_VERBOSE_LOG:false}
   behavior:
     # 仿真质检：任务正常完成时 action_status=3，业务质检结果独立为 OK / NG
     inspection_duration_ms: 8000
+    # 机械臂阶段到位等待的墙钟总时长下限（arm_move 时长是仿真时间；宿主机过载 RTF<1 时需放大，默认容 RTF=0.1）
+    arm_phase_wall_clock_timeout_ms: ${RMS_ARM_PHASE_TIMEOUT_MS:60000}
     inspection_result: OK
     # 行为树 action 占位执行时长（fetch_cable 等无专用执行器的模板，协议不携带 destination）
     action_duration_ms: 3000
@@ -155,7 +160,9 @@ sim_agv:
   # Must match the bridge agv_id (child_frame_id = <agv_id>/base_link).
   tf_child_frame: ${SIM_AGV_TF_CHILD_FRAME:AGV001/base_link}
   tf_throttle_ms: 0
-  odom_enabled: false
+  # /odom（里程计位姿+速度）：odom_relay_node 转发，twist 驱动状态栏速度显示；
+  # 位姿部分同时补充两段式插值环（odom→base_link 段），与 /tf 同源不冲突
+  odom_enabled: ${SIM_AGV_ODOM_ENABLED:true}
   odom_topic: /odom
   reconnect_delay_ms: 3000
   scan_enabled: true
@@ -173,7 +180,7 @@ sim_agv:
   # 平时 rosbridge 上没有 /map 压力，遥控 /cmd_vel 不再被周期性挤慢。
   map_enabled: true
   map_topic: /map
-  map_throttle_ms: 5000
+  map_throttle_ms: 3000
   map_fragment_size: 500000
   # 下行通道：follow_edge action / set_control 服务 / 重定位
   follow_edge_action: /agv/follow_edge
@@ -218,3 +225,28 @@ sim_agv:
   status_fresh_ms: 15000
   # 模式任务（切图等）整体截止时间
   mode_task_timeout_ms: 90000
+
+# 充电任务（前端「去充电」与 RMS charge/replace_battery 共用 ChargeService）。
+# 机器人侧契约：/agv/set_charging（std_srvs/SetBool）data=true/false 开始/停止充电；
+# 充电真值以 /agv/status 遥测（charging/charge_connected/battery_data_valid）为准，
+# set_charging 成功≠充电完成，完成只认有效遥测 battery ≥ 目标电量。
+charge:
+  service: /agv/set_charging
+  service_timeout_ms: 5000
+  # 默认目标电量（%）：达到即充电任务完成（完成后留桩，下次导航 bridge 自动断充）
+  target_battery_pct: 100.0
+  # set_charging 成功后等遥测确认 charging=true 的超时
+  confirm_timeout_ms: 20000
+  # 到桩后停稳等待：机器人侧拒绝运动中的充电请求（末端旋转/减速残余速度会触发拒绝），
+  # 满足「最小等待 + /odom 速度近零」才调 set_charging；odom 不可用退化为纯延时；
+  # 超过 max 上限强制尝试（odom 异常兜底）
+  dock_settle_min_ms: 2000
+  dock_settle_max_ms: 15000
+  odom_quiet_linear_ms: 0.03
+  odom_quiet_angular_rad: 0.05
+  # 状态轮询周期
+  poll_interval_ms: 1000
+  # 充电中 charging=false / 电量数据无效的持续宽限：超过判失败（防误判，也防僵尸充电）
+  stale_grace_ms: 60000
+  # 充电全流程看门狗（导航+充电总时长上限）
+  max_duration_ms: 14400000

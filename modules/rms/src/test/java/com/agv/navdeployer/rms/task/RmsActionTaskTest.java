@@ -33,7 +33,11 @@ class RmsActionTaskTest {
     private RmsTaskService newService(RmsResultReporter reporter, MoveTaskService moves) {
         return new RmsTaskService(new RmsTaskRegistry(), reporter,
                 mock(RobotStateView.class), moves, new RmsProperties(),
-                null, null, null, null, null, null, null, mock(RobotOperationalService.class));
+                null, null, null, null,
+                new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
+                mock(com.agv.navdeployer.service.ChargeService.class),
+                mock(RobotOperationalService.class),
+                null);
     }
 
     @Test
@@ -47,7 +51,11 @@ class RmsActionTaskTest {
         MoveTaskService moves = mock(MoveTaskService.class);
         RmsTaskService service = new RmsTaskService(new RmsTaskRegistry(), reporter,
                 mock(RobotStateView.class), moves, properties,
-                null, null, null, null, null, null, null, mock(RobotOperationalService.class));
+                null, null, null, null,
+                new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
+                mock(com.agv.navdeployer.service.ChargeService.class),
+                mock(RobotOperationalService.class),
+                null);
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "tf-240354505530093568-240354505664311296", "act-1", null,

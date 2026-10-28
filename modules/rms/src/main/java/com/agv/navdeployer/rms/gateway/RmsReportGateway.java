@@ -71,7 +71,7 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             // 周期性状态上报不打高亮日志（刷屏）；verbose 开关打开时逐条打印（排查连不上/掉线问题用）
             String reportStatus = mapper.writeValueAsString(stateView.buildStatusEnvelope());
             if (reportProps.isVerboseLog()) {
-                RmsMessageLog.outboundPublish(keys.bodyStatusReport(), reportStatus);
+                //RmsMessageLog.outboundPublish(keys.bodyStatusReport(), reportStatus);
             }
             publisher.put(reportStatus);
         }

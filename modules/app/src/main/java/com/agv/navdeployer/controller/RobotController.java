@@ -4,6 +4,7 @@ import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.dto.InitialPoseDTO;
 import com.agv.navdeployer.dto.RobotControlDTO;
 import com.agv.navdeployer.dto.TeleopCommandDTO;
+import com.agv.navdeployer.service.MapAlignmentGuard;
 import com.agv.navdeployer.service.MapModeTaskService;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.RosCommandDispatcher.SetControlResult;
@@ -39,6 +40,7 @@ public class RobotController {
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
     private final com.agv.navdeployer.service.RobotOperationalService operationalService;
+    private final com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
@@ -48,7 +50,8 @@ public class RobotController {
                            SimAgvTelemetry telemetry,
                            com.agv.navdeployer.sim.SimAgvProperties simProps,
                            com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
-                           com.agv.navdeployer.service.RobotOperationalService operationalService) {
+                           com.agv.navdeployer.service.RobotOperationalService operationalService,
+                           com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
@@ -58,6 +61,7 @@ public class RobotController {
         this.simProps = simProps;
         this.armStateMonitor = armStateMonitor;
         this.operationalService = operationalService;
+        this.mapAlignmentGuard = mapAlignmentGuard;
     }
 
     // ==================== 运营状态（停用/恢复） ====================
@@ -82,15 +86,23 @@ public class RobotController {
         return ApiResponse.ok(Map.of("decommissioned", false));
     }
 
-    @Operation(summary = "查询运营状态")
+    @Operation(summary = "查询运营状态", description = "停用标志 + 地图一致性（机器人当前地图 vs 上位机导航基准图）")
     @GetMapping("/api/v1/robot/operational")
     public ApiResponse<Object> operational() {
-        return ApiResponse.ok(Map.of(
-                "decommissioned", operationalService.isDecommissioned(),
-                "reason", operationalService.getReason()));
+        MapAlignmentGuard.Alignment alignment = mapAlignmentGuard.current();
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("decommissioned", operationalService.isDecommissioned());
+        data.put("reason", operationalService.getReason());
+        data.put("map_align", Map.of(
+                "state", alignment.state(),
+                "robot_map_name", alignment.robotMapName() == null ? "" : alignment.robotMapName(),
+                "ref_map_name", alignment.refMapName() == null ? "" : alignment.refMapName(),
+                "ref_source", alignment.refSource() == null ? "" : alignment.refSource(),
+                "message", alignment.message() == null ? "" : alignment.message()));
+        return ApiResponse.ok(data);
     }
 
-    @Operation(summary = "遥测快照", description = "连接状态 / 业务状态 / map 系位姿 / 双雷达摘要 / 消息计数 / 地图对齐状态")
+    @Operation(summary = "遥测快照", description = "连接状态 / 业务状态（含电量与充电状态）/ map 系位姿 / 速度（/odom twist） / 双雷达摘要 / 消息计数 / 地图对齐状态")
     @GetMapping("/api/v1/robot/snapshot")
     public ApiResponse<Object> snapshot() {
         ObjectNode snap = ssePublisher.buildSnapshot();

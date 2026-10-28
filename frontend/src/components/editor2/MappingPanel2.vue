@@ -3,9 +3,9 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { useRobotStore } from '@/stores/robot'
-import { startMapping, saveMapTask, getCurrentMapTask } from '@/api/tasks'
+import { startMapping, saveMapTask, discardMapping, getCurrentMapTask } from '@/api/tasks'
 import { createMapFromLiveV2, replaceGridFromLiveV2 } from '@/api/map2'
-import type { MapModeTaskVO } from '@/types/api'
+import type { MapModeTaskVO, MapTaskType } from '@/types/api'
 
 /**
  * v2 建图抽屉：
@@ -28,6 +28,8 @@ const replacing = ref(false)
 const stopState = reactive({ running: false, text: '' })
 /** 完成建图并保存（机器人侧 + v2 创建）闭环反馈 */
 const finishState = reactive({ running: false, text: '' })
+/** 放弃建图（机器人侧回旧图）闭环反馈 */
+const discardState = reactive({ running: false, text: '' })
 
 const saveDialog = reactive({
   visible: false,
@@ -62,8 +64,8 @@ async function onStartMapping() {
   }
 }
 
-/** 等待 SAVE_MAP 模式任务终态（状态机 500ms 节拍，轮询 1s；上限 100s）。 */
-async function awaitSaveTaskTerminal(): Promise<{ ok: boolean; message: string }> {
+/** 等待指定类型模式任务终态（状态机 500ms 节拍，轮询 1s；上限 100s）。 */
+async function awaitTaskTerminal(type: MapTaskType): Promise<{ ok: boolean; message: string }> {
   const deadline = Date.now() + 100_000
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -73,7 +75,7 @@ async function awaitSaveTaskTerminal(): Promise<{ ok: boolean; message: string }
     } catch {
       continue // 网络抖动继续等
     }
-    if (task && task.type === 'SAVE_MAP') {
+    if (task && task.type === type) {
       if (task.status === 'SUCCEEDED') return { ok: true, message: '' }
       if (task.status === 'FAILED') {
         return { ok: false, message: task.error_message || '未知原因' }
@@ -81,6 +83,39 @@ async function awaitSaveTaskTerminal(): Promise<{ ok: boolean; message: string }
     }
   }
   return { ok: false, message: '任务超时未到达终态（>100s）' }
+}
+
+/** 等待 SAVE_MAP 模式任务终态（保存/放弃共用终端等待）。 */
+function awaitSaveTaskTerminal(): Promise<{ ok: boolean; message: string }> {
+  return awaitTaskTerminal('SAVE_MAP')
+}
+
+/** 放弃建图：不保存新图，机器人退出建图并回载建图前地图恢复定位。 */
+async function onDiscardMapping() {
+  await ElMessageBox.confirm(
+    '放弃本次建图？新图不会被保存，机器人将退出建图模式并回载建图前的地图恢复定位。',
+    '放弃建图',
+    { type: 'warning', confirmButtonText: '放弃建图', confirmButtonClass: 'el-button--danger' },
+  )
+  discardState.running = true
+  discardState.text = '已下发，机器人退出建图并回载旧图…'
+  try {
+    await discardMapping()
+    const result = await awaitTaskTerminal('DISCARD_MAPPING')
+    if (result.ok) {
+      discardState.text = ''
+      if (store.livePreview) store.stopLivePreview()
+      ElMessage.success('已放弃建图，机器人回到建图前地图恢复定位')
+    } else {
+      discardState.text = `失败：${result.message}`
+      ElMessage.error(`放弃建图失败：${result.message}`)
+    }
+  } catch (error) {
+    discardState.text = ''
+    throw error
+  } finally {
+    discardState.running = false
+  }
 }
 
 /** 仅停止建图（机器人侧保存并退出 MAPPING），闭环等待终态。 */
@@ -192,10 +227,15 @@ function togglePreview() {
         <div class="btn-row">
           <el-button type="primary" :loading="starting" :disabled="mappingMode" @click="onStartMapping">开始建图</el-button>
           <el-button :loading="stopState.running" :disabled="!mappingMode" @click="onStopMapping">仅停止建图</el-button>
+          <el-button type="danger" plain :loading="discardState.running" :disabled="!mappingMode" @click="onDiscardMapping">
+            放弃建图
+          </el-button>
           <el-button @click="emit('open-teleop')">遥控器</el-button>
         </div>
         <div v-if="stopState.text" class="task-state">{{ stopState.text }}</div>
+        <div v-if="discardState.text" class="task-state">{{ discardState.text }}</div>
         <div class="muted">「仅停止建图」只在机器人侧保存并退出建图（maps_dir），不创建上位机 v2 地图。</div>
+        <div class="muted">「放弃建图」不保存新图，机器人退出建图并回载建图前地图恢复定位。</div>
       </div>
 
       <div class="section">

@@ -19,10 +19,13 @@ export const useRobotStore = defineStore('robot', () => {
   const started = ref(false)
 
   const pose = computed(() => snapshot.value?.pose ?? null)
+  const velocity = computed(() => snapshot.value?.velocity ?? null)
   const joints = computed(() => snapshot.value?.joints ?? null)
   const tfFrames = computed(() => snapshot.value?.tf_frames ?? null)
   const status = computed(() => snapshot.value?.status ?? null)
   const battery = computed(() => status.value?.battery ?? null)
+  /** 机器人上报充电中（battery_simulator / BMS）；null = 旧版机器人未携带 */
+  const charging = computed(() => status.value?.charging ?? null)
 
   function applySnapshot(t: TelemetrySnapshot) {
     const p = t.pose
@@ -69,6 +72,7 @@ export const useRobotStore = defineStore('robot', () => {
         }
       },
       onMoveTask: (t) => useTasksStore().onMoveTask(t),
+      onChargeTask: (t) => useTasksStore().onChargeTask(t),
       onMapTask: (t) => useTasksStore().onMapTask(t),
       onMapSync: (e) => useTasksStore().onMapSync(e),
     })
@@ -97,10 +101,12 @@ export const useRobotStore = defineStore('robot', () => {
     scan1Cloud,
     scan2Cloud,
     pose,
+    velocity,
     joints,
     tfFrames,
     status,
     battery,
+    charging,
     start,
     control,
     setInitialPose,

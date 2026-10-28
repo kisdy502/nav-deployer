@@ -450,7 +450,8 @@ function onClick(hit: PickResult | null, world: THREE.Vector3) {
     return
   }
   if (editor.mode === 'drawPath') {
-    if (hit?.type === 'point' && hit.id != null) {
+    // 点位整体（圆盘 + 朝向三角 + 旋转手柄）都算选中该点位；拖动旋转等编辑手势在 onDown 处理，互不影响
+    if ((hit?.type === 'point' || hit?.type === 'pointArrow' || hit?.type === 'rotateHandle') && hit.id != null) {
       editor.clickPointForPath(hit.id)
     } else {
       ElMessage.warning('请点击一个点位作为路线节点')

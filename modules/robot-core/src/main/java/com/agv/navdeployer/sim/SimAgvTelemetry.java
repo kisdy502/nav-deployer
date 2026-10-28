@@ -19,7 +19,11 @@ public final class SimAgvTelemetry {
     public record PoseSnapshot(double x, double y, double yaw, double stampSec, Instant receivedAt) {
     }
 
-    /** /agv/status 业务状态。mode/map_name 为机器人 agv_bridge_v2 v0.3.0+ 字段，旧版本为 null。 */
+    /**
+     * /agv/status 业务状态。mode/map_name 为机器人 agv_bridge_v2 v0.3.0+ 字段，旧版本为 null；
+     * battery_state/charging/charge_connected/batteryDataValid 为电量接入（battery_simulator，
+     * 后续真机 BMS 同格式）新增字段，旧版本机器人恒为 null（用 Boolean 区分「未携带」与 false）。
+     */
     public record StatusSnapshot(
             String agvId,
             String state,
@@ -29,6 +33,10 @@ public final class SimAgvTelemetry {
             String activeNodeId,
             String mode,
             String mapName,
+            String batteryState,
+            Boolean charging,
+            Boolean chargeConnected,
+            Boolean batteryDataValid,
             Instant receivedAt
     ) {
     }
@@ -66,6 +74,7 @@ public final class SimAgvTelemetry {
             PoseSnapshot mapPose,
             PoseSnapshot odomPose,
             double odomLinearX,
+            double odomLinearY,
             double odomAngularZ,
             JointSnapshot joints,
             long statusCount,
@@ -80,6 +89,8 @@ public final class SimAgvTelemetry {
     private volatile boolean connected;
     private volatile StatusSnapshot status;
     private volatile PoseSnapshot mapPose;
+    /** 机器人上报的当前所在点位名（/agv/pose topo_name；在点位上时非空，离开后置空）。 */
+    private volatile String topoName;
     private volatile PoseSnapshot odomPose;
     private volatile ScanSnapshot scan1;
     private volatile ScanSnapshot scan2;
@@ -88,6 +99,7 @@ public final class SimAgvTelemetry {
     private final java.util.concurrent.ConcurrentHashMap<String, TfFrameSnapshot> tfFrames =
             new java.util.concurrent.ConcurrentHashMap<>();
     private volatile double odomLinearX;
+    private volatile double odomLinearY;
     private volatile double odomAngularZ;
     private volatile long statusCount;
     private volatile long tfCount;
@@ -115,6 +127,15 @@ public final class SimAgvTelemetry {
 
     public PoseSnapshot getMapPose() {
         return mapPose;
+    }
+
+    /** 机器人上报的当前所在点位名（/agv/pose topo_name；在点位上时非空，离开后置空）。 */
+    public String getTopoName() {
+        return topoName;
+    }
+
+    public void setTopoName(String topoName) {
+        this.topoName = topoName;
     }
 
     public void setMapPose(PoseSnapshot mapPose) {
@@ -153,8 +174,14 @@ public final class SimAgvTelemetry {
         return odomLinearX;
     }
 
-    public void setOdomVelocity(double linearX, double angularZ) {
+    public double getOdomLinearY() {
+        return odomLinearY;
+    }
+
+    /** /odom twist（车体系）：全向底盘横移速度藏在 linear.y，合成线速必须带上。 */
+    public void setOdomVelocity(double linearX, double linearY, double angularZ) {
         this.odomLinearX = linearX;
+        this.odomLinearY = linearY;
         this.odomAngularZ = angularZ;
     }
 
@@ -230,6 +257,7 @@ public final class SimAgvTelemetry {
                 mapPose,
                 odomPose,
                 odomLinearX,
+                odomLinearY,
                 odomAngularZ,
                 jointStates,
                 statusCount,

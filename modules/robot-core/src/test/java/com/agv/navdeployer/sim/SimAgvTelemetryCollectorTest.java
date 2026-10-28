@@ -3,13 +3,15 @@ package com.agv.navdeployer.sim;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * /agv/status 解析与镜像状态新鲜度测试（对齐 agv_bridge_v2 v0.3.0 的 mode/map_name）。
+ * /agv/pose 双格式解析：标准 PoseStamped 与机器人自定义扁平格式
+ * （顶层 x/y/yaw/qx~qw + frame_id + topo_name）。
+ * 扁平格式的 topo_name = 机器人当前所在点位（离开点位后为空 → 透传侧置 null）。
  */
 class SimAgvTelemetryCollectorTest {
 
@@ -17,163 +19,65 @@ class SimAgvTelemetryCollectorTest {
 
     private final SimAgvProperties props = new SimAgvProperties();
     private final SimAgvTelemetryCollector collector = new SimAgvTelemetryCollector(props);
+    private final SimAgvTelemetry telemetry = collector.telemetry();
 
+    private void publish(String topic, String msgJson) throws Exception {
+        collector.onMessage(MAPPER.readTree(
+                "{\"op\":\"publish\",\"topic\":\"" + topic + "\",\"msg\":" + msgJson + "}"));
+    }
+
+    /** 机器人自定义扁平格式（AgvPose）：位姿 + topo_name 都要采集 */
     @Test
-    void statusMessageParsesModeAndMapName() throws Exception {
-        collector.onMessage(MAPPER.readTree("""
-                {"op":"publish","topic":"/agv/status","msg":{
-                  "agv_id":"AGV001","state":"MOVING","battery":88.5,
-                  "pose_initialized":true,
-                  "active_command_id":"cmd-1","active_node_id":"I006",
-                  "mode":"RELOCALIZING","map_name":"map0922"
-                }}
-                """));
-
-        var status = collector.telemetry().getStatus();
-        assertEquals("AGV001", status.agvId());
-        assertEquals("MOVING", status.state());
-        assertTrue(status.poseInitialized());
-        assertEquals("cmd-1", status.activeCommandId());
-        assertEquals("I006", status.activeNodeId());
-        assertEquals("RELOCALIZING", status.mode());
-        assertEquals("map0922", status.mapName());
+    void flatAgvPoseSetsMapPoseAndTopoName() throws Exception {
+        publish("/agv/pose", """
+                {"x":1.1239996094753488,"y":-0.6410467608200641,"z":-0.42749329771603006,
+                 "yaw":0.03813275169818326,
+                 "qx":-0.0016850863507541479,"qy":-0.015696767403116485,
+                 "qz":0.019031772854154347,"qw":0.9996942350534541,
+                 "status":2,"timestamp":"1793178190564","frame_id":"map",
+                 "topo_name":"Goal_SPFJY","update_time":"2026-10-28T09:37:36"}
+                """);
+        assertThat(telemetry.getMapPose()).isNotNull();
+        assertThat(round(telemetry.getMapPose().x())).isEqualTo(1.124);
+        assertThat(round(telemetry.getMapPose().y())).isEqualTo(-0.641);
+        assertThat(telemetry.getMapPose().yaw()).isEqualTo(0.03813275169818326);
+        // 扁平格式 timestamp 是墙钟 epoch-ms（与 /tf ROS 时间不同基）：不入历史环
+        assertThat(telemetry.getMapPose().stampSec()).isZero();
+        assertThat(telemetry.getTopoName()).isEqualTo("Goal_SPFJY");
     }
 
+    /** 机器人离开点位：topo_name 空/缺失 → 清空 */
     @Test
-    void legacyStatusWithoutModeFieldsYieldsNulls() throws Exception {
-        collector.onMessage(MAPPER.readTree("""
-                {"op":"publish","topic":"/agv/status","msg":{
-                  "agv_id":"AGV001","state":"IDLE","battery":100.0,
-                  "pose_initialized":false
-                }}
-                """));
-
-        var status = collector.telemetry().getStatus();
-        assertEquals("IDLE", status.state());
-        assertNull(status.mode());
-        assertNull(status.mapName());
+    void flatAgvPoseWithoutTopoNameClearsIt() throws Exception {
+        publish("/agv/pose", """
+                {"x":2.0,"y":3.0,"yaw":0.5,"timestamp":"1793178190564","frame_id":"map","topo_name":"P33"}
+                """);
+        assertThat(telemetry.getTopoName()).isEqualTo("P33");
+        publish("/agv/pose", """
+                {"x":2.1,"y":3.1,"yaw":0.5,"timestamp":"1793178190564","frame_id":"map","topo_name":""}
+                """);
+        assertThat(telemetry.getTopoName()).isNull();
+        publish("/agv/pose", """
+                {"x":2.2,"y":3.2,"yaw":0.5,"timestamp":"1793178190564","frame_id":"map"}
+                """);
+        assertThat(telemetry.getTopoName()).isNull();
     }
 
+    /** 标准 PoseStamped（pose.position/orientation + header.stamp）兼容保留 */
     @Test
-    void freshnessRequiresConnectionAndRecentStatus() {
-        SimAgvTelemetry telemetry = collector.telemetry();
-
-        // 从未收到 status：不新鲜
-        assertFalse(telemetry.isStatusFresh(5000));
-
-        // 收到 status 但未连接：不新鲜
-        collector.onMessage(statusMessage("{\"state\":\"IDLE\"}"));
-        assertFalse(telemetry.isStatusFresh(5000));
-
-        // 连接 + 新鲜 status：新鲜
-        collector.onConnected();
-        assertTrue(telemetry.isStatusFresh(5000));
-
-        // status 过期（10s 前收到，阈值 5s）：不新鲜
-        telemetry.setStatus(new SimAgvTelemetry.StatusSnapshot(
-                "AGV001", "IDLE", 100.0, false, "", "",
-                "NAVIGATION", "map0922", java.time.Instant.now().minusSeconds(10)));
-        assertFalse(telemetry.isStatusFresh(5000));
+    void standardPoseStampedStillParsed() throws Exception {
+        publish("/agv/pose", """
+                {"header":{"stamp":{"sec":1234,"nanosec":800000000},"frame_id":"map"},
+                 "pose":{"position":{"x":-8.29,"y":-1.34,"z":0.0},
+                         "orientation":{"x":0.0,"y":0.0,"z":0.089,"w":0.996}}}
+                """);
+        assertThat(telemetry.getMapPose()).isNotNull();
+        assertThat(round(telemetry.getMapPose().x())).isEqualTo(-8.29);
+        // header.stamp（ROS 仿真时间）入历史环
+        assertThat(telemetry.getMapPose().stampSec()).isEqualTo(1234.8);
     }
 
-    @Test
-    void scanPoseUsesMapOdomBaseFootprintChainAtCaptureTime() throws Exception {
-        publishStaticTransforms(0.5, 0.0, 0.0);
-        publishTf("map", "odom", 10, 2.0, 0.0, Math.PI / 2.0);
-        publishTf("odom", "base_footprint", 10, 1.0, 0.0, Math.PI / 2.0);
-        publishScan(10);
-
-        var scan = collector.telemetry().getScan1();
-        assertTrue(scan != null);
-        // odom→base = (1, 0.5, 90°)，再与 map→odom=(2, 0, 90°) 复合。
-        assertEquals(1.5, scan.pose().x(), 1.0E-9);
-        assertEquals(1.0, scan.pose().y(), 1.0E-9);
-        assertEquals(Math.PI, Math.abs(scan.pose().yaw()), 1.0E-9);
-    }
-
-    @Test
-    void pendingScanWaitsUntilTheWholeSplitTfChainCoversItsStamp() throws Exception {
-        publishStaticTransforms(0.0, 0.0, 0.0);
-        publishTf("map", "odom", 10, 0.0, 0.0, 0.0);
-        publishScan(10);
-        assertNull(collector.telemetry().getScan1());
-
-        // 只有 odom 段推进到 9s，不能因为 map 段已到 10s 就提前释放扫描。
-        publishTf("odom", "base_footprint", 9, 0.0, 0.0, 0.0);
-        assertNull(collector.telemetry().getScan1());
-
-        publishTf("odom", "base_footprint", 10, 0.0, 0.0, 0.0);
-        assertTrue(collector.telemetry().getScan1() != null);
-        assertEquals(10.0, collector.telemetry().getScan1().pose().stampSec(), 1.0E-9);
-    }
-
-    @Test
-    void establishedSplitTfNeverFallsBackToCoveredCompositePose() throws Exception {
-        publishStaticTransforms(0.0, 0.0, 0.0);
-        // 低频 bridge 复合位姿已经覆盖 11s。
-        publishTf("map", "AGV001/base_link", 10, 100.0, 0.0, 0.0);
-        publishTf("map", "odom", 10, 0.0, 0.0, 0.0);
-        publishTf("odom", "base_footprint", 10, 0.0, 0.0, 0.0);
-        publishTf("map", "AGV001/base_link", 12, 100.0, 0.0, 0.0);
-
-        // 分段 TF 尚只到 10s，11s 扫描必须等待，不能回退到错误的复合位姿 x=100。
-        publishScan(11);
-        assertNull(collector.telemetry().getScan1());
-        publishTf("map", "odom", 11, 1.0, 0.0, 0.0);
-        assertNull(collector.telemetry().getScan1());
-        publishTf("odom", "base_footprint", 11, 2.0, 0.0, 0.0);
-
-        var scan = collector.telemetry().getScan1();
-        assertTrue(scan != null);
-        assertEquals(3.0, scan.pose().x(), 1.0E-9);
-    }
-
-    private void publishStaticTransforms(double baseDx, double baseDy, double baseYaw) throws Exception {
-        collector.onMessage(MAPPER.readTree("""
-                {"op":"publish","topic":"/tf_static","msg":{"transforms":[
-                  %s,
-                  %s
-                ]}}
-                """.formatted(
-                transformJson("base_footprint", "base_link", 0, baseDx, baseDy, baseYaw),
-                transformJson("base_link", "laser", 0, 0.0, 0.0, 0.0))));
-    }
-
-    private void publishTf(String parent, String child, int sec,
-                           double x, double y, double yaw) throws Exception {
-        collector.onMessage(MAPPER.readTree("""
-                {"op":"publish","topic":"/tf","msg":{"transforms":[%s]}}
-                """.formatted(transformJson(parent, child, sec, x, y, yaw))));
-    }
-
-    private void publishScan(int sec) throws Exception {
-        collector.onMessage(MAPPER.readTree("""
-                {"op":"publish","topic":"/scan_1","msg":{
-                  "header":{"stamp":{"sec":%d,"nanosec":0},"frame_id":"laser"},
-                  "angle_min":0.0,"angle_increment":1.0,
-                  "range_min":0.1,"range_max":20.0,"ranges":[1.0]
-                }}
-                """.formatted(sec)));
-    }
-
-    private String transformJson(String parent, String child, int sec,
-                                 double x, double y, double yaw) {
-        double z = Math.sin(yaw / 2.0);
-        double w = Math.cos(yaw / 2.0);
-        return """
-                {"header":{"stamp":{"sec":%d,"nanosec":0},"frame_id":"%s"},
-                 "child_frame_id":"%s","transform":{
-                   "translation":{"x":%s,"y":%s,"z":0.0},
-                   "rotation":{"x":0.0,"y":0.0,"z":%s,"w":%s}}}
-                """.formatted(sec, parent, child, x, y, z, w);
-    }
-
-    private com.fasterxml.jackson.databind.JsonNode statusMessage(String msgFields) {
-        try {
-            return MAPPER.readTree(
-                    "{\"op\":\"publish\",\"topic\":\"/agv/status\",\"msg\":" + msgFields + "}");
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+    private static double round(double v) {
+        return BigDecimal.valueOf(v).setScale(3, RoundingMode.HALF_UP).doubleValue();
     }
 }

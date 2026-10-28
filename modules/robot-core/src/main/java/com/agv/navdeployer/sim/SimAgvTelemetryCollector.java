@@ -46,6 +46,7 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
 
     private volatile String lastLoggedState;
     private volatile String lastLoggedMode;
+    private volatile Boolean lastLoggedCharging;
     private volatile long lastSummaryAtNanos = System.nanoTime();
 
     /** 位姿历史环（/tf 与 /agv/pose 按各自 ROS 时间戳入环，雷达帧按扫描时刻插值取用）。 */
@@ -144,10 +145,16 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
         // v0.3.0+ 字段：业务模式与当前地图（旧版机器人不携带，保持 null）
         String mode = textOrNull(payload, "mode");
         String mapName = textOrNull(payload, "map_name");
+        // 电量接入字段（battery_simulator / 真机 BMS 同格式；旧版机器人不携带，保持 null）
+        String batteryState = textOrNull(payload, "battery_state");
+        Boolean charging = boolOrNull(payload, "charging");
+        Boolean chargeConnected = boolOrNull(payload, "charge_connected");
+        Boolean batteryDataValid = boolOrNull(payload, "battery_data_valid");
 
         telemetry.setStatus(new SimAgvTelemetry.StatusSnapshot(
                 agvId, state, battery, poseInitialized, activeCommandId, activeNodeId,
-                mode, mapName, Instant.now()));
+                mode, mapName, batteryState, charging, chargeConnected, batteryDataValid,
+                Instant.now()));
 
         String previous = lastLoggedState;
         if (state != null && !state.equals(previous)) {
@@ -157,6 +164,15 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
                         previous, state, formatBattery(battery), poseInitialized);
             }
         }
+
+        if (Boolean.TRUE.equals(charging) && !Boolean.TRUE.equals(lastLoggedCharging)) {
+            log.info("Sim AGV charging started (battery={}, state={}, charge_connected={})",
+                    formatBattery(battery), batteryState, chargeConnected);
+        } else if (Boolean.FALSE.equals(charging) && Boolean.TRUE.equals(lastLoggedCharging)) {
+            log.info("Sim AGV charging stopped (battery={}, state={})",
+                    formatBattery(battery), batteryState);
+        }
+        lastLoggedCharging = charging == null ? lastLoggedCharging : charging;
 
         String previousMode = lastLoggedMode;
         if (mode != null && !mode.equals(previousMode)) {
@@ -418,30 +434,58 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
         if (!twist.isMissingNode()) {
             telemetry.setOdomVelocity(
                     twist.path("linear").path("x").asDouble(),
+                    twist.path("linear").path("y").asDouble(),
                     twist.path("angular").path("z").asDouble());
         }
     }
 
-    /** /agv/pose：map 系 PoseStamped，10Hz 专用位姿，不受 /tf 混帧节流影响。 */
+    /**
+     * /agv/pose：10Hz 专用位姿，不受 /tf 混帧节流影响。兼容两种格式：
+     * ① 标准 PoseStamped（pose.position/orientation + header.stamp）；
+     * ② 机器人自定义扁平格式（顶层 x/y/z/yaw/qx~qw + frame_id + topo_name + timestamp）——
+     *   topo_name 为机器人侧"当前所在点位"（在点位上时携带点位名，离开置空）。
+     * 扁平格式的 timestamp 是墙钟 epoch-ms，与 /tf 的 ROS 仿真时间不同基，
+     * 不入位姿历史环（避免插值时间基错乱），只刷新最新位姿与 topo_name。
+     */
     private void handlePose(JsonNode payload) {
         JsonNode position = payload.path("pose").path("position");
         JsonNode orientation = payload.path("pose").path("orientation");
-        if (position.isMissingNode() || orientation.isMissingNode()) {
+        if (!position.isMissingNode() && !orientation.isMissingNode()) {
+            double yaw = yawFromQuaternion(
+                    orientation.path("x").asDouble(),
+                    orientation.path("y").asDouble(),
+                    orientation.path("z").asDouble(),
+                    orientation.path("w").asDouble());
+            SimAgvTelemetry.PoseSnapshot pose = new SimAgvTelemetry.PoseSnapshot(
+                    position.path("x").asDouble(),
+                    position.path("y").asDouble(),
+                    yaw,
+                    stampSec(payload.path("header")),
+                    Instant.now());
+            telemetry.setMapPose(pose);
+            recordPose(pose);
             return;
         }
-        double yaw = yawFromQuaternion(
-                orientation.path("x").asDouble(),
-                orientation.path("y").asDouble(),
-                orientation.path("z").asDouble(),
-                orientation.path("w").asDouble());
+        // 扁平自定义格式（机器人侧 AgvPose：x/y/yaw + 四元数 + topo_name）
+        if (!payload.path("x").isNumber() || !payload.path("y").isNumber()) {
+            return;
+        }
+        double yaw = payload.path("yaw").isNumber()
+                ? payload.path("yaw").asDouble()
+                : yawFromQuaternion(
+                        payload.path("qx").asDouble(),
+                        payload.path("qy").asDouble(),
+                        payload.path("qz").asDouble(),
+                        payload.path("qw").asDouble());
         SimAgvTelemetry.PoseSnapshot pose = new SimAgvTelemetry.PoseSnapshot(
-                position.path("x").asDouble(),
-                position.path("y").asDouble(),
+                payload.path("x").asDouble(),
+                payload.path("y").asDouble(),
                 yaw,
-                stampSec(payload.path("header")),
+                0.0,
                 Instant.now());
         telemetry.setMapPose(pose);
-        recordPose(pose);
+        String topoName = textOrNull(payload, "topo_name");
+        telemetry.setTopoName(topoName == null || topoName.isBlank() ? null : topoName);
     }
 
     /** /joint_states：关节名与角度一一对应的快照，驱动前端 3D 模型（舵轮转向 / 机械臂）。 */
@@ -819,6 +863,12 @@ public final class SimAgvTelemetryCollector implements RosbridgeHandler {
     private static String textOrNull(JsonNode payload, String field) {
         JsonNode value = payload.path(field);
         return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    /** bool 字段宽松解析：缺失/null 返回 null（旧版机器人未携带），其余取 asBoolean。 */
+    private static Boolean boolOrNull(JsonNode payload, String field) {
+        JsonNode value = payload.path(field);
+        return value.isMissingNode() || value.isNull() ? null : value.asBoolean();
     }
 
     private static String formatBattery(double battery) {

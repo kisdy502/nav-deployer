@@ -145,7 +145,44 @@ public class RmsConfig {
                 log.info("rms integration disabled, zenoh session stays idle");
                 return;
             }
+            RmsProperties.Robot robot = props.getRobot();
+            if (robot.isRobotSnConfigured()) {
+                log.info("rms robot identity: robot_sn={} (from rms.robot.robot_sn / RMS_ROBOT_SN)",
+                        robot.getRobotSn());
+            } else {
+                log.warn("rms robot_sn NOT configured, using SHARED default sn={} — all instances without "
+                        + "explicit sn report to the SAME rms robot; set rms.robot.robot_sn (yml) "
+                        + "or env RMS_ROBOT_SN to use a dedicated identity", robot.getRobotSn());
+            }
             session.start();
+        };
+    }
+
+    /**
+     * 启动对账：上一进程留下的非终态 rms_task 记录已无运行时承载（重启即死），
+     * 收口为 failed 防止任务管理页出现永久 RUNNING 的幽灵记录。
+     * 对账失败只告警，不阻断启动（历史表是辅助记录）。
+     */
+    @Bean
+    public ApplicationRunner rmsTaskHistoryReconciliation(
+            com.agv.navdeployer.mapper.RmsTaskRecordMapper mapper) {
+        return args -> {
+            try {
+                var pending = mapper.selectList(new com.baomidou.mybatisplus.core.conditions.query
+                        .QueryWrapper<com.agv.navdeployer.entity.RmsTaskRecord>()
+                        .in("status", "IDLE", "RUNNING", "PAUSED"));
+                for (var record : pending) {
+                    String originalStatus = record.getStatus();
+                    record.setStatus("FAILED");
+                    record.setMessage("上位机重启，任务中断收口（原状态 " + originalStatus + "）");
+                    record.setFinishedAt(java.time.LocalDateTime.now());
+                    mapper.updateById(record);
+                    log.warn("rms task history reconciled on restart: task_id={} -> FAILED", record.getTaskId());
+                }
+            } catch (Exception exception) {
+                log.error("rms task history reconciliation failed (startup continues): {}",
+                        exception.toString());
+            }
         };
     }
 }

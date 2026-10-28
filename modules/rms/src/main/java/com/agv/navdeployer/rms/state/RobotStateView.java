@@ -146,7 +146,7 @@ public class RobotStateView {
         double x = pose == null ? 0.0 : pose.x();
         double y = pose == null ? 0.0 : pose.y();
         double yaw = pose == null ? 0.0 : pose.yaw();
-        double battery = status == null || Double.isNaN(status.battery()) ? 100.0 : status.battery();
+        double battery = batteryPct(status);
         List<String> chargers = List.copyOf(props.getBehavior().getCompatibleChargers());
 
         return new RobotStatusReport(
@@ -167,7 +167,7 @@ public class RobotStateView {
                 "offline",
                 mode,
                 mode,
-                active != null && active.isChargingBehavior(),
+                isCharging(active, status),
                 active != null && active.isHomingBehavior(),
                 false,
                 mapName,
@@ -193,7 +193,7 @@ public class RobotStateView {
         double yaw = pose == null ? 0.0 : pose.yaw();
         double battery;
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
-        battery = status == null || Double.isNaN(status.battery()) ? 100.0 : status.battery();
+        battery = batteryPct(status);
         String now = OffsetDateTime.now().toLocalDateTime().toString();
 
         return new BodyStatusData(
@@ -202,13 +202,33 @@ public class RobotStateView {
                         null, round(x), round(y), 0.0, round(yaw),
                         0.0, 0.0, Math.sin(yaw / 2.0), Math.cos(yaw / 2.0), now),
                 new BodyStatusData.BatteryReport(
-                        active != null && active.isChargingBehavior(), battery / 100.0, battery, now),
+                        isCharging(active, status), battery / 100.0, battery, now),
                 props.getRobot().getRobotSn()
         );
     }
 
     private static double round(double v) {
         return Math.round(v * 1000.0) / 1000.0;
+    }
+
+    /** 电量百分比：数据无效（battery_data_valid=false）或缺失/NaN 时回退 100.0（与旧版仿真行为一致）。 */
+    private static double batteryPct(SimAgvTelemetry.StatusSnapshot status) {
+        if (status == null || Double.isNaN(status.battery())
+                || Boolean.FALSE.equals(status.batteryDataValid())) {
+            return 100.0;
+        }
+        return status.battery();
+    }
+
+    /**
+     * 充电状态：机器人上报 charging=true（battery_simulator / 真机 BMS 真值）优先；
+     * 无该字段（旧版机器人）时回退任务推导（charge / replace_battery 执行中）。
+     */
+    private static boolean isCharging(RmsTask active, SimAgvTelemetry.StatusSnapshot status) {
+        if (status != null && Boolean.TRUE.equals(status.charging())) {
+            return true;
+        }
+        return active != null && active.isChargingBehavior();
     }
 
     private final java.util.concurrent.atomic.AtomicLong statusSequence =
@@ -234,9 +254,9 @@ public class RobotStateView {
     public StatusReportEnvelope buildStatusEnvelope() {
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
-        boolean charging = active != null && active.isChargingBehavior();
-
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+        boolean charging = isCharging(active, status);
+
         SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
         SimAgvTelemetry.PoseSnapshot odom = telemetry.getOdomPose();
         double x = pose == null ? 0.0 : pose.x();
@@ -245,7 +265,7 @@ public class RobotStateView {
         String mode = status == null || status.mode() == null
                 ? "auto" : status.mode().toLowerCase(Locale.ROOT);
         String mapName = status == null || status.mapName() == null ? "-" : status.mapName();
-        double pct = status == null || Double.isNaN(status.battery()) ? 100.0 : status.battery();
+        double pct = batteryPct(status);
         String now = OffsetDateTime.now().toLocalDateTime().toString();
 
         // 双电池包（id=1/2，同 ID 同百分比，电流充电为负、放电为正）
@@ -281,7 +301,7 @@ public class RobotStateView {
                         "odom",
                         odom == null ? 0.0 : round(odom.yaw()),
                         now,
-                        round(telemetry.getOdomLinearX()), 0.0, round(telemetry.getOdomAngularZ()),
+                        round(telemetry.getOdomLinearX()), round(telemetry.getOdomLinearY()), round(telemetry.getOdomAngularZ()),
                         odom == null ? 0.0 : round(odom.x()),
                         odom == null ? 0.0 : round(odom.y()))),
                 new BodyFullStatusData.Position(

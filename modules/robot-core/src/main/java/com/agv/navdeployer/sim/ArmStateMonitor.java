@@ -188,11 +188,19 @@ public class ArmStateMonitor {
         return names;
     }
 
-    /** 单臂 profile 关节名（ur5e_*_joint 原始命名，按名排序）。 */
+    /**
+     * 单臂 profile 六主轴（UR5e 原生名，完整匹配）。
+     * 不能用 ur5e_*_joint 通配：夹爪等附加关节（ur5e_gripper_*_joint）会被误收，
+     * 其角色无法识别会把臂状态推导成 UNKNOWN。
+     */
+    private static final java.util.regex.Pattern SINGLE_ARM_JOINT = java.util.regex.Pattern.compile(
+            "ur5e_(shoulder_pan|shoulder_lift|elbow|wrist_1|wrist_2|wrist_3)_joint");
+
+    /** 单臂 profile 关节名（六主轴白名单，按名排序）。 */
     private static List<String> singleArmJointNames(SimAgvTelemetry.JointSnapshot joints) {
         List<String> names = new ArrayList<>();
         for (String name : joints.names()) {
-            if (name != null && name.startsWith("ur5e_") && name.endsWith("_joint")) {
+            if (name != null && SINGLE_ARM_JOINT.matcher(name).matches()) {
                 names.add(name);
             }
         }

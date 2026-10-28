@@ -28,6 +28,8 @@ public final class RmsTask {
     private TaskCommandRequest.Destination destination;
     /** 内部 MoveTask id（导航执行期间） */
     private Long internalMoveTaskId;
+    /** 内部充电任务 id（charge / replace_battery 执行期间，ChargeService） */
+    private Long internalChargeTaskId;
     /** 终态的可读原因，随 result_report 上报。 */
     private String message;
 
@@ -70,6 +72,12 @@ public final class RmsTask {
         return parameters;
     }
 
+    /** parameters 单值文本（任意类型转字符串；缺失返回 null）。 */
+    public String parameterText(String key) {
+        Object value = parameters == null ? null : parameters.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
     public RmsTaskStatus status() {
         return status;
     }
@@ -82,6 +90,18 @@ public final class RmsTask {
         if (status.terminal()) {
             finishedAt = Instant.now();
         }
+    }
+
+    public java.time.Instant createdAt() {
+        return createdAt;
+    }
+
+    public java.time.Instant startedAt() {
+        return startedAt;
+    }
+
+    public java.time.Instant finishedAt() {
+        return finishedAt;
     }
 
     public TaskCommandRequest.Destination destination() {
@@ -98,6 +118,14 @@ public final class RmsTask {
 
     public void setInternalMoveTaskId(Long internalMoveTaskId) {
         this.internalMoveTaskId = internalMoveTaskId;
+    }
+
+    public Long internalChargeTaskId() {
+        return internalChargeTaskId;
+    }
+
+    public void setInternalChargeTaskId(Long internalChargeTaskId) {
+        this.internalChargeTaskId = internalChargeTaskId;
     }
 
     public String message() {

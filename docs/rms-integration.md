@@ -60,8 +60,10 @@ quality_inspection 阶段，【两阶段 task_id 相同】。robot 侧语义：t
 已终态的同 ID 任务按新阶段参数重建执行（见 RmsTaskService.startTask），
 在途（RUNNING/PAUSED）时仍拒绝，防真重复下发。
 
-内置模板类型：`rmf_navigate`/navigate、`quality_inspection`、`charge`、
-`replace_battery`、`return_home`、`pause_task`、`resume_task`。
+内置模板类型：`rmf_navigate`/navigate、`quality_inspection`、`fetch_cable`（取放线束）、
+`charge`、`replace_battery`、`return_home`、`pause_task`、`resume_task`。
+`fetch_cable` 完成仅上报简单状态信封（`action_status=3`，无 `result_report`）——
+`inspection_result` 只属于 `quality_inspection` 任务，质检结果分支应绑定质检任务节点。
 
 ## 2. 模块划分（包结构 com.agv.navdeployer.rms）
 
@@ -122,10 +124,11 @@ rms/
 |---|---|
 | online_status | rosbridge 连接状态（connected → online） |
 | position | SimAgvTelemetry.mapPose（map 系 x/y/yaw） |
-| battery | /agv/status.battery（仿真恒 100） |
+| battery | /agv/status.battery（battery_simulator 真值；battery_data_valid=false 或缺字段回退 100） |
 | control_status / body_task_status | RMS 任务运行时状态（RmsTaskRegistry） |
 | current_map_name / map_name | bridge status.map_name（load_map 后同步） |
-| is_charging / is_homing | 任务类型推导（charge/return_home 执行中） |
+| is_charging | 机器人上报 charging=true 优先（battery_simulator / 真机 BMS）；无字段时回退任务推导（charge/replace_battery 执行中） |
+| is_homing | 任务类型推导（return_home 执行中） |
 | mileage_km | 里程累计器（odom 速度积分，V2，先置 0） |
 | compatible_chargers | 配置（nav 点位中 CHARGE 类型点，V2） |
 
@@ -141,11 +144,12 @@ result_report。**禁止**在 zenoh 回调线程里发起 follow_edge 等待。
 
 | RMS 模板 | 内部动作 |
 |---|---|
-| rmf_navigate / navigate | MoveTaskService.create(GOAL, destination.x/y/yaw) |
-| charge / replace_battery | navigate 到充电点点位（charge 桩坐标，配置或 CHARGE 点）→ 置 is_charging → 完成 |
+| rmf_navigate / navigate | SmartNavigationService（路线优先 Dijkstra FOLLOW_PATH，不可达回落 GOAL） |
+| charge / replace_battery | **ChargeService（与前端「去充电」共用链路）**：智能导航到充电点（charge-pose 配置或报文 destination）→ 调 `/agv/set_charging` data=true 并以遥测 charging=true 确认 → 充电中持续跟踪电量 → 达到目标电量（`parameters.target_battery_pct`，缺省 `charge.target_battery_pct`=100）才 COMPLETED；完成留桩，下次导航 bridge 自动断充；pause/stop 会连带取消充电并尽力 data=false |
 | return_home | navigate 到 home 点位 → is_homing → 完成 |
 | quality_inspection | **占位执行器（已确认）**：仿真机械臂后续接入；当前固定延时后上报模拟结果，接臂时只换 executor |
-| 其他 task_type=action 模板（fetch_cable 等） | **占位执行器**：协议规定 parameters.destination 仅 navigate 有效（RMS startActivity 下发 parameters 恒为空），故不校验 destination，固定延时后 COMPLETED；真实执行器接入时替换 |
+| fetch_cable（取放线束） | **占位执行器（已确认）**：固定延时（`action_duration_ms`）后 COMPLETED，仅上报简单状态信封，无 `result_report`；真实执行器接入时替换 |
+| 其他 task_type=action 模板 | **占位执行器**：协议规定 parameters.destination 仅 navigate 有效（RMS startActivity 下发 parameters 恒为空），故不校验 destination，固定延时后 COMPLETED；真实执行器接入时替换 |
 | pause_task / resume_task | 见 3.3 |
 
 ### 3.3 暂停/恢复的降级语义（已确认：简化实现）

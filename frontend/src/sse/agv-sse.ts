@@ -1,4 +1,4 @@
-import type { MapModeTaskVO, MapSyncEvent, MoveTaskVO, ScanCloudEvent, TelemetrySnapshot } from '@/types/api'
+import type { ChargeTaskVO, MapModeTaskVO, MapSyncEvent, MoveTaskVO, ScanCloudEvent, TelemetrySnapshot } from '@/types/api'
 
 export interface AgvSseHandlers {
   onStatus?: (s: 'connecting' | 'open' | 'closed') => void
@@ -7,6 +7,7 @@ export interface AgvSseHandlers {
   onMoveTask?: (t: MoveTaskVO) => void
   onMapTask?: (t: MapModeTaskVO) => void
   onMapSync?: (e: MapSyncEvent) => void
+  onChargeTask?: (t: ChargeTaskVO) => void
 }
 
 /**
@@ -57,6 +58,10 @@ export function connectAgvSse(handlers: AgvSseHandlers) {
     es.addEventListener('map-sync', (e) => {
       const t = parse<MapSyncEvent>(e.data)
       if (t) handlers.onMapSync?.(t)
+    })
+    es.addEventListener('charge', (e) => {
+      const t = parse<ChargeTaskVO>(e.data)
+      if (t) handlers.onChargeTask?.(t)
     })
   }
 

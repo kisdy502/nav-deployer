@@ -9,7 +9,7 @@ export type NavMapStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type PointType = 'NORMAL' | 'WORK' | 'CHARGER' | 'HOME'
 export type PathStatus = 'DRAFT' | 'DEPLOYED' | 'DISABLED'
 export type EdgeType = 'STRAIGHT' | 'CURVE'
-export type MapTaskType = 'SWITCH_MAP' | 'START_MAPPING' | 'SAVE_MAP'
+export type MapTaskType = 'SWITCH_MAP' | 'START_MAPPING' | 'SAVE_MAP' | 'DISCARD_MAPPING'
 export type MapTaskStatus = 'DISPATCHED' | 'RELOCATING' | 'SUCCEEDED' | 'FAILED'
 export type MoveTaskType = 'TO_POINT' | 'GOAL' | 'FOLLOW_PATH' | 'FREE'
 export type MoveTaskStatus =
@@ -191,6 +191,11 @@ export interface AgvStatus {
   agv_id: string | null
   state: string | null
   battery: number | null
+  /** 电量接入字段（battery_simulator / 真机 BMS 同格式）；旧版机器人/后端未透出时缺失或为 null */
+  battery_state?: string | null
+  charging?: boolean | null
+  charge_connected?: boolean | null
+  battery_data_valid?: boolean | null
   pose_initialized: boolean | null
   active_command_id: string | null
   active_node_id: string | null
@@ -238,18 +243,133 @@ export interface TfFrame {
   qw: number
 }
 
+// ---------- 充电任务 ----------
+/** 充电任务阶段：到桩导航 → 开始充电（服务+遥测确认）→ 充电中 → 终态 */
+export type ChargeTaskStatus = 'MOVING' | 'STARTING' | 'CHARGING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED'
+
+export interface ChargeTaskVO {
+  id: number
+  source: string | null
+  status: ChargeTaskStatus
+  waypoint_id: number | null
+  x: number
+  y: number
+  yaw: number
+  target_battery_pct: number
+  battery_at_start: number | null
+  battery_now: number | null
+  message: string | null
+  internal_move_task_id: number | null
+  created_at: string
+  updated_at: string
+  finished_at: string | null
+}
+
+export interface ChargeStartDTO {
+  /** v2 充电点点位 id（优先） */
+  waypoint_id?: number
+  x?: number
+  y?: number
+  theta?: number
+  /** 目标电量（%），缺省用后端 charge.target_battery_pct 配置 */
+  target_battery_pct?: number
+}
+
+// ---------- RMS 任务（任务管理页） ----------
+/** 对齐后端 RmsTaskStatus 枚举（wire 语义见 action_status_code） */
+export interface RmsTaskVO {
+  task_id: string
+  action_id: string | null
+  task_type: string | null
+  task_template_type: string | null
+  template_code: string | null
+  template_id: string | null
+  parameters: Record<string, unknown> | null
+  status: string
+  action_status_code: number
+  message: string | null
+  dest_x: number | null
+  dest_y: number | null
+  dest_yaw: number | null
+  internal_move_task_id: number | null
+  internal_charge_task_id: number | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+// ---------- 系统配置总览（只读） ----------
+export interface SystemConfig {
+  app: { server_port: string }
+  rms: {
+    enabled: boolean
+    session_open: boolean
+    registered: boolean
+    robot: {
+      robot_code: string
+      robot_sn: string
+      robot_type: string
+      robot_name: string
+      ip: string
+      capabilities: string[]
+    }
+    report: {
+      heartbeat_interval_ms: number
+      status_interval_ms: number
+      verbose_log: boolean
+      publish_legacy_status: boolean
+      publish_body_status: boolean
+    }
+    zenoh: {
+      config_file: string
+      endpoints: string[]
+      namespace: string | null
+      mode?: string
+      query_timeout_ms: number
+      robot_key_prefix: string
+      register_key: string
+      continue_without_register: boolean
+      config_error?: string
+    }
+    behavior: {
+      charge_pose: { x: number; y: number; yaw: number } | null
+      home_pose: { x: number; y: number; yaw: number } | null
+    }
+  }
+  sim_agv: {
+    enabled: boolean
+    ws_url: string
+    connected: boolean
+    status_fresh_ms: number
+    goal_timeout_s: number
+    default_max_speed: number
+    default_step: number
+    follow_path_start_radius: number
+    arm_gate_enabled: boolean
+    arm_strict_unknown: boolean
+    arm_home_tolerance_rad: number
+    topics: { label: string; topic: string; type: string; enabled: boolean }[]
+    services: Record<string, string>
+    ws_message_log: { enabled: boolean; max_chars: number; topic_interval_ms: number }
+  }
+  charge: Record<string, string | number>
+}
+
 export interface TelemetrySnapshot {
   timestamp: string
   connected: boolean
   status_fresh: boolean
   status: AgvStatus | null
-  pose: { x: number; y: number; yaw: number; yaw_deg: number } | null
+  pose: { x: number; y: number; yaw: number; yaw_deg: number; topo_name?: string | null } | null
+  /** /odom twist（车体系）；odom_enabled=false 或未收到时为 null */
+  velocity: { linear_x: number; linear_y: number; angular_z: number } | null
   joints: { name: string[]; position: number[]; received_at?: string | null } | null
   tf_frames: TfFrame[] | null
   scan1: ScanSummary | null
   scan2: ScanSummary | null
   msg_status: number
   msg_pose: number
+  msg_odom?: number
   msg_scan1: number
   msg_scan2: number
 }

@@ -8,6 +8,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * follow_edge goal 的 rosbridge JSON 契约测试（对齐 rosbridge_integration.md §5.1）。
@@ -15,6 +17,37 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RosCommandDispatcherTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Test
+    void preservesRobotRejectionReasonWhenValuesIsAString() throws Exception {
+        RosCommandDispatcher dispatcher = new RosCommandDispatcher(new SimAgvProperties());
+        dispatcher.attach(mock(RosbridgeClient.class));
+        RosCommandDispatcher.ActionListener listener = mock(RosCommandDispatcher.ActionListener.class);
+        String id = dispatcher.dispatchFollowEdge(new RosCommandDispatcher.FollowEdgeGoal(
+                "move-x", "P1", 1, 2, 0, "e", "STRAIGHT", "", "P1",
+                0.3, false, false, 0.1, true, List.of()), listener);
+        var response = MAPPER.createObjectNode().put("op", "action_result").put("id", id)
+                .put("status", 0).put("result", false).put("values", "Goal rejected: robot STOPPED");
+
+        dispatcher.onMessage(response);
+        verify(listener).onResult(0, false, "Goal rejected: robot STOPPED", "");
+    }
+
+    @Test
+    void acceptsNestedRosbridgeActionResult() throws Exception {
+        RosCommandDispatcher dispatcher = new RosCommandDispatcher(new SimAgvProperties());
+        dispatcher.attach(mock(RosbridgeClient.class));
+        RosCommandDispatcher.ActionListener listener = mock(RosCommandDispatcher.ActionListener.class);
+        String id = dispatcher.dispatchFollowEdge(new RosCommandDispatcher.FollowEdgeGoal(
+                "move-x", "P1", 1, 2, 0, "e", "STRAIGHT", "", "P1",
+                0.3, false, false, 0.1, true, List.of()), listener);
+        var response = MAPPER.createObjectNode().put("op", "action_result").put("id", id);
+        response.putObject("values").put("status", 4).putObject("result")
+                .put("success", true).put("message", "arrived").put("command_id", "move-x");
+
+        dispatcher.onMessage(response);
+        verify(listener).onResult(4, true, "arrived", "move-x");
+    }
 
     @Test
     void buildFollowEdgeOpMatchesBridgeContract() throws Exception {

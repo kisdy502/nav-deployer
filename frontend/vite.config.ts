@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
+      // 监听全部网卡：局域网其他 PC 可通过 http://<本机IP>:5173 访问（默认 localhost 仅本机可开）
+      host: true,
       proxy: useMock
         ? undefined
         : {

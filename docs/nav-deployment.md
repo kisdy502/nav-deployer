@@ -99,7 +99,15 @@ FOLLOW_PATH：逐段下发 follow_edge，end_point=true 仅最后一段；任一
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/snapshot` | 遥测快照：connected/status(state,battery,pose_initialized,active_command_id)/pose(x,y,yaw)/scan1/scan2/消息计数 |
+| GET | `/snapshot` | 遥测快照：connected/status(state,battery,battery_state,charging,charge_connected,battery_data_valid,pose_initialized,active_command_id)/pose(x,y,yaw)/velocity/scan1/scan2/消息计数 |
+
+### 充电任务 `/api/v1/charge`
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/start` | 发起充电：`{waypoint_id?（v2 充电点） | x/y/theta?, target_battery_pct?}`；流程 = 导航到桩 → `/agv/set_charging` data=true → 遥测确认 → 充到目标电量（默认 100）；进度经 SSE `charge` 事件推送 |
+| GET | `/active` | 进行中的充电任务（无则 data=null） |
+| POST | `/cancel` | 取消：导航阶段连带取消移动；在桩上则调用 set_charging data=false |
 | POST | `/control` | `{action: start/stop/reset}` → `/agv/set_control`（同步等服务响应，5s 超时） |
 | POST | `/initial-pose` | `{x,y,theta,map_name?}` → call_service `/agv/relocalize`（map_name 缺省取当前地图，同步可达数十秒） |
 
