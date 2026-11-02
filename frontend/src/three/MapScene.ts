@@ -161,7 +161,9 @@ export class MapScene {
     this.scene.add(dir)
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
-    this.renderer.setPixelRatio(window.devicePixelRatio)
+    // 像素比封顶 1.5：高 DPI（Windows 125%/150% 缩放、4K）下全像素比渲染填充成本翻倍，
+    // 地图类正交场景 1.5 已肉眼不可辨——大幅降低 GPU/合成器负载
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     this.renderer.setSize(w, h)
     this.renderer.domElement.style.display = 'block'
     container.appendChild(this.renderer.domElement)
@@ -659,6 +661,10 @@ export class MapScene {
   }
 
   // ---------- 渲染循环 ----------
+  /** 上次 WebGL / CSS2D 标签渲染时刻（空闲降帧与标签节流） */
+  private lastRenderAt = 0
+  private lastLabelAt = 0
+
   private loop = () => {
     if (this.disposed) return
     this.rafId = requestAnimationFrame(this.loop)
@@ -668,9 +674,21 @@ export class MapScene {
     this.tweens.update()
     this.opts.onFrame?.(dt)
     if (this.orbitMode && this.controls) this.controls.update()
-    const cam = this.activeCamera
-    this.renderer.render(this.scene, cam)
-    this.labelRenderer.render(this.scene, cam)
+    // 交互/镜头动画/3D 环绕 → 全帧率；空闲场景（机器人静止、无补间）降到 ~30fps——
+    // 连续绘制完全相同的帧是纯浪费，是低配/高负载机器页面卡顿的主要来源之一
+    const interactive = this.pointer != null || this.orbitMode || this.tweens.getAll().length > 0
+    if (now - this.lastRenderAt >= (interactive ? 0 : 33)) {
+      this.lastRenderAt = now
+      const cam = this.activeCamera
+      this.renderer.render(this.scene, cam)
+      // CSS2D 标签是真实 DOM：每帧 render = 对全部点位/区域标签做 style 写入并强制重排，
+      // 数百标签 × 60fps 是主线程头号杀手。交互中随 WebGL 全帧率同步（跟手），
+      // 空闲时节流 ~10Hz（文本标签无需高帧率，机器人本身遥测也只有 10Hz）
+      if (interactive || now - this.lastLabelAt >= 100) {
+        this.lastLabelAt = now
+        this.labelRenderer.render(this.scene, cam)
+      }
+    }
   }
 
   dispose() {
