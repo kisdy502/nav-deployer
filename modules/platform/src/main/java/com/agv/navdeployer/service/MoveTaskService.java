@@ -129,8 +129,18 @@ public class MoveTaskService {
         }
     }
 
-    /** 创建并下发移动任务。 */
+    /** 创建并下发移动任务（前端手动入口，source=manual）。 */
     public MoveTaskVO create(MoveTaskCreateDTO dto) {
+        return create(dto, "manual");
+    }
+
+    /**
+     * 创建并下发移动任务（带来源标识）。
+     *
+     * @param source manual=前端手动；rms:{task_id}=RMS 任务派发；charge:{chargeTaskId}=充电内部导航。
+     *               任务页据此区分手动/调度，并把同一 RMS 任务的多阶段执行（导航→充电）关联展示。
+     */
+    public MoveTaskVO create(MoveTaskCreateDTO dto, String source) {
         // 停用（急停/维修中）拦截：不下发，直接报错给用户
         if (operationalService.isDecommissioned()) {
             throw new IllegalStateException(
@@ -167,6 +177,7 @@ public class MoveTaskService {
         task.setTaskNo("move-" + UUID.randomUUID());
         task.setTaskType(dto.taskType());
         task.setStatus(MoveTask.STATUS_CREATED);
+        task.setSource(source == null || source.isBlank() ? "manual" : source);
         List<SegmentPlan> segments;
         boolean endPointSingle;
 

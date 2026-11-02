@@ -35,8 +35,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 充电任务状态机：到桩导航 → set_charging 服务 → 遥测确认 → 充到目标电量完成；
- * 失败/取消/被打断路径与判定纪律（服务成功≠完成，只认有效遥测）。
+ * 充电任务状态机：到桩导航 → set_charging 服务 → 遥测确认（对接成功）即任务完成；
+ * 失败/取消路径与判定纪律（服务成功≠完成，只认 charging=true 遥测）。
+ * 充到多少电量、何时断充由上层调度控制——任务不跟踪电量目标。
  */
 class ChargeServiceTest {
 
@@ -55,25 +56,20 @@ class ChargeServiceTest {
     private ChargeService service;
 
     private final AtomicReference<String> moveStatus = new AtomicReference<>("EXECUTING");
-    private final AtomicReference<MoveTaskVO> activeMove = new AtomicReference<>(null);
 
     private ScheduledExecutorService shutdownTarget;
 
     private ChargeService build() throws Exception {
         props.setPollIntervalMs(50);
         props.setConfirmTimeoutMs(500);
-        props.setStaleGraceMs(200);
         props.setMaxDurationMs(60000);
         props.setDockSettleMinMs(100);
         props.setDockSettleMaxMs(2000);
         when(operational.isDecommissioned()).thenReturn(false);
-        // 默认无路线：GOAL 直线单发（routePathIds 空列表）
-        when(smartNavigation.planRoutePathIds(anyString(), anyDouble(), anyDouble()))
-                .thenReturn(java.util.List.of());
-        when(smartNavigation.createGoalTask(anyDouble(), anyDouble(), anyDouble()))
+        // 导航与 navigate 任务同构：单段（createOptimizedMoveTask）
+        when(smartNavigation.createOptimizedMoveTask(anyString(), anyDouble(), anyDouble(), anyDouble(), any()))
                 .thenAnswer(inv -> moveTask(MOVE_TASK_ID, moveStatus.get()));
         when(moves.get(MOVE_TASK_ID)).thenAnswer(inv -> moveTask(MOVE_TASK_ID, moveStatus.get()));
-        when(moves.active()).thenAnswer(inv -> activeMove.get());
         service = new ChargeService(smartNavigation, moves, dispatcher, telemetry,
                 sse, props, waypointMapper, operational);
         var worker = ChargeService.class.getDeclaredField("worker");
@@ -104,6 +100,16 @@ class ChargeServiceTest {
                 "AGV001", "IDLE", pct, true, "", "", "NAVIGATION", "map",
                 charging == null ? null : (charging ? "CHARGING" : "DISCHARGING"),
                 charging, charging, true, Instant.now()));
+    }
+
+    /** 机器人位姿置于充电桩上（测试目标坐标 1.0, 2.0）——通过到桩校验 */
+    private void atDock() {
+        telemetry.setMapPose(new SimAgvTelemetry.PoseSnapshot(1.0, 2.0, 0.5, 0, Instant.now()));
+    }
+
+    /** 机器人位姿距充电桩 2m（模拟路线终点吸附在 P4，未到桩 C1） */
+    private void awayFromDock() {
+        telemetry.setMapPose(new SimAgvTelemetry.PoseSnapshot(3.0, 2.0, 0.5, 0, Instant.now()));
     }
 
     /** stub set_charging 服务响应 */
@@ -145,11 +151,16 @@ class ChargeServiceTest {
         throw new AssertionError("condition not met within " + timeoutMs + "ms");
     }
 
+    /**
+     * 对接成功即完成：遥测 charging=true 确认后任务直接 SUCCEEDED（不等电量目标，
+     * 否则会阻塞调度后续进程——如「充到 60% 允许作业」），且不调 data=false（留桩继续充）。
+     */
     @Test
-    void happyPathChargesUntilTargetBattery() throws Exception {
+    void happyPathCompletesOnChargingConfirmed() throws Exception {
         build();
         stubChargeService(serviceResponse(true, ""));
         telemetryBattery(42.0, false);
+        atDock();
 
         ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
         assertThat(task.status()).isEqualTo("MOVING");
@@ -157,15 +168,11 @@ class ChargeServiceTest {
         // 到桩 → 开始充电服务（data=true）
         moveStatus.set("SUCCEEDED");
         awaitStatus(task.id(), "STARTING");
-        // 遥测 charging=true → CHARGING
+        // 遥测 charging=true → 对接确认 → SUCCEEDED（当前电量 42%，远未充满）
         telemetryBattery(42.0, true);
-        awaitStatus(task.id(), "CHARGING");
-        assertThat(service.get(task.id()).batteryAtStart()).isEqualTo(42.0);
-
-        // 充到目标（默认 100）→ SUCCEEDED，留桩不调 data=false
-        telemetryBattery(100.0, true);
         ChargeTaskVO done = awaitStatus(task.id(), "SUCCEEDED");
-        assertThat(done.message()).contains("目标电量");
+        assertThat(done.message()).contains("对接充电桩").contains("充电已开始");
+        assertThat(done.batteryAtStart()).isEqualTo(42.0);
         ArgumentCaptor<JsonNode> captor = ArgumentCaptor.forClass(JsonNode.class);
         verify(dispatcher, atLeastOnce()).callService(eq(props.getService()), captor.capture(), anyLong());
         assertThat(captor.getAllValues()).isNotEmpty();
@@ -178,6 +185,7 @@ class ChargeServiceTest {
         build();
         stubChargeService(serviceResponse(false, "not docked"));
         telemetryBattery(42.0, false);
+        atDock();
         ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
         moveStatus.set("SUCCEEDED");
         ChargeTaskVO failed = await(() -> {
@@ -206,6 +214,7 @@ class ChargeServiceTest {
         // 服务成功但遥测一直未确认 charging=true
         stubChargeService(serviceResponse(true, ""));
         telemetryBattery(42.0, false);
+        atDock();
         ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
         moveStatus.set("SUCCEEDED");
         ChargeTaskVO failed = await(() -> {
@@ -215,34 +224,16 @@ class ChargeServiceTest {
         assertThat(failed.message()).contains("充电启动未确认");
     }
 
+    /** 对接阶段（STARTING）手动取消：任务 CANCELLED 且尽力断充（set_charging data=false） */
     @Test
-    void chargingInterruptedByNewMoveTaskCancels() throws Exception {
+    void manualCancelDuringStartingStopsCharging() throws Exception {
         build();
         stubChargeService(serviceResponse(true, ""));
         telemetryBattery(42.0, false);
+        atDock();
         ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
         moveStatus.set("SUCCEEDED");
-        telemetryBattery(42.0, true);
-        awaitStatus(task.id(), "CHARGING");
-        // 新移动任务出现且 bridge 自动断充（charging=false）
-        activeMove.set(moveTask(99L, "EXECUTING"));
-        telemetryBattery(42.0, false);
-        ChargeTaskVO cancelled = await(() -> {
-            ChargeTaskVO vo = service.get(task.id());
-            return vo != null && "CANCELLED".equals(vo.status()) ? vo : null;
-        }, 5000);
-        assertThat(cancelled.message()).contains("打断");
-    }
-
-    @Test
-    void manualCancelDuringChargingStopsCharging() throws Exception {
-        build();
-        stubChargeService(serviceResponse(true, ""));
-        telemetryBattery(42.0, false);
-        ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
-        moveStatus.set("SUCCEEDED");
-        telemetryBattery(42.0, true);
-        awaitStatus(task.id(), "CHARGING");
+        awaitStatus(task.id(), "STARTING");
 
         ChargeTaskVO cancelled = service.cancel("手动取消");
         assertThat(cancelled.status()).isEqualTo("CANCELLED");
@@ -254,42 +245,41 @@ class ChargeServiceTest {
         assertThat(stopSent).as("cancel 应发送 set_charging data=false").isTrue();
     }
 
+    /** 远程停止充电（任务外断充入口）：不依赖任务存在，直接下发 data=false */
     @Test
-    void multiPathRouteDispatchesSegmentsUntilDock() throws Exception {
+    void stopChargingSendsDataFalse() throws Exception {
+        build();
+        when(dispatcher.callService(eq(props.getService()), any(), anyLong()))
+                .thenReturn(new CompletableFuture<>());
+        service.stopCharging();
+        ArgumentCaptor<JsonNode> captor = ArgumentCaptor.forClass(JsonNode.class);
+        verify(dispatcher).callService(eq(props.getService()), captor.capture(), anyLong());
+        assertThat(captor.getValue().path("data").asBoolean(true)).isFalse();
+    }
+
+    /**
+     * 导航与 navigate 任务同构（单段）：内部只派发一个 move task，完成即到桩校验开始充电，
+     * 不存在多段路线接力——多段到桩路线由调度逐段下发 navigate（与质检流程一致）。
+     */
+    @Test
+    void navigationIsSingleSegmentLikeNavigateTask() throws Exception {
         build();
         stubChargeService(serviceResponse(true, ""));
         telemetryBattery(42.0, false);
-        AtomicReference<String> seg1 = new AtomicReference<>("EXECUTING");
-        AtomicReference<String> seg2 = new AtomicReference<>("EXECUTING");
-        when(smartNavigation.planRoutePathIds(anyString(), anyDouble(), anyDouble()))
-                .thenReturn(java.util.List.of(11L, 22L));
-        when(smartNavigation.createFollowPathTask(11L)).thenReturn(moveTask(101L, seg1.get()));
-        when(smartNavigation.createFollowPathTask(22L)).thenAnswer(inv -> moveTask(202L, seg2.get()));
-        when(moves.get(101L)).thenAnswer(inv -> moveTask(101L, seg1.get()));
-        when(moves.get(202L)).thenAnswer(inv -> moveTask(202L, seg2.get()));
+        atDock();
 
         ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
         assertThat(task.status()).isEqualTo("MOVING");
-        assertThat(task.internalMoveTaskId()).isEqualTo(101L);
+        // 只有一次 createOptimizedMoveTask，不查路线链、不派发 FOLLOW_PATH
+        verify(smartNavigation).createOptimizedMoveTask(anyString(), anyDouble(), anyDouble(), anyDouble(), any());
+        verify(smartNavigation, never()).planRoutePathIds(anyString(), anyDouble(), anyDouble());
+        verify(smartNavigation, never()).createFollowPathTask(anyLong(), any());
 
-        // 第一段完成 → 接力下发第二段（整条链没走完，绝不调 set_charging）
-        seg1.set("SUCCEEDED");
-        await(() -> {
-            ChargeTaskVO vo = service.get(task.id());
-            return vo != null && "MOVING".equals(vo.status())
-                    && vo.internalMoveTaskId() != null && vo.internalMoveTaskId() == 202L ? vo : null;
-        }, 5000);
-        verify(dispatcher, never()).callService(anyString(), any(), anyLong());
-
-        // 第二段完成 → 到桩开始充电 → 充到目标
-        seg2.set("SUCCEEDED");
+        // 单段完成 → 到桩校验 → 停稳 → 对接确认 → 完成
+        moveStatus.set("SUCCEEDED");
         telemetryBattery(42.0, true);
-        awaitStatus(task.id(), "CHARGING");
-        telemetryBattery(100.0, true);
         ChargeTaskVO done = awaitStatus(task.id(), "SUCCEEDED");
-        assertThat(done.message()).contains("目标电量");
-        // 第二段确实下发过
-        verify(smartNavigation).createFollowPathTask(22L);
+        assertThat(done.message()).contains("充电已开始");
     }
 
     @Test
@@ -297,6 +287,7 @@ class ChargeServiceTest {
         build();
         stubChargeService(serviceResponse(true, ""));
         telemetryBattery(42.0, false);
+        atDock();
         // /odom 在流但速度非零（末端旋转/减速残余运动）：机器人侧会拒绝运动中的充电请求
         telemetry.setOdomPose(new SimAgvTelemetry.PoseSnapshot(0, 0, 0, 0, Instant.now()));
         telemetry.setOdomVelocity(0.4, 0.0, 0.0);
@@ -309,11 +300,11 @@ class ChargeServiceTest {
         TimeUnit.MILLISECONDS.sleep(600);
         verify(dispatcher, never()).callService(anyString(), any(), anyLong());
 
-        // 速度归零（停稳）→ 触发服务并进入充电
+        // 速度归零（停稳）→ 触发服务并对接确认 → 完成
         telemetry.setOdomVelocity(0.0, 0.0, 0.0);
         verify(dispatcher, timeout(3000)).callService(eq(props.getService()), any(), anyLong());
         telemetryBattery(42.0, true);
-        awaitStatus(task.id(), "CHARGING");
+        awaitStatus(task.id(), "SUCCEEDED");
     }
 
     @Test
@@ -325,13 +316,12 @@ class ChargeServiceTest {
         // 不经导航：直接进入开始充电阶段
         assertThat(task.status()).isEqualTo("STARTING");
         assertThat(task.source()).isEqualTo("rescue");
-        // 停稳等待（odom 不可用 → 纯延时）后调服务 → 遥测确认 → 充电中
+        // 停稳等待（odom 不可用 → 纯延时）后调服务 → 遥测确认（对接成功即完成）
         telemetryBattery(1.0, true);
-        awaitStatus(task.id(), "CHARGING");
-        verify(smartNavigation, never()).createGoalTask(anyDouble(), anyDouble(), anyDouble());
-        verify(smartNavigation, never()).createFollowPathTask(anyLong());
-        telemetryBattery(100.0, true);
-        awaitStatus(task.id(), "SUCCEEDED");
+        ChargeTaskVO done = awaitStatus(task.id(), "SUCCEEDED");
+        assertThat(done.message()).contains("充电已开始");
+        verify(smartNavigation, never()).createGoalTask(anyDouble(), anyDouble(), anyDouble(), any());
+        verify(smartNavigation, never()).createFollowPathTask(anyLong(), any());
     }
 
     @Test
@@ -365,5 +355,47 @@ class ChargeServiceTest {
         assertThat(history.get(0).status()).isEqualTo("MOVING");
         assertThat(history.get(1).id()).isEqualTo(first.id());
         assertThat(history.get(1).status()).isEqualTo("FAILED");
+    }
+
+    // ==================== 到桩校验（未到桩绝不开始充电） ====================
+
+    /**
+     * 场景复现：单段导航终点吸附在离桩数米的 waypoint（如 P4），move "成功"但机器人不在桩上。
+     * 行为（对齐质检式分段导航语义）：不补段、直接到桩校验 → 超出半径任务 FAILED，
+     * 绝不调 set_charging。多段到桩路线应由调度逐段 navigate，最后一段精确到桩。
+     */
+    @Test
+    void notAtDockRejectedWithoutApproach() throws Exception {
+        build();
+        telemetryBattery(42.0, false);
+        awayFromDock(); // 机器人停在 P4，距桩 (1.0, 2.0) 2m
+
+        ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("rms:t1", null, 1.0, 2.0, 0.5, null));
+        moveStatus.set("SUCCEEDED");
+        ChargeTaskVO failed = await(() -> {
+            ChargeTaskVO vo = service.get(task.id());
+            return vo != null && "FAILED".equals(vo.status()) ? vo : null;
+        }, 5000);
+        assertThat(failed.message()).contains("未到达充电桩").contains("超过允许半径");
+        // 全程绝不调 set_charging（机器人侧不校验位置，上位机必须拦住）
+        verify(dispatcher, never()).callService(anyString(), any(), anyLong());
+        // 单段语义：只有 start 时的一次导航派发，不补接近段
+        verify(smartNavigation).createOptimizedMoveTask(anyString(), anyDouble(), anyDouble(), anyDouble(), any());
+    }
+
+    /** 无位姿（/tf 未上报）同样拒绝：校验不了就不能开始充电 */
+    @Test
+    void missingPoseRejectsCharging() throws Exception {
+        build();
+        telemetryBattery(42.0, false);
+        // 不设置 map pose
+        ChargeTaskVO task = service.start(new ChargeService.ChargeCommand("test", null, 1.0, 2.0, 0.5, null));
+        moveStatus.set("SUCCEEDED");
+        ChargeTaskVO failed = await(() -> {
+            ChargeTaskVO vo = service.get(task.id());
+            return vo != null && "FAILED".equals(vo.status()) ? vo : null;
+        }, 5000);
+        assertThat(failed.message()).contains("无法获取机器人当前位姿");
+        verify(dispatcher, never()).callService(anyString(), any(), anyLong());
     }
 }

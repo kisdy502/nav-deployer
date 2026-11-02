@@ -39,7 +39,7 @@ class RmsMapGateTest {
                 mock(RobotStateView.class), moves, properties, null, null, null, null,
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
-                mock(RobotOperationalService.class), guard);
+                mock(RobotOperationalService.class), guard, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "map-mismatch-1", "1", null, "navigate", "rmf_navigate",
@@ -50,7 +50,7 @@ class RmsMapGateTest {
             assertThat(reply.msg()).contains("地图不一致").contains("map1025L").contains("map1027S");
             // 拒绝后不占闸门、不下发内部移动
             assertThat(registry.busyExcept("next-task")).isFalse();
-            verify(moves, never()).create(any());
+            verify(moves, never()).create(any(), any());
         } finally {
             var worker = RmsTaskService.class.getDeclaredField("worker");
             worker.setAccessible(true);

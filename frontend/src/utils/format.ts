@@ -63,7 +63,20 @@ export const MAP_TASK_TYPE_LABEL: Record<MapTaskType, string> = {
   START_MAPPING: '开始建图',
   SAVE_MAP: '保存地图',
   DISCARD_MAPPING: '放弃建图',
+  RELOCALIZE: '重定位',
 }
+
+/** 机器人侧定位操作阶段文案（/agv/localization_operation.stage） */
+export const LOC_STAGE_LABEL: Record<string, string> = {
+  ACCEPTED: '已受理',
+  STOPPING_LOCALIZATION: '停止旧定位',
+  STARTING_LOCALIZATION: '启动定位',
+  WAITING_LOCALIZATION: '等待定位收敛',
+  FINISHED: '已完成',
+}
+
+export const locStageText = (stage: string | null | undefined) =>
+  stage ? LOC_STAGE_LABEL[stage] ?? stage : ''
 
 export const MAP_TASK_STATUS_TAG: Record<MapTaskStatus, { label: string; type: 'success' | 'info' | 'warning' | 'danger' }> = {
   DISPATCHED: { label: '已下发', type: 'info' },

@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicReference;
 final class ChargeTask {
 
     enum Status {
-        MOVING, STARTING, CHARGING, SUCCEEDED, FAILED, CANCELLED;
+        MOVING, STARTING, SUCCEEDED, FAILED, CANCELLED;
 
         boolean terminal() {
             return this == SUCCEEDED || this == FAILED || this == CANCELLED;
@@ -40,15 +40,8 @@ final class ChargeTask {
     private volatile long serviceAckAt;
     /** 导航到桩完成的时刻（epoch ms，0=未到桩）：停稳等待的起点 */
     private volatile long dockedAt;
-    /** 充电中首次观察到 charging=false 的时刻（宽限计时用，0=无） */
-    private volatile long firstChargeLostAt;
     private volatile LocalDateTime updatedAt = createdAt;
     private volatile LocalDateTime finishedAt;
-
-    /** 路线导航完整链（仅 charge-worker 线程访问）：待执行 path 队列 + 段进度 */
-    private final java.util.ArrayDeque<Long> remainingPathIds = new java.util.ArrayDeque<>();
-    private int moveSegmentsPlanned = 1;
-    private int moveSegmentsDone = 0;
 
     /** SSE 发布去重基线（仅 charge-worker 线程访问） */
     Status lastPublishedStatus;
@@ -72,6 +65,14 @@ final class ChargeTask {
 
     String source() {
         return source;
+    }
+
+    double x() {
+        return x;
+    }
+
+    double y() {
+        return y;
     }
 
     Status status() {
@@ -151,14 +152,6 @@ final class ChargeTask {
         this.dockedAt = dockedAt;
     }
 
-    long firstChargeLostAt() {
-        return firstChargeLostAt;
-    }
-
-    void setFirstChargeLostAt(long firstChargeLostAt) {
-        this.firstChargeLostAt = firstChargeLostAt;
-    }
-
     LocalDateTime createdAt() {
         return createdAt;
     }
@@ -169,28 +162,6 @@ final class ChargeTask {
 
     LocalDateTime updatedAt() {
         return updatedAt;
-    }
-
-    /** 待执行路线段入队（首个由 start 下发，其余由 MOVING 轮询逐段接力）。 */
-    void offerRemainingPaths(java.util.List<Long> pathIds) {
-        for (int i = 1; i < pathIds.size(); i++) {
-            remainingPathIds.addLast(pathIds.get(i));
-        }
-        moveSegmentsPlanned = Math.max(1, pathIds.size());
-    }
-
-    /** 当前内部移动任务结束后取下一段；无下一段返回 null（整条链走完）。 */
-    Long pollNextPathId() {
-        moveSegmentsDone++;
-        return remainingPathIds.pollFirst();
-    }
-
-    /** 路线导航进度描述（"路段 2/3"），非路线导航返回 null。 */
-    String segmentProgress() {
-        if (moveSegmentsPlanned <= 1) {
-            return null;
-        }
-        return "路段 " + Math.min(moveSegmentsDone + 1, moveSegmentsPlanned) + "/" + moveSegmentsPlanned;
     }
 
     LocalDateTime finishedAt() {

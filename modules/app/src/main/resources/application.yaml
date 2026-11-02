@@ -123,6 +123,13 @@ rms:
     publish_body_status: true
     # 排查开关：逐条打印心跳/状态上报（排查云端机器人掉线时临时打开）
     verbose_log: ${RMS_VERBOSE_LOG:false}
+    # 周期类消息（RMS 轮询查询 status/pose/task_status 等、心跳/状态上报汇总）的
+    # 日志节流间隔：同一 key 每间隔最多 1 条 INFO（建议 10000~30000ms）。
+    # 一次性指令（task/add、mapping/change、agv/relocate…）不受此限，始终全量打印请求+回包。
+    periodic_log_interval_ms: ${RMS_PERIODIC_LOG_INTERVAL_MS:30000}
+    # 周期上报「结果无变化」时的保底间隔（心跳/状态上报成功且内容同上次时降频到该间隔，
+    # 不再每 30s 重复同样内容；失败 WARN 与一次性指令不受影响）
+    unchanged_log_interval_ms: ${RMS_UNCHANGED_LOG_INTERVAL_MS:60000}
   behavior:
     # 仿真质检：任务正常完成时 action_status=3，业务质检结果独立为 OK / NG
     inspection_duration_ms: 8000
@@ -135,8 +142,11 @@ rms:
     inspection_image_dir: ${RMS_INSPECTION_IMAGE_DIR:C:/Users/think/Pictures}
     # teach 2D/3D 采集样例目录（含子目录）：teach/capture 打 zip 时取前几个文件；为空回退 application.yaml+runtime 信息
     teach_sample_dir: ${RMS_TEACH_SAMPLE_DIR:}
-    # charge / return_home 目标坐标（未配置且 RMS 未带 destination 时任务失败）
-    # charge_pose: { x: 0.0, y: 0.0, yaw: 0.0 }
+    # 任务模板存储目录（真机机制：模板由上层经 task_template/add 下发并落盘存档，
+    # 任务引用未下发的模板时按真机口径拒绝「类型 x 的任务模板 x 不存在」）。
+    # 相对路径基于工作目录，机器人侧自行约定；充电任务凭任务携带的
+    # parameters.destination 自主导航到充电桩，无需本机配置充电点。
+    template_dir: ${RMS_TEMPLATE_DIR:data/rms-templates}
     # home_pose:   { x: 0.0, y: 0.0, yaw: 0.0 }
     compatible_chargers: []
 
@@ -188,12 +198,20 @@ sim_agv:
   set_control_service: /agv/set_control
   # 三舵轮全向底盘遥控：geometry_msgs/Twist，linear.x 前进、linear.y 左移、angular.z 左转
   cmd_vel_topic: /cmd_vel
-  # rosbridge 收发消息高亮日志：指令类(goal/service/result)全量；
-  # 话题数据按时间节流（同一话题每 topic_interval_ms 最多 1 条，/tf 实测 ~200Hz）；
-  # 大报文(>10万字符)只打长度；间隔配 0 或负值 = 完全不打话题数据（只留指令日志）
-  ws_message_log_enabled: ${SIM_AGV_WS_MSG_LOG:false}
+  # rosbridge 收发消息日志（按消息价值分级）：
+  # 指令类（call_service/service_response/action goal·result/重定位/切图）——每条必打、
+  #   【全量内容】（上限 full_chars=64KB），可完整复制分析。
+  # 业务状态话题（/agv/status、/agv/localization_operation）——内容变化（去 stamp、浮点取 2 位）
+  #   → 每 topic_interval_ms 最多 1 条【全量】；未变化 → 每 unchanged_interval_ms 保底 1 条摘要。
+  # 传感器流话题（雷达/agv/pose/tf/odom/joint_states/feedback/cmd_vel）——固定每
+  #   sensor_interval_ms 一条摘要（默认 30s），无变化分析价值。
+  ws_message_log_commands_enabled: ${SIM_AGV_WS_CMD_LOG:true}
+  ws_message_log_enabled: ${SIM_AGV_WS_MSG_LOG:true}
   ws_message_log_max_chars: 300
+  ws_message_log_full_chars: ${SIM_AGV_WS_FULL_LOG_CHARS:65536}
   ws_message_log_topic_interval_ms: 10000
+  ws_message_log_unchanged_interval_ms: ${SIM_AGV_WS_UNCHANGED_LOG_MS:60000}
+  ws_message_log_sensor_interval_ms: ${SIM_AGV_WS_SENSOR_LOG_MS:60000}
   service_timeout_ms: 5000
   goal_timeout_s: 600
   default_max_speed: 0.6
@@ -213,12 +231,21 @@ sim_agv:
   arm_home_right: [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
   # 质检展开位姿（角色顺序）：质检任务三阶段序列（展臂→采集→收臂归位）的第一阶段目标
   arm_inspect_pose: [0.5, -1.2, 1.0, -0.5, 0, 0]
-  # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理，完成看 mode 流转）
+  # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理）
   list_maps_service: /agv/list_maps
   get_map_service: /agv/get_map
   load_map_service: /agv/load_map
   start_mapping_service: /agv/start_mapping
   save_map_service: /agv/save_map
+  # 定位操作闭环（新版 bridge）：load_map/relocalize 受理返回 operation_id，
+  # 终态（SUCCEEDED/FAILED/TIMED_OUT）以该话题推送为准（reliable+transient_local，
+  # 约 1s 心跳重发）；旧版机器人无 operation_id 自动回退 mode 流转判定
+  localization_operation_topic: /agv/localization_operation
+  # 重连/受理后按 operation_id 补查操作记录的服务（空串=最近一次）
+  get_localization_operation_service: /agv/get_localization_operation
+  # 带 operation_id 任务的兜底截止：必须晚于机器人侧 localization_operation_timeout_sec
+  # （默认 600s），否则上位机会抢在机器人 TIMED_OUT 结论前误判 FAILED。默认 660s。
+  localization_task_timeout_ms: 660000
   # 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
   # 放宽到 15s：/agv/status(1Hz) 与 ~3MB 的 /map JSON 共用一条 rosbridge websocket，
   # 宿主机负载高时小消息会被挤过 5s；rosbridge 重连窗口同理。只拦"桥接真死"，放过抖动。
@@ -229,11 +256,11 @@ sim_agv:
 # 充电任务（前端「去充电」与 RMS charge/replace_battery 共用 ChargeService）。
 # 机器人侧契约：/agv/set_charging（std_srvs/SetBool）data=true/false 开始/停止充电；
 # 充电真值以 /agv/status 遥测（charging/charge_connected/battery_data_valid）为准，
-# set_charging 成功≠充电完成，完成只认有效遥测 battery ≥ 目标电量。
+# 任务完成标志 = 对接确认（遥测 charging=true），充到多少/何时断充由上层调度控制。
 charge:
   service: /agv/set_charging
   service_timeout_ms: 5000
-  # 默认目标电量（%）：达到即充电任务完成（完成后留桩，下次导航 bridge 自动断充）
+  # 目标电量（%）：仅记录展示（对接完成不再等电量；「充到 X% 作业」由调度自行跟踪）
   target_battery_pct: 100.0
   # set_charging 成功后等遥测确认 charging=true 的超时
   confirm_timeout_ms: 20000
@@ -242,11 +269,14 @@ charge:
   # 超过 max 上限强制尝试（odom 异常兜底）
   dock_settle_min_ms: 2000
   dock_settle_max_ms: 15000
+  # 到桩校验半径（米）：开始充电前校验机器人与充电桩坐标的平面距离 ≤ 该值。
+  # 路线导航终点是「离桩最近的 waypoint」（可能距桩数米），仿真机器人 set_charging 又不校验
+  # 位置——超出半径先自动补一段精确接近段，补完仍超出则任务报错拒绝充电。
+  # 救援充电（模拟充电器，无需在桩上）豁免。
+  dock_arrival_radius: 0.5
   odom_quiet_linear_ms: 0.03
   odom_quiet_angular_rad: 0.05
   # 状态轮询周期
   poll_interval_ms: 1000
-  # 充电中 charging=false / 电量数据无效的持续宽限：超过判失败（防误判，也防僵尸充电）
-  stale_grace_ms: 60000
   # 充电全流程看门狗（导航+充电总时长上限）
   max_duration_ms: 14400000

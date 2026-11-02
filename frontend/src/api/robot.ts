@@ -1,11 +1,12 @@
 import { get, post } from './http'
-import type { TelemetrySnapshot } from '@/types/api'
+import type { MapModeTaskVO, TelemetrySnapshot } from '@/types/api'
 
 export const getRobotSnapshot = () => get<TelemetrySnapshot>('/robot/snapshot')
 export const robotControl = (action: 'start' | 'stop' | 'reset') =>
   post<{ success: boolean; message: string; state: string }>('/robot/control', { action })
-export const setInitialPose = (x: number, y: number, theta: number) =>
-  post<void>('/robot/initial-pose', { x, y, theta })
+/** 重定位：受理即返回任务，终态（成功/失败/超时原因）经 SSE map-task 事件推送 */
+export const setInitialPose = (x: number, y: number, theta: number, mapName?: string) =>
+  post<MapModeTaskVO>('/robot/initial-pose', { x, y, theta, map_name: mapName ?? null })
 
 export const sendTeleop = (linearX: number, linearY: number, angularZ: number) =>
   post<void>('/robot/teleop', { linear_x: linearX, linear_y: linearY, angular_z: angularZ })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, WarningFilled } from '@element-plus/icons-vue'
@@ -21,8 +21,8 @@ async function refresh() {
     const [rms, active, moves, charges] = await Promise.all([
       listRmsTasks(100),
       getRmsActiveTask(),
-      listMoveTasks(50),
-      listChargeTasks(50),
+      listMoveTasks(200),
+      listChargeTasks(100),
     ])
     rmsTasks.value = rms
     activeRms.value = active
@@ -70,29 +70,153 @@ async function doCancelMove(task: MoveTaskVO) {
   }
 }
 
+// ==================== 调度任务（RMS）阶段关联 ====================
+
+/** 单个执行阶段（时间线一行）：RMS 下发的导航 / 充电 / 充电内部导航。 */
+interface StageItem {
+  key: string
+  kind: string
+  kindType: 'primary' | 'success' | 'warning'
+  desc: string
+  status: string
+  statusType: 'success' | 'warning' | 'danger' | 'info'
+  time: string
+  message: string | null
+}
+
+function stageStatusType(status: string): StageItem['statusType'] {
+  if (status === 'SUCCEEDED' || status === 'COMPLETED') return 'success'
+  if (['CREATED', 'DISPATCHED', 'EXECUTING', 'RUNNING', 'PAUSED', 'MOVING', 'STARTING'].includes(status)) return 'warning'
+  if (status === 'CANCELLED' || status === 'CANCELED' || status === 'IDLE') return 'info'
+  return 'danger'
+}
+
+/**
+ * 一个 RMS 任务的完整执行链（按时间正序）：先发的导航（rms:{task_id}）→
+ * 后发的 start-activity 充电（rms:{task_id}）→ 充电内部导航（charge:{chargeTaskId}）。
+ * 同 task_id 多阶段天然聚合在同一行展开里，方便对照排查。
+ */
+function stagesOf(rms: RmsTaskVO): StageItem[] {
+  const prefix = `rms:${rms.task_id}`
+  const stages: StageItem[] = []
+  for (const m of moveTasks.value) {
+    if (m.source?.startsWith(prefix)) {
+      stages.push({
+        key: `m${m.id}`,
+        kind: '导航',
+        kindType: 'primary',
+        desc: m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : ''),
+        status: m.status ?? '—',
+        statusType: stageStatusType(m.status ?? ''),
+        time: m.created_at,
+        message: m.error_message,
+      })
+    }
+  }
+  for (const c of chargeTasks.value) {
+    if (!c.source?.startsWith(prefix)) continue
+    stages.push({
+      key: `c${c.id}`,
+      kind: '充电',
+      kindType: 'success',
+      desc: c.x != null
+        ? `去桩 (${fmtNum(c.x)}, ${fmtNum(c.y)}) 充至 ${fmtNum(c.target_battery_pct, 0)}%`
+        : `原地充电 至 ${fmtNum(c.target_battery_pct, 0)}%`,
+      status: c.status,
+      statusType: stageStatusType(c.status),
+      time: c.created_at,
+      message: c.message,
+    })
+    for (const m of moveTasks.value) {
+      if (m.source === `charge:${c.id}`) {
+        stages.push({
+          key: `cm${m.id}`,
+          kind: '充电·导航',
+          kindType: 'warning',
+          desc: m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : ''),
+          status: m.status ?? '—',
+          statusType: stageStatusType(m.status ?? ''),
+          time: m.created_at,
+          message: m.error_message,
+        })
+      }
+    }
+  }
+  return stages.sort((a, b) => Date.parse(a.time) - Date.parse(b.time))
+}
+
+/** RMS 任务行的阶段摘要 tag（导航 → 充电）。 */
+function stageSummary(rms: RmsTaskVO) {
+  const stages = stagesOf(rms)
+  return stages.map((s) => s.kind)
+}
+
+// ==================== 本机任务（手动） ====================
+
+interface LocalItem {
+  key: string
+  kind: '移动' | '充电' | '救援充电'
+  kindType: 'primary' | 'success' | 'danger'
+  ref: string
+  move?: MoveTaskVO
+  charge?: ChargeTaskVO
+  status: string
+  statusType: 'success' | 'warning' | 'danger' | 'info'
+  desc: string
+  message: string | null
+  time: string
+}
+
+/** 手动发起的任务（移动 + 充电 + 救援充电）合并时间线，新→旧；RMS 下发的不在此列。 */
+const localTasks = computed<LocalItem[]>(() => {
+  const items: LocalItem[] = []
+  for (const m of moveTasks.value) {
+    if (m.source && m.source !== 'manual') continue
+    items.push({
+      key: `m${m.id}`,
+      kind: '移动',
+      kindType: 'primary',
+      ref: `#${m.id}`,
+      move: m,
+      status: m.status ?? '—',
+      statusType: stageStatusType(m.status ?? ''),
+      desc: m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : m.path_id ? ` 路线#${m.path_id}` : ''),
+      message: m.error_message,
+      time: m.created_at,
+    })
+  }
+  for (const c of chargeTasks.value) {
+    if (c.source !== 'manual' && c.source !== 'rescue') continue
+    const rescue = c.source === 'rescue'
+    items.push({
+      key: `c${c.id}`,
+      kind: rescue ? '救援充电' : '充电',
+      kindType: rescue ? 'danger' : 'success',
+      ref: `#${c.id}`,
+      charge: c,
+      status: c.status,
+      statusType: stageStatusType(c.status),
+      desc: c.x != null
+        ? `去桩 (${fmtNum(c.x)}, ${fmtNum(c.y)}) 充至 ${fmtNum(c.target_battery_pct, 0)}%`
+        : `原地充至 ${fmtNum(c.target_battery_pct, 0)}%`,
+      message: c.message,
+      time: c.created_at,
+    })
+  }
+  return items.sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
+})
+
+function localMoveActive(item: LocalItem) {
+  return item.move && ['CREATED', 'DISPATCHED', 'EXECUTING'].includes(item.move.status ?? '')
+}
+
+// ==================== 展示辅助 ====================
+
 function rmsStatusType(status: string) {
   if (status === 'COMPLETED') return 'success'
   if (status === 'RUNNING' || status === 'PAUSED') return 'warning'
   if (status === 'CANCELED' || status === 'IDLE') return 'info'
   return 'danger'
-}
-
-function moveStatusType(status: string | null) {
-  if (status === 'SUCCEEDED') return 'success'
-  if (status === 'CREATED' || status === 'DISPATCHED' || status === 'EXECUTING') return 'warning'
-  if (status === 'CANCELLED') return 'info'
-  return 'danger'
-}
-
-function chargeStatusType(status: string) {
-  if (status === 'SUCCEEDED') return 'success'
-  if (status === 'CANCELLED') return 'info'
-  if (status === 'FAILED') return 'danger'
-  return 'warning'
-}
-
-function moveActive(task: MoveTaskVO) {
-  return task.status === 'CREATED' || task.status === 'DISPATCHED' || task.status === 'EXECUTING'
 }
 
 function fmtTime(value: string | null | undefined) {
@@ -103,7 +227,7 @@ function fmtNum(value: number | null | undefined, digits = 2) {
   return value == null ? '—' : value.toFixed(digits)
 }
 
-function fmtDuration(task: { created_at: string; finished_at: string | null; started_at: string | null }) {
+function fmtDuration(task: { created_at: string; finished_at: string | null; started_at?: string | null }) {
   const end = task.finished_at ? Date.parse(task.finished_at) : Date.now()
   const begin = task.started_at ? Date.parse(task.started_at) : Date.parse(task.created_at)
   if (!Number.isFinite(end) || !Number.isFinite(begin)) return '—'
@@ -154,13 +278,44 @@ onUnmounted(() => {
     </section>
 
     <el-tabs v-model="activeTab" class="task-tabs">
-      <el-tab-pane :label="`RMS 任务（${rmsTasks.length}）`" name="rms">
-        <el-table :data="rmsTasks" size="small" border stripe>
+      <!-- 调度任务：RMS 下发的任务（含多阶段：导航 → start-activity 充电），展开看完整执行链 -->
+      <el-tab-pane :label="`调度任务（${rmsTasks.length}）`" name="rms">
+        <el-table :data="rmsTasks" size="small" border stripe row-key="task_id">
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="stage-list">
+                <div v-for="stage in stagesOf(row)" :key="stage.key" class="stage-item">
+                  <el-tag size="small" :type="stage.kindType" effect="plain">{{ stage.kind }}</el-tag>
+                  <span class="stage-desc">{{ stage.desc }}</span>
+                  <el-tag size="small" :type="stage.statusType">{{ stage.status }}</el-tag>
+                  <span class="stage-time">{{ fmtTime(stage.time) }}</span>
+                  <span v-if="stage.message" class="stage-msg">{{ stage.message }}</span>
+                </div>
+                <div v-if="!stagesOf(row).length" class="muted">
+                  无内部执行记录（行为类任务原地执行，未派发导航/充电）
+                </div>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column prop="task_id" label="任务 ID" min-width="230" show-overflow-tooltip />
-          <el-table-column label="模板 / 类型" width="140">
+          <el-table-column label="模板 / 类型" width="130">
             <template #default="{ row }">
               <div>{{ row.task_template_type || '—' }}</div>
               <div class="sub">{{ row.task_type || '—' }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="执行阶段" width="180">
+            <template #default="{ row }">
+              <template v-if="stageSummary(row).length">
+                <el-tag
+                  v-for="(kind, i) in stageSummary(row)"
+                  :key="i"
+                  size="small"
+                  effect="plain"
+                  type="info"
+                >{{ kind }}<span v-if="i < stageSummary(row).length - 1" class="arrow"> →</span></el-tag>
+              </template>
+              <span v-else class="sub">—</span>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="150">
@@ -169,20 +324,13 @@ onUnmounted(() => {
               <span class="sub">code={{ row.action_status_code }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="目标点" width="150">
+          <el-table-column label="目标点" width="140">
             <template #default="{ row }">
               <span v-if="row.dest_x != null">({{ fmtNum(row.dest_x, 2) }}, {{ fmtNum(row.dest_y, 2) }})</span>
               <span v-else>—</span>
             </template>
           </el-table-column>
-          <el-table-column label="内部任务" width="120">
-            <template #default="{ row }">
-              <span v-if="row.internal_move_task_id">移动#{{ row.internal_move_task_id }}</span>
-              <span v-if="row.internal_charge_task_id">充电#{{ row.internal_charge_task_id }}</span>
-              <span v-if="!row.internal_move_task_id && !row.internal_charge_task_id">—</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="message" label="结果 / 原因" min-width="220" show-overflow-tooltip>
+          <el-table-column prop="message" label="结果 / 原因" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">{{ row.message || '—' }}</template>
           </el-table-column>
           <el-table-column label="创建时间" width="150">
@@ -194,74 +342,44 @@ onUnmounted(() => {
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane :label="`移动任务（${moveTasks.length}）`" name="move">
-        <el-table :data="moveTasks" size="small" border stripe>
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="task_no" label="编号" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="task_type" label="类型" width="110" />
+      <!-- 本机任务：页面上手动发起的移动/充电/救援充电，与调度下发无关 -->
+      <el-tab-pane :label="`本机任务（${localTasks.length}）`" name="local">
+        <el-table :data="localTasks" size="small" border stripe>
+          <el-table-column label="类型" width="110">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.kindType" effect="plain">{{ row.kind }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="编号" width="80">
+            <template #default="{ row }">{{ row.ref }}</template>
+          </el-table-column>
+          <el-table-column label="内容" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.desc }}</template>
+          </el-table-column>
           <el-table-column label="状态" width="120">
             <template #default="{ row }">
-              <el-tag size="small" :type="moveStatusType(row.status)">{{ row.status }}</el-tag>
+              <el-tag size="small" :type="row.statusType">{{ row.status }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="目标" width="160">
-            <template #default="{ row }">
-              <span v-if="row.goal_x != null">({{ fmtNum(row.goal_x) }}, {{ fmtNum(row.goal_y) }})</span>
-              <span v-else-if="row.point_id">点#{{ row.point_id }}</span>
-              <span v-else-if="row.path_id">路线#{{ row.path_id }}</span>
-              <span v-else>—</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="段进度" width="90">
-            <template #default="{ row }">
-              <span v-if="row.segment_total">{{ row.segment_seq }}/{{ row.segment_total }}</span>
-              <span v-else>—</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="error_message" label="错误信息" min-width="200" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.error_message || '—' }}</template>
+          <el-table-column label="结果 / 进度" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.message || '—' }}</template>
           </el-table-column>
           <el-table-column label="创建时间" width="150">
-            <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
+            <template #default="{ row }">{{ fmtTime(row.time) }}</template>
+          </el-table-column>
+          <el-table-column label="耗时" width="80">
+            <template #default="{ row }">
+              <span v-if="row.move">{{ fmtDuration(row.move) }}</span>
+              <span v-else-if="row.charge">{{ fmtDuration({ created_at: row.charge.created_at, finished_at: row.charge.finished_at }) }}</span>
+              <span v-else>—</span>
+            </template>
           </el-table-column>
           <el-table-column label="操作" width="90" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="moveActive(row)" size="small" type="warning" plain @click="doCancelMove(row)">
+              <el-button v-if="localMoveActive(row)" size="small" type="warning" plain @click="doCancelMove(row.move!)">
                 取消
               </el-button>
             </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-
-      <el-tab-pane :label="`充电任务（${chargeTasks.length}）`" name="charge">
-        <el-table :data="chargeTasks" size="small" border stripe>
-          <el-table-column prop="id" label="ID" width="150" />
-          <el-table-column prop="source" label="来源" width="220" show-overflow-tooltip />
-          <el-table-column label="状态" width="120">
-            <template #default="{ row }">
-              <el-tag size="small" :type="chargeStatusType(row.status)">{{ row.status }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="电量" width="140">
-            <template #default="{ row }">
-              <span v-if="row.battery_now != null">
-                {{ fmtNum(row.battery_now, 1) }}% / 目标 {{ fmtNum(row.target_battery_pct, 0) }}%
-              </span>
-              <span v-else>—</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="message" label="进度 / 结果" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.message || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="内部移动" width="100">
-            <template #default="{ row }">
-              <span v-if="row.internal_move_task_id">#{{ row.internal_move_task_id }}</span>
-              <span v-else>—</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="创建时间" width="150">
-            <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
           </el-table-column>
         </el-table>
       </el-tab-pane>
@@ -338,5 +456,46 @@ onUnmounted(() => {
 .sub {
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+
+.muted {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* RMS 任务展开行：阶段执行链时间线 */
+.stage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px;
+}
+
+.stage-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.stage-desc {
+  font-size: 13px;
+  min-width: 200px;
+}
+
+.stage-time {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.stage-msg {
+  color: var(--el-color-danger);
+  font-size: 12px;
+}
+
+.arrow {
+  margin-left: 2px;
 }
 </style>

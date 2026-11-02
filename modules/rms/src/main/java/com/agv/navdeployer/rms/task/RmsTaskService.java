@@ -60,9 +60,8 @@ public class RmsTaskService {
                 return thread;
             });
 
-    /** task_template/add 注册的自定义模板（template_code → 元数据）。 */
-    private final java.util.concurrent.ConcurrentHashMap<String, Map<String, Object>> customTemplates =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    /** task_template/add 下发的模板存储（真机机制：落盘 + 任务引用校验）。 */
+    private final RmsTemplateStore templateStore;
 
     public RmsTaskService(RmsTaskRegistry registry,
                           RmsResultReporter resultReporter,
@@ -76,7 +75,8 @@ public class RmsTaskService {
                            com.agv.navdeployer.service.SmartNavigationService smartNavigation,
                            com.agv.navdeployer.service.ChargeService chargeService,
                            com.agv.navdeployer.service.RobotOperationalService operationalService,
-                           com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard) {
+                           com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard,
+                           RmsTemplateStore templateStore) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.stateView = stateView;
@@ -90,6 +90,7 @@ public class RmsTaskService {
         this.chargeService = chargeService;
         this.operationalService = operationalService;
         this.mapAlignmentGuard = mapAlignmentGuard;
+        this.templateStore = templateStore;
     }
 
     /** 地图一致性前置闸门：机器人地图 ≠ 导航基准图时拒绝并透传原因（同名点位坐标错位会乱撞）。 */
@@ -104,6 +105,36 @@ public class RmsTaskService {
             log.warn("rms task rejected by map alignment gate: {}", exception.getMessage());
             return BodyReply.failure(409, exception.getMessage());
         }
+    }
+
+    /**
+     * 模板存在性校验（对齐真机验证机制，真机实测报文）：
+     * 任务引用未下发的模板时<b>受理成功、异步失败</b>——经 result_report 上报
+     * {@code action_status=4}（通用 failed）与 "template not found" 消息。
+     * 仿真侧消息更详细（中文 + 模板类型 + 标识）：
+     * 「任务模板不存在：类型 charge 的任务模板 back-charge（id=…）未下发…」。
+     * 模板标识优先 template_code，缺省回退任务类型名。仿真限制：无法解析真机行为树
+     * 模板的内部编排（充电点/路线在模板里），因此只做存在性校验；其余任务类型
+     * 暂不启用（navigate/质检等是仿真内置流程，无需模板下发）。
+     */
+    private boolean templateMissing(RmsTask task) {
+        if (!(task.isTemplate("charge") || task.isTemplate("replace_battery"))) {
+            return false;
+        }
+        String type = task.taskTemplateType() == null ? "charge" : task.taskTemplateType();
+        String code = task.templateCode() == null || task.templateCode().isBlank()
+                ? type : task.templateCode();
+        return templateStore.find(code).isEmpty();
+    }
+
+    private String templateMissingMessage(RmsTask task) {
+        String type = task.taskTemplateType() == null ? "charge" : task.taskTemplateType();
+        String code = task.templateCode() == null || task.templateCode().isBlank()
+                ? type : task.templateCode();
+        String templateId = task.templateId();
+        return "任务模板不存在：类型 " + type + " 的任务模板 " + code
+                + (templateId == null || templateId.isBlank() ? "" : "（template_id=" + templateId + "）")
+                + " 未下发，请先通过 task_template/add 下发模板";
     }
 
     /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：行为树 action 任务不拦。 */
@@ -139,20 +170,31 @@ public class RmsTaskService {
         return BodyReply.success("success", allTemplates());
     }
 
-    /** task_template/add：注册自定义模板（template_code 唯一键）。 */
+    /**
+     * task_template/add：下发并存储模板（template_code 唯一键，同 code 覆盖）。
+     * 真机机制：模板内容（行为树 XML 等）由上层下发，机器人侧落盘存档；
+     * 之后任务引用该模板才能执行（见 startTask 的模板存在性校验）。
+     * 内容字段从 parameters 兼容多个常见键名（template_content/content/template/xml）。
+     */
     public BodyReply addTemplate(TaskCommandRequest request) {
         String code = request.templateCode() != null ? request.templateCode()
                 : request.parameterText("template_code");
         if (code == null || code.isBlank()) {
             return BodyReply.failure(400, "template_code must not be blank");
         }
-        customTemplates.put(code, Map.of(
-                "templates_id", request.templateId() != null ? request.templateId() : code,
-                "template_code", code,
-                "template_description", request.parameterText("template_description") == null
-                        ? "" : request.parameterText("template_description"),
-                "template_add_time", java.time.OffsetDateTime.now().toString()));
-        log.info("RMS task_template/add: code={}", code);
+        String type = firstNonBlank(request.taskTemplateType(),
+                request.parameterText("template_type"),
+                request.parameterText("task_template_type"));
+        String content = firstNonBlank(request.parameterText("template_content"),
+                request.parameterText("content"),
+                request.parameterText("template"),
+                request.parameterText("xml"));
+        RmsTemplateStore.Template saved = templateStore.save(code,
+                firstNonBlank(request.templateId(), request.parameterText("template_id")),
+                type,
+                firstNonBlank(request.parameterText("template_description"), ""),
+                content);
+        log.info("RMS task_template/add: code={} type={} persisted", saved.code(), saved.type());
         return BodyReply.success("template add success", Map.of("template_code", code));
     }
 
@@ -161,21 +203,31 @@ public class RmsTaskService {
         if (templateCode == null || templateCode.isBlank()) {
             return BodyReply.failure(400, "template_code must not be blank");
         }
-        boolean removed = customTemplates.remove(templateCode) != null;
+        boolean removed = templateStore.delete(templateCode);
         log.info("RMS task_template/delete: code={} removed={}", templateCode, removed);
         return BodyReply.success("template delete " + (removed ? "success" : "not found"),
                 Map.of("template_code", templateCode));
     }
 
-    /** 覆盖后的模板查询：自定义模板 + 内置模板。 */
+    /** 覆盖后的模板查询：已下发（落盘）模板 + 内置模板。 */
     private List<Map<String, String>> allTemplates() {
         List<Map<String, String>> all = new java.util.ArrayList<>(builtinTemplates());
-        customTemplates.values().forEach(template -> {
-            Map<String, String> entry = new java.util.LinkedHashMap<>();
-            template.forEach((key, value) -> entry.put(key, String.valueOf(value)));
-            all.add(entry);
-        });
+        templateStore.list().forEach(template -> all.add(new java.util.LinkedHashMap<>(Map.of(
+                "templates_id", template.templateId(),
+                "template_code", template.code(),
+                "template_type", template.type() == null ? "" : template.type(),
+                "template_description", template.description() == null ? "" : template.description(),
+                "template_add_time", template.addedAt() == null ? "" : template.addedAt()))));
         return all;
+    }
+
+    private static String firstNonBlank(String... candidates) {
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank()) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private List<Map<String, String>> builtinTemplates() {
@@ -247,6 +299,16 @@ public class RmsTaskService {
         BodyReply armRejected = armGate(task);
         if (armRejected != null) {
             return armRejected;
+        }
+        // 真机模板校验（实测报文对齐，双通道）：任务引用未下发的模板时——
+        // 1) task/start 同步回包失败：status=2 + template not found 消息（真机原样）；
+        // 2) 任务收口为 failed 并异步 result_report：action_status=4 + 中文详细消息。
+        // 真机两条都会发（result_report 甚至先于 start 回包到达），上位机同构。
+        if (templateMissing(task)) {
+            log.warn("rms task {} failed: template not downloaded (type={}, code={})",
+                    task.taskId(), task.taskTemplateType(), task.templateCode());
+            fail(task, RmsTaskStatus.FAILED, templateMissingMessage(task));
+            return BodyReply.failure(2, templateMissingMessage(task));
         }
         logRmsCommand("task/start", task);
         registry.transition(task.taskId(), RmsTaskStatus.RUNNING);
@@ -404,23 +466,46 @@ public class RmsTaskService {
             simulateAction(task);
             return;
         }
-        // charge / replace_battery：走充电任务编排（导航到桩 → 开始充电 → 充到目标电量），
-        // 与前端「去充电」共用 ChargeService 底层链路
+        // 导航语义优先于充电模板判定：充电任务流指定起点（nav_start_point）时，
+        // 适配器先下发的导航任务 task_type=navigate，但可能仍携带任务流的 charge
+        // 模板类型——此时只导航，完成正常上报 COMPLETED（result_report），不触发充电；
+        // 充电由上层后续 start-activity 的充电任务执行（原地充电，见 executeCharge）
+        if (task.isNavigation()) {
+            dispatchMove(task);
+            return;
+        }
+        // 真机模板校验机制（实测报文对齐）：任务引用未下发的模板时受理成功、异步失败，
+        // result_report 上报 action_status=4（通用 failed，真机口径）+ 自定义中文消息
         if (task.isTemplate("charge") || task.isTemplate("replace_battery")) {
+            if (templateMissing(task)) {
+                log.warn("rms task {} failed: template not downloaded (type={}, code={})",
+                        task.taskId(), task.taskTemplateType(), task.templateCode());
+                fail(task, RmsTaskStatus.FAILED, templateMissingMessage(task));
+                return;
+            }
+            // charge / replace_battery：走充电任务编排（带目标自主导航到桩充电；
+            // 无目标原地充电——导航阶段已就位），与前端「去充电」共用 ChargeService 底层链路
             executeCharge(task);
             return;
         }
-        // navigate / return_home 统一走移动
+        // return_home 等其余移动语义
+        dispatchMove(task);
+    }
+
+    /** navigate / return_home 统一移动派发（内部 move task + 完成轮询）。 */
+    private void dispatchMove(RmsTask task) {
+        String taskId = task.taskId();
         TaskCommandRequest.Destination destination = resolveDestination(task);
         if (destination == null) {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, "no destination for task (template=" + task.taskTemplateType()
-                    + ", charge/home pose 未配置且 parameters.destination 缺失)");
+                    + ", home pose 未配置且 parameters.destination 缺失)");
             return;
         }
         task.setDestination(destination);
         try {
+            // source=rms:{task_id}：任务页据此把同一 RMS 任务的多阶段执行（导航→充电）关联展示
             MoveTaskVO moveTask = smartNavigation.createOptimizedMoveTask(taskId,
-                    destination.x(), destination.y(), destination.yaw());
+                    destination.x(), destination.y(), destination.yaw(), "rms:" + taskId);
             task.setInternalMoveTaskId(moveTask.getId());
             registry.save(task);
             log.info("rms task {} dispatched internal move task {} (type={}) -> ({}, {}, {}rad)",
@@ -434,27 +519,38 @@ public class RmsTaskService {
     }
 
     /**
-     * 充电任务执行：目标 = charge-pose 配置（缺省回退报文 destination），
-     * 目标电量 = parameters.target_battery_pct（缺省用 charge.target_battery_pct 配置，默认 100）。
+     * 充电任务执行（方案 B：调度分段）：
+     * - 携带 destination：单段导航（与 navigate 同构，导航不过去直接报错）→ 到桩校验 → 充电；
+     * - 未携带 destination：原地执行充电（真机行为树 Charge 节点语义）——调度分段导航已把车开到桩上，
+     *   本阶段直接开始充电，不再重复导航。
+     * 完成标志 = 对接充电桩成功（遥测 charging=true）即 COMPLETED 上报——充到多少电量、
+     * 何时断充由调度自行控制（如「充到 60% 允许作业」由调度跟踪电量再派新任务）。
+     * parameters.target_battery_pct / target_soc 仅记录展示（缺省用 charge.target_battery_pct 配置）。
      */
     private void executeCharge(RmsTask task) {
-        TaskCommandRequest.Destination destination = resolveDestination(task);
-        if (destination == null) {
-            fail(task, RmsTaskStatus.AGV_NODE_FAILED, "no destination for charge task（charge-pose 未配置且 parameters.destination 缺失）");
-            return;
-        }
-        task.setDestination(destination);
+        TaskCommandRequest.Destination destination = task.destination();
         try {
-            com.agv.navdeployer.vo.ChargeTaskVO chargeTask = chargeService.start(
-                    new com.agv.navdeployer.service.ChargeService.ChargeCommand(
-                            "rms:" + task.taskId(), null,
-                            destination.x(), destination.y(), destination.yaw(),
-                            targetBatteryOf(task)));
+            com.agv.navdeployer.vo.ChargeTaskVO chargeTask;
+            if (destination != null) {
+                task.setDestination(destination);
+                chargeTask = chargeService.start(
+                        new com.agv.navdeployer.service.ChargeService.ChargeCommand(
+                                "rms:" + task.taskId(), null,
+                                destination.x(), destination.y(), destination.yaw(),
+                                targetBatteryOf(task)));
+            } else {
+                chargeTask = chargeService.startDirect("rms:" + task.taskId(), targetBatteryOf(task));
+                log.info("rms task {} charge without destination: 原地执行充电（调度分段导航已就位）",
+                        task.taskId());
+            }
             task.setInternalChargeTaskId(chargeTask.id());
             registry.save(task);
             log.info("rms task {} dispatched charge task {} -> ({}, {}, {}rad, target={}%)",
-                    task.taskId(), chargeTask.id(), destination.x(), destination.y(),
-                    destination.yaw(), chargeTask.targetBatteryPct());
+                    task.taskId(), chargeTask.id(),
+                    destination == null ? null : destination.x(),
+                    destination == null ? null : destination.y(),
+                    destination == null ? null : destination.yaw(),
+                    chargeTask.targetBatteryPct());
             scheduleChargePoll(task.taskId(), chargeTask.id());
         } catch (Exception exception) {
             // ChargeService/MoveTaskService 的闸门（连接/定位/模式/占用/已在充电）在这里拦截
@@ -516,11 +612,6 @@ public class RmsTaskService {
     private TaskCommandRequest.Destination resolveDestination(RmsTask task) {
         if (task.isNavigation()) {
             return task.destination();
-        }
-        if (task.isTemplate("charge") || task.isTemplate("replace_battery")) {
-            RmsProperties.Pose pose = props.getBehavior().getChargePose();
-            return pose == null ? task.destination()
-                    : new TaskCommandRequest.Destination(pose.getX(), pose.getY(), pose.getYaw());
         }
         if (task.isTemplate("return_home")) {
             RmsProperties.Pose pose = props.getBehavior().getHomePose();

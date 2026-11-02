@@ -9,8 +9,15 @@ export type NavMapStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED'
 export type PointType = 'NORMAL' | 'WORK' | 'CHARGER' | 'HOME'
 export type PathStatus = 'DRAFT' | 'DEPLOYED' | 'DISABLED'
 export type EdgeType = 'STRAIGHT' | 'CURVE'
-export type MapTaskType = 'SWITCH_MAP' | 'START_MAPPING' | 'SAVE_MAP' | 'DISCARD_MAPPING'
+export type MapTaskType = 'SWITCH_MAP' | 'START_MAPPING' | 'SAVE_MAP' | 'DISCARD_MAPPING' | 'RELOCALIZE'
 export type MapTaskStatus = 'DISPATCHED' | 'RELOCATING' | 'SUCCEEDED' | 'FAILED'
+/** 机器人侧定位操作阶段（/agv/localization_operation.stage；终态后保留最后阶段） */
+export type LocStage =
+  | 'ACCEPTED'
+  | 'STOPPING_LOCALIZATION'
+  | 'STARTING_LOCALIZATION'
+  | 'WAITING_LOCALIZATION'
+  | 'FINISHED'
 export type MoveTaskType = 'TO_POINT' | 'GOAL' | 'FOLLOW_PATH' | 'FREE'
 export type MoveTaskStatus =
   | 'CREATED'
@@ -138,7 +145,7 @@ export interface NavPathUpdateDTO {
   status?: 'DRAFT' | 'DISABLED'
 }
 
-// ---------- 建图/切图任务 ----------
+// ---------- 建图/切图/重定位任务 ----------
 export interface MapModeTaskVO {
   id: number
   type: MapTaskType
@@ -147,6 +154,12 @@ export interface MapModeTaskVO {
   map_name: string | null
   robot_map_name: string | null
   error_message: string | null
+  /** 机器人侧定位操作 ID（新版机器人切图/重定位携带；旧版为 null，终态退化为 mode 流转判定） */
+  operation_id: string | null
+  /** 机器人侧执行阶段（STOPPING_LOCALIZATION 等），随执行推进刷新 */
+  stage: LocStage | string | null
+  /** 机器人侧进度/结论描述（operation.message） */
+  detail_message: string | null
   created_at: string
   updated_at: string
   finished_at: string | null
@@ -170,6 +183,8 @@ export interface MoveTaskVO {
   segment_seq: number | null
   segment_total: number | null
   error_message: string | null
+  /** 来源：manual=手动；rms:{task_id}=RMS 派发；charge:{chargeTaskId}=充电内部导航（旧数据可能缺失，视为 manual） */
+  source?: string | null
   created_at: string
   updated_at: string
   finished_at: string | null
@@ -244,8 +259,8 @@ export interface TfFrame {
 }
 
 // ---------- 充电任务 ----------
-/** 充电任务阶段：到桩导航 → 开始充电（服务+遥测确认）→ 充电中 → 终态 */
-export type ChargeTaskStatus = 'MOVING' | 'STARTING' | 'CHARGING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED'
+/** 充电任务阶段：到桩导航 → 开始充电（服务+遥测确认，对接成功即完成）→ 终态 */
+export type ChargeTaskStatus = 'MOVING' | 'STARTING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED'
 
 export interface ChargeTaskVO {
   id: number
@@ -332,8 +347,8 @@ export interface SystemConfig {
       config_error?: string
     }
     behavior: {
-      charge_pose: { x: number; y: number; yaw: number } | null
       home_pose: { x: number; y: number; yaw: number } | null
+      template_dir?: string | null
     }
   }
   sim_agv: {

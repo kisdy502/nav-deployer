@@ -46,6 +46,9 @@ public class MoveTaskVO {
 
     private String errorMessage;
 
+    /** 来源：manual=手动；rms:{task_id}=RMS 派发；charge:{chargeTaskId}=充电内部导航 */
+    private String source;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -58,6 +61,7 @@ public class MoveTaskVO {
                 task.getGoalX(), task.getGoalY(), task.getGoalTheta(),
                 task.getCurrentX(), task.getCurrentY(), task.getCurrentTheta(),
                 task.getAgvState(), task.getSegmentSeq(), task.getSegmentTotal(), task.getErrorMessage(),
+                task.getSource() == null ? "manual" : task.getSource(),
                 task.getCreatedAt(), task.getUpdatedAt(), task.getFinishedAt());
     }
 }

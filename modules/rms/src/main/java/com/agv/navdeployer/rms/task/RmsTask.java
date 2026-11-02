@@ -136,9 +136,11 @@ public final class RmsTask {
         this.message = message;
     }
 
-    /** charge / replace_battery 执行中 → 状态报文 is_charging=true */
+    /** charge / replace_battery 执行中（充电任务已派发）→ 状态报文 is_charging=true。
+     *  充电任务流的起点导航阶段（charge 模板但仍是 navigate 语义、充电未派发）不算。 */
     public boolean isChargingBehavior() {
         return status == RmsTaskStatus.RUNNING
+                && internalChargeTaskId != null
                 && (isTemplate("charge") || isTemplate("replace_battery"));
     }
 

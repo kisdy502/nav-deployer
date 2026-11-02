@@ -115,6 +115,11 @@ public class RmsTaskRegistry {
         try {
             RmsTaskRecord record = toRecord(task);
             if (insert) {
+                // 同 task_id 多阶段复用（质检 navigate→作业、自研调度分段导航等）会在
+                // 上一阶段终态后重建任务再注册：先删旧行再插入（覆盖语义，与内存
+                // "新阶段实例替换旧实例"一致），否则 rms_task_pkey 主键冲突刷 WARN；
+                // 旧行不存在时 delete 是无害的 no-op。重启后 DB 旧行残留同理被覆盖。
+                recordMapper.deleteById(record.getTaskId());
                 recordMapper.insert(record);
             } else {
                 recordMapper.updateById(record);

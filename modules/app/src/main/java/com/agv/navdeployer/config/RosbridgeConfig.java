@@ -48,6 +48,20 @@ public class RosbridgeConfig {
         return new RosCommandDispatcher(props);
     }
 
+    /**
+     * 定位操作（切图/重定位）闭环跟踪：订阅 /agv/localization_operation 维护
+     * operation_id -> 进度/终态记录；重连后按 ID 查询补齐，不重发指令。
+     * 查询能力由 dispatcher 提供（dispatcher 先创建，无构造环）。
+     */
+    @Bean
+    public com.agv.navdeployer.sim.LocalizationOperationTracker localizationOperationTracker(
+            SimAgvProperties props, RosCommandDispatcher dispatcher) {
+        com.agv.navdeployer.sim.LocalizationOperationTracker tracker =
+                new com.agv.navdeployer.sim.LocalizationOperationTracker(props);
+        tracker.attachQueryCaller(dispatcher::queryLocalizationOperation);
+        return tracker;
+    }
+
     /** 机械臂归位联锁：/joint_states 对照归位姿态 + arm_move 在途 → 移动闸门（MoveTaskService/RmsTaskService）。 */
     @Bean
     public ArmStateMonitor armStateMonitor(SimAgvTelemetry telemetry,
@@ -66,12 +80,14 @@ public class RosbridgeConfig {
     public RosbridgeClient rosbridgeClient(SimAgvProperties props,
                                            SimAgvTelemetryCollector telemetryCollector,
                                            RosCommandDispatcher commandDispatcher,
-                                           MapSubscriptionGuard mapSubscriptionGuard) {
+                                           MapSubscriptionGuard mapSubscriptionGuard,
+                                           com.agv.navdeployer.sim.LocalizationOperationTracker localizationOperationTracker) {
         // 指令/遥测主通道：不承载 /map——大消息会阻塞 rosbridge 单线程事件循环，
         // 把 /cmd_vel 与 /agv/status 挤出数百 ms（遥控迟钝的主因），/map 走专用通道
         RosbridgeClient client = new RosbridgeClient(
                 props.getWsUrl(), props.getReconnectDelayMs(),
-                telemetryCollector, commandDispatcher, mapSubscriptionGuard);
+                telemetryCollector, commandDispatcher, mapSubscriptionGuard,
+                localizationOperationTracker);
         commandDispatcher.attach(client);
         return client;
     }
@@ -89,10 +105,13 @@ public class RosbridgeConfig {
                                                 RosbridgeClient mapRosbridgeClient,
                                                 MapSubscriptionGuard mapSubscriptionGuard) {
         return args -> {
-            // 收发消息日志参数注入（开关/截断长度/话题节流间隔，见 sim_agv.ws_message_log_*）
+            // 收发消息日志参数注入（指令全量 / 业务状态话题内容感知 / 传感器流固定节流）
             com.agv.navdeployer.sim.RosbridgeMessageLog.configure(
-                    props.isWsMessageLogEnabled(), props.getWsMessageLogMaxChars(),
-                    props.getWsMessageLogTopicIntervalMs());
+                    props.isWsMessageLogCommandsEnabled(), props.isWsMessageLogEnabled(),
+                    props.getWsMessageLogMaxChars(), props.getWsMessageLogFullChars(),
+                    props.getWsMessageLogTopicIntervalMs(), props.getWsMessageLogUnchangedIntervalMs(),
+                    props.getWsMessageLogSensorIntervalMs(),
+                    java.util.Set.of(props.getStatusTopic(), props.getLocalizationOperationTopic()));
             if (!props.isEnabled()) {
                 log.info("sim-agv disabled, rosbridge client stays idle (ws={})", props.getWsUrl());
                 return;
@@ -118,6 +137,10 @@ public class RosbridgeConfig {
                 // 关节角驱动前端 3D 模型（舵轮转向/机械臂），关节消息不大走主通道
                 rosbridgeClient.subscribe(props.getJointStatesTopic(), props.getJointStatesTopicType(), 100, 0);
             }
+            // 定位操作闭环（切图/重定位的进度与终态）：reliable + transient_local，
+            // 连接后立即收到 latched 的最新操作，约每秒还有心跳重发，500ms 轮询消费不丢终态
+            rosbridgeClient.subscribe(props.getLocalizationOperationTopic(),
+                    props.getLocalizationOperationTopicType(), 0, 0, true);
             // /map 由 MapSubscriptionGuard 在 MAPPING 模式或 /live 被轮询时
             // 挂载到专用通道（mapRosbridgeClient），主通道永远不见大消息
             mapSubscriptionGuard.attach(mapRosbridgeClient);

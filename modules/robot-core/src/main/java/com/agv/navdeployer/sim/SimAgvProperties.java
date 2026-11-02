@@ -58,12 +58,27 @@ public class SimAgvProperties {
     private String relocalizeService = "/agv/relocalize";
     private String cmdVelTopic = "/cmd_vel";
     private long serviceTimeoutMs = 5000L;
-    /** rosbridge 收发消息高亮日志开关（指令类全量、高频话题采样、大报文摘要） */
+    /** rosbridge 指令类消息日志（call_service / service_response / action goal/result 等）：
+     * 一次性请求-响应全量打印、不节流，联调对账靠它，默认开。 */
+    private boolean wsMessageLogCommandsEnabled = true;
+    /** rosbridge 话题数据日志开关（publish 话题 / action_feedback / cmd_vel）：周期数据按 topic_interval 节流。 */
     private boolean wsMessageLogEnabled = true;
-    /** rosbridge 消息日志单条报文截断长度（字符） */
+    /** rosbridge 消息日志「未变化保底/摘要」的截断长度（字符） */
     private int wsMessageLogMaxChars = 300;
-    /** 话题数据日志的时间节流间隔（毫秒，同一话题最多 1 条/间隔）；<=0 完全不打话题数据（指令日志保留） */
+    /**
+     * rosbridge 消息日志「全量打印」的截断上限（字符）：指令类回包与话题变化内容完整输出，
+     * 方便复制完整 JSON 格式化分析；雷达/状态报文远小于此，/map 响应（MB 级）仍会被截断保护。
+     */
+    private int wsMessageLogFullChars = 65_536;
+    /** 话题数据「内容变化」的日志间隔（毫秒，同一话题最多 1 条/间隔）；<=0 完全不打话题数据（指令日志保留） */
     private long wsMessageLogTopicIntervalMs = 10_000;
+    /**
+     * 话题数据「内容未变化」的保底日志间隔（毫秒）：机器人静止/状态稳定（规范化比较相同：
+     * 去 stamp、浮点取 2 位小数）时拉长到该间隔打 1 条，证明链路活着又不重复刷同样的报文。
+     */
+    private long wsMessageLogUnchangedIntervalMs = 60_000;
+    /** 传感器流话题（雷达/pose/tf/odom/关节/feedback/cmd_vel）的固定日志间隔（毫秒），只打摘要。 */
+    private long wsMessageLogSensorIntervalMs = 30_000;
     private long goalTimeoutSeconds = 600L;
     private double defaultMaxSpeed = 0.6;
     private double defaultStep = 0.1;
@@ -94,6 +109,19 @@ public class SimAgvProperties {
     private String loadMapService = "/agv/load_map";
     private String startMappingService = "/agv/start_mapping";
     private String saveMapService = "/agv/save_map";
+
+    // ===== 定位操作闭环（agv_bridge_v2 新增 operation_id 体系）=====
+    /** 操作状态话题：阶段变化即时发布 + 约每秒重发最新操作（transient_local QoS）。 */
+    private String localizationOperationTopic = "/agv/localization_operation";
+    private String localizationOperationTopicType = "agv_bridge_v2_interfaces/msg/LocalizationOperation";
+    /** 按 operation_id 查询操作记录的服务（空串查最近一次），用于重连恢复/补齐。 */
+    private String getLocalizationOperationService = "/agv/get_localization_operation";
+    /**
+     * 带操作 ID 的任务（切图/重定位）终态兜底截止：机器人侧 localization_operation_timeout_sec
+     * 默认 600s 才给 TIMED_OUT 结论，上位机兜底必须晚于它，否则会抢跑误判 FAILED。
+     * 默认 660s = 机器人默认 600s + 60s 传输余量。
+     */
+    private long localizationTaskTimeoutMs = 660000L;
     /** 机械臂/腰关节运动服务（《仿真机器人功能开发说明.md》F1.5 契约）。 */
     private String armMoveService = "/agv/arm_move";
     /** URDF mesh 静态服务端口（机器人侧 HTTP 目录，见说明文档 F1.4/F3；host 自动取 ws-url）。 */
@@ -409,6 +437,14 @@ public class SimAgvProperties {
         this.wsMessageLogEnabled = wsMessageLogEnabled;
     }
 
+    public boolean isWsMessageLogCommandsEnabled() {
+        return wsMessageLogCommandsEnabled;
+    }
+
+    public void setWsMessageLogCommandsEnabled(boolean wsMessageLogCommandsEnabled) {
+        this.wsMessageLogCommandsEnabled = wsMessageLogCommandsEnabled;
+    }
+
     public int getWsMessageLogMaxChars() {
         return wsMessageLogMaxChars;
     }
@@ -417,12 +453,36 @@ public class SimAgvProperties {
         this.wsMessageLogMaxChars = wsMessageLogMaxChars;
     }
 
+    public int getWsMessageLogFullChars() {
+        return wsMessageLogFullChars;
+    }
+
+    public void setWsMessageLogFullChars(int wsMessageLogFullChars) {
+        this.wsMessageLogFullChars = wsMessageLogFullChars;
+    }
+
     public long getWsMessageLogTopicIntervalMs() {
         return wsMessageLogTopicIntervalMs;
     }
 
     public void setWsMessageLogTopicIntervalMs(long wsMessageLogTopicIntervalMs) {
         this.wsMessageLogTopicIntervalMs = wsMessageLogTopicIntervalMs;
+    }
+
+    public long getWsMessageLogUnchangedIntervalMs() {
+        return wsMessageLogUnchangedIntervalMs;
+    }
+
+    public void setWsMessageLogUnchangedIntervalMs(long wsMessageLogUnchangedIntervalMs) {
+        this.wsMessageLogUnchangedIntervalMs = wsMessageLogUnchangedIntervalMs;
+    }
+
+    public long getWsMessageLogSensorIntervalMs() {
+        return wsMessageLogSensorIntervalMs;
+    }
+
+    public void setWsMessageLogSensorIntervalMs(long wsMessageLogSensorIntervalMs) {
+        this.wsMessageLogSensorIntervalMs = wsMessageLogSensorIntervalMs;
     }
 
     public long getGoalTimeoutSeconds() {
@@ -579,5 +639,37 @@ public class SimAgvProperties {
 
     public void setModeTaskTimeoutMs(long modeTaskTimeoutMs) {
         this.modeTaskTimeoutMs = modeTaskTimeoutMs;
+    }
+
+    public String getLocalizationOperationTopic() {
+        return localizationOperationTopic;
+    }
+
+    public void setLocalizationOperationTopic(String localizationOperationTopic) {
+        this.localizationOperationTopic = localizationOperationTopic;
+    }
+
+    public String getLocalizationOperationTopicType() {
+        return localizationOperationTopicType;
+    }
+
+    public void setLocalizationOperationTopicType(String localizationOperationTopicType) {
+        this.localizationOperationTopicType = localizationOperationTopicType;
+    }
+
+    public String getGetLocalizationOperationService() {
+        return getLocalizationOperationService;
+    }
+
+    public void setGetLocalizationOperationService(String getLocalizationOperationService) {
+        this.getLocalizationOperationService = getLocalizationOperationService;
+    }
+
+    public long getLocalizationTaskTimeoutMs() {
+        return localizationTaskTimeoutMs;
+    }
+
+    public void setLocalizationTaskTimeoutMs(long localizationTaskTimeoutMs) {
+        this.localizationTaskTimeoutMs = localizationTaskTimeoutMs;
     }
 }

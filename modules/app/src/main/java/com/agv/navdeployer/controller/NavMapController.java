@@ -89,8 +89,9 @@ public class NavMapController {
     }
 
     @Operation(summary = "切换机器人地图",
-            description = "调 /agv/load_map 重启定位加载新图（受理即返回）。终态看任务状态："
-                    + "mode RELOCALIZING -> NAVIGATION 且 map_name=目标 即 SUCCEEDED，同时该地图置 ACTIVE。"
+            description = "调 /agv/load_map 重启定位加载新图（受理即返回）。终态以机器人定位操作记录"
+                    + "（operation_id）为权威结论，经 SSE map-task 事件推送（含阶段与失败原因）；"
+                    + "旧版机器人（无 operation_id）退化为 mode 流转判定。成功后该地图置 ACTIVE。"
                     + "前置：连接正常、状态新鲜、mode=NAVIGATION、无在途移动任务")
     @PostMapping("/{id}/switch")
     public ApiResponse<MapModeTaskVO> switchMap(@PathVariable Long id,

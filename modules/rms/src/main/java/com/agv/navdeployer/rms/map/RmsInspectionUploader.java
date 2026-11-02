@@ -260,7 +260,10 @@ public class RmsInspectionUploader {
             root.put("result", "failed");
             root.put("msg", reason == null ? "upload failed" : reason);
             String key = keyBase + "/task-result-files-uploaded";
-            channel.putOnce(key, mapper.writeValueAsString(root));
+            String payload = mapper.writeValueAsString(root);
+            channel.putOnce(key, payload);
+            // 一次性上报消息：与成功变体一致打高亮全文，可对账
+            com.agv.navdeployer.rms.zenoh.RmsMessageLog.outboundPublish(key, payload);
             log.info("task-result-files-uploaded(failed) 已通知: task_id={} key={}", taskId, key);
         } catch (Exception exception) {
             log.warn("task-result-files-uploaded(failed) 通知失败: task_id={} msg={}", taskId, exception.getMessage());

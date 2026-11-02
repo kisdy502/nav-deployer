@@ -56,7 +56,7 @@ export const useTasksStore = defineStore('tasks', () => {
     updateChargeTask(t)
     if (!TERMINAL_CHARGE.includes(t.status) || notifiedChargeTaskIds.has(t.id)) return
     rememberId(notifiedChargeTaskIds, t.id)
-    if (t.status === 'SUCCEEDED') ElMessage.success(`充电完成：${t.message ?? '已达到目标电量'}`)
+    if (t.status === 'SUCCEEDED') ElMessage.success(`充电完成：${t.message ?? '已对接充电桩，充电已开始'}`)
     else if (t.status === 'FAILED') ElMessage.error(`充电任务失败：${t.message ?? '未知原因'}`)
     else if (t.status === 'CANCELLED') ElMessage.info(`充电已取消：${t.message ?? ''}`)
   }

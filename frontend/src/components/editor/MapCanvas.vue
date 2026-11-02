@@ -484,13 +484,13 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {
   emit('context', { hit, x: ev.clientX, y: ev.clientY, world: { x: world.x, y: world.y } })
 }
 
-/** 应用重定位预览：提交临时位姿（/agv/relocalize），结束预览 */
+/** 应用重定位预览：提交临时位姿（/agv/relocalize 受理，终态经 SSE map-task 推送），结束预览 */
 async function applyReloc() {
   const pending = pendingReloc.value
   if (!pending) return
   try {
     await robot.setInitialPose(+pending.x.toFixed(4), +pending.y.toFixed(4), +pending.yaw.toFixed(4))
-    ElMessage.success('初始位姿已发送，等待重定位…')
+    ElMessage.success('重定位已受理，正在执行，结果将自动通知')
     editor.setMode('idle')
     hidePreviews()
   } catch {

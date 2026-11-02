@@ -189,6 +189,7 @@ public class RmsRobotSession {
 
     /** 心跳 = A 网关 legacy put + B 网关 body query，同一份报文双通道。 */
     private long lastHeartbeatLogMs = 0;
+    private String lastHeartbeatSummary = "";
 
     private void heartbeatSafe() {
         try {
@@ -200,10 +201,20 @@ public class RmsRobotSession {
             if (props.getReport().isVerboseLog()) {
                 log.info("rms heartbeat beat: legacy_put=ok, body_query_replied={} (每 {}ms, verbose)",
                         queryReplied, props.getReport().getHeartbeatIntervalMs());
-            } else if (now - lastHeartbeatLogMs > 30_000) {
+                return;
+            }
+            // 结果与上次相同（正常恒为 ok）→ 拉长到保底间隔再打，不每 30s 重复同样内容；
+            // 结果变化（如 body_query_replied 翻转）→ 立即按短间隔打出
+            String summary = "legacy_put=ok, body_query_replied=" + queryReplied;
+            boolean unchanged = summary.equals(lastHeartbeatSummary);
+            long throttle = unchanged
+                    ? Math.max(props.getReport().getPeriodicLogIntervalMs(), props.getReport().getUnchangedLogIntervalMs())
+                    : 0;
+            if (now - lastHeartbeatLogMs > throttle) {
                 lastHeartbeatLogMs = now;
-                log.info("rms heartbeat: legacy_put=ok, body_query_replied={} (每 {}ms)",
-                        queryReplied, props.getReport().getHeartbeatIntervalMs());
+                lastHeartbeatSummary = summary;
+                log.info("rms heartbeat: {} (每 {}ms{})", summary, props.getReport().getHeartbeatIntervalMs(),
+                        unchanged ? ", 未变化降频" : "");
             }
         } catch (Exception exception) {
             log.warn("rms heartbeat failed: {}", exception.getMessage());
@@ -217,9 +228,15 @@ public class RmsRobotSession {
         try {
             reportGateway.publishStatus();
             long now = System.currentTimeMillis();
-            if (now - lastStatusLogMs > 30_000) {
+            // 周期状态上报成功且汇总内容恒定：按「未变化保底间隔」（默认 60s）打 1 条，
+            // 保持链路可见；失败走 WARN 不受节流影响
+            long throttle = Math.max(props.getReport().getPeriodicLogIntervalMs(),
+                    props.getReport().getUnchangedLogIntervalMs());
+            if (now - lastStatusLogMs > throttle) {
                 lastStatusLogMs = now;
-                log.debug("rms status report sent (body_put + legacy_put)");
+                log.info("rms status report sent (body_put={} legacy_put={}, 每 {}ms)",
+                        props.getReport().isPublishBodyStatus(), props.getReport().isPublishLegacyStatus(),
+                        props.getReport().getStatusIntervalMs());
             }
         } catch (Exception exception) {
             log.warn("rms status report failed: {}", exception.getMessage());

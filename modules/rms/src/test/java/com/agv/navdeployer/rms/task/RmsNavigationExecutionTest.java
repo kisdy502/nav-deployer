@@ -34,7 +34,7 @@ class RmsNavigationExecutionTest {
         MoveTaskService moves = mock(MoveTaskService.class);
         MoveTaskVO created = new MoveTaskVO();
         created.setId(42L);
-        when(moves.create(any())).thenReturn(created);
+        when(moves.create(any(), any())).thenReturn(created);
         AtomicReference<String> moveStatus = new AtomicReference<>("EXECUTING");
         when(moves.get(42L)).thenAnswer(invocation -> {
             MoveTaskVO state = new MoveTaskVO();
@@ -51,7 +51,7 @@ class RmsNavigationExecutionTest {
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(com.agv.navdeployer.service.RobotOperationalService.class),
-                null);
+                null, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "workflow-1", "18", null, "navigate", "quality_inspection",
@@ -59,7 +59,7 @@ class RmsNavigationExecutionTest {
             service.addTask(request);
             service.startTask(request);
             var captor = org.mockito.ArgumentCaptor.forClass(MoveTaskCreateDTO.class);
-            verify(moves, timeout(3000)).create(captor.capture());
+            verify(moves, timeout(3000)).create(captor.capture(), any());
             assertThat(captor.getValue().taskType()).isEqualTo("GOAL");
             assertThat(captor.getValue().x()).isEqualTo(2.75);
             assertThat(captor.getValue().y()).isEqualTo(-0.83);
@@ -76,7 +76,7 @@ class RmsNavigationExecutionTest {
             if (!"SUCCEEDED".equals(terminalStatus)) {
                 assertThat(result.get().data().msg()).isEqualTo("robot navigation " + terminalStatus);
             }
-            verify(moves, times(1)).create(any());
+            verify(moves, times(1)).create(any(), any());
         } finally {
             var worker = RmsTaskService.class.getDeclaredField("worker");
             worker.setAccessible(true);
@@ -96,7 +96,7 @@ class RmsNavigationExecutionTest {
         MoveTaskService moves = mock(MoveTaskService.class);
         MoveTaskVO created = new MoveTaskVO();
         created.setId(43L);
-        when(moves.create(any())).thenReturn(created);
+        when(moves.create(any(), any())).thenReturn(created);
         AtomicReference<String> moveStatus = new AtomicReference<>("EXECUTING");
         when(moves.get(43L)).thenAnswer(invocation -> {
             MoveTaskVO state = new MoveTaskVO();
@@ -108,14 +108,14 @@ class RmsNavigationExecutionTest {
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(com.agv.navdeployer.service.RobotOperationalService.class),
-                null);
+                null, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "workflow-2", "19", null, "navigate", "rmf_navigate",
                     null, null, Map.of("destination", Map.of("x", 1.0, "y", 2.0, "yaw", 0.0)));
             service.addTask(request);
             service.startTask(request);
-            verify(moves, timeout(3000)).create(any());
+            verify(moves, timeout(3000)).create(any(), any());
             // 外部取消内部移动（前端手动取消 / 被抢占）后，RMS 任务应收口为 canceled 并上报
             moveStatus.set("CANCELLED");
             assertThat(reported.await(3, TimeUnit.SECONDS)).isTrue();
@@ -140,7 +140,7 @@ class RmsNavigationExecutionTest {
         MoveTaskService moves = mock(MoveTaskService.class);
         MoveTaskVO created = new MoveTaskVO();
         created.setId(44L);
-        when(moves.create(any())).thenReturn(created);
+        when(moves.create(any(), any())).thenReturn(created);
         when(moves.get(44L)).thenAnswer(invocation -> {
             MoveTaskVO state = new MoveTaskVO();
             state.setStatus("MYSTERY");
@@ -151,14 +151,14 @@ class RmsNavigationExecutionTest {
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(com.agv.navdeployer.service.RobotOperationalService.class),
-                null);
+                null, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "workflow-3", "20", null, "navigate", "rmf_navigate",
                     null, null, Map.of("destination", Map.of("x", 1.0, "y", 2.0, "yaw", 0.0)));
             service.addTask(request);
             service.startTask(request);
-            verify(moves, timeout(3000)).create(any());
+            verify(moves, timeout(3000)).create(any(), any());
             assertThat(reported.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(registry.busyExcept("another-task")).isFalse();
         } finally {
@@ -184,7 +184,7 @@ class RmsNavigationExecutionTest {
         MoveTaskService moves = mock(MoveTaskService.class);
         MoveTaskVO created = new MoveTaskVO();
         created.setId(45L);
-        when(moves.create(any())).thenReturn(created);
+        when(moves.create(any(), any())).thenReturn(created);
         when(moves.get(45L)).thenAnswer(invocation -> {
             MoveTaskVO state = new MoveTaskVO();
             state.setStatus("EXECUTING");
@@ -195,14 +195,14 @@ class RmsNavigationExecutionTest {
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(com.agv.navdeployer.service.RobotOperationalService.class),
-                null);
+                null, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "stuck-1", "21", null, "navigate", "rmf_navigate",
                     null, null, Map.of("destination", Map.of("x", 1.0, "y", 2.0, "yaw", 0.0)));
             service.addTask(request);
             service.startTask(request);
-            verify(moves, timeout(3000)).create(any());
+            verify(moves, timeout(3000)).create(any(), any());
             assertThat(registry.busyExcept("new-task")).isTrue();
 
             java.util.List<RmsTaskVO> reset = service.resetInFlight("人工复位（测试）");

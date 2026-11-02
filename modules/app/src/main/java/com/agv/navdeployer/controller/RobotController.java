@@ -230,31 +230,12 @@ public class RobotController {
         }
     }
 
-    @Operation(summary = "重定位", description = "调机器人 /agv/relocalize 服务：在指定地图坐标重启 Cartographer 定位轨迹")
+    @Operation(summary = "重定位（异步任务）",
+            description = "调机器人 /agv/relocalize：受理即返回任务（MapModeTaskVO），终态经 SSE map-task 事件推送——"
+                    + "新版机器人以 operation_id 定位操作记录为权威结论（成功/失败/超时原因），无需刷新页面")
     @PostMapping("/api/v1/robot/initial-pose")
-    public ApiResponse<String> initialPose(@Valid @RequestBody InitialPoseDTO dto) {
-        if (!rosbridgeClient.isConnected()) {
-            throw new IllegalStateException("rosbridge 未连接，无法重定位");
-        }
-        String mapName = dto.mapName() == null ? "" : dto.mapName().trim();
-        if (mapName.isEmpty()) {
-            var status = telemetry.getStatus();
-            mapName = status == null ? null : status.mapName();
-        }
-        if (mapName == null || mapName.isBlank()) {
-            throw new IllegalStateException("无法确定目标地图（请求未带 map_name 且 /agv/status 无当前地图），请稍后重试或显式指定 map_name");
-        }
-        RosCommandDispatcher.RelocalizeResult result;
-        try {
-            result = dispatcher.callRelocalize(mapName, dto.x(), dto.y(), dto.theta()).join();
-        } catch (java.util.concurrent.CompletionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new IllegalStateException("重定位服务调用失败: " + cause.getMessage(), cause);
-        }
-        if (!result.success()) {
-            throw new IllegalStateException("重定位被拒绝: " + result.message());
-        }
-        return ApiResponse.ok(result.mapName());
+    public ApiResponse<com.agv.navdeployer.vo.MapModeTaskVO> initialPose(@Valid @RequestBody InitialPoseDTO dto) {
+        return ApiResponse.ok(mapModeTaskService.relocalize(dto.mapName(), dto.x(), dto.y(), dto.theta()));
     }
 
     @Operation(summary = "全向底盘遥控", description = "发布 /cmd_vel；linear_x 前进、linear_y 左移、angular_z 左转")

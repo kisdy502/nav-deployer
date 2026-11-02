@@ -3,10 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { MOVE_TASK_STATUS_TAG, MOVE_TASK_TYPE_LABEL } from '@/utils/format'
+import { MOVE_TASK_STATUS_TAG, MOVE_TASK_TYPE_LABEL, locStageText } from '@/utils/format'
 import { radToDeg } from '@/utils/coords'
 import { armHomed } from '@/utils/armJoints'
 import { getOperational } from '@/api/robot'
+import { stopCharge } from '@/api/charge'
 import type { MapAlignStatus } from '@/api/robot'
 
 const robot = useRobotStore()
@@ -88,18 +89,19 @@ const batteryView = computed(() => {
   if (st.charging != null) tipParts.push(st.charging ? '充电中' : '未充电')
   if (st.charge_connected != null) tipParts.push(st.charge_connected ? '充电桩已连接' : '充电桩未连接')
   tipParts.push(st.battery_data_valid == null ? '电量数据有效性：未知（旧版）' : `数据${st.battery_data_valid ? '有效' : '无效'}`)
-  // 充电任务在途：把阶段与目标并入 tooltip（右侧不再单列充电 tag，省状态栏宽度）
+  // 充电任务在途：把阶段并入 tooltip（右侧不再单列充电 tag，省状态栏宽度）
   const ct = tasks.chargeTask
   if (ct && tasks.chargeTaskInFlight) {
-    const phase = ct.status === 'MOVING' ? '去充电中' : ct.status === 'STARTING' ? '对接充电桩' : '充电中'
-    tipParts.push(`充电任务：${phase} · 目标 ${Math.round(ct.target_battery_pct)}%`)
+    const phase = ct.status === 'MOVING' ? '去充电中' : '对接充电桩'
+    tipParts.push(`充电任务：${phase}`)
   }
   return { text: `${Math.round(pct)}%`, color, charging, tip: tipParts.join(' · ') }
 })
 
-/** 未定位冷启动警示：机器人无建图无定位，画面仅为存档地图浏览 */
+/** 未定位冷启动警示：机器人无建图无定位，画面仅为存档地图浏览（状态失新不判，防残留末帧误报） */
 const notLocalized = computed(() =>
-  !!robot.status && !robot.status.pose_initialized
+  !!robot.status && robot.snapshot?.status_fresh !== false
+  && !robot.status.pose_initialized
   && robot.status.mode !== 'MAPPING' && robot.status.mode !== 'RELOCALIZING')
 
 /** 机械臂归位联锁状态（角色映射 + 单臂 profile 回退，与后端 ArmStateMonitor 同参数；闸门以后端判定为准） */
@@ -156,6 +158,27 @@ async function onControl(action: 'start' | 'stop' | 'reset') {
 /** 充电任务在途：状态栏只留取消按钮（充电中/电量看左侧电量区 ⚡，避免重复占位） */
 const chargeTaskActive = computed(() => tasks.chargeTaskInFlight)
 
+/**
+ * 机器人正在充电但充电任务已完成（对接成功即完成）：提供「停止充电」入口。
+ * 充电何时结束由上层控制——本机要中断时远程断充（set_charging=false），移动走也会自动断充
+ */
+const chargingWithoutTask = computed(() =>
+  robot.status?.charging === true && !tasks.chargeTaskInFlight)
+
+/** 定位操作在途（切图/重定位/放弃建图回旧图）：实时展示机器人侧执行阶段，终态 toast 由 tasks store 弹出 */
+const locTaskView = computed(() => {
+  const t = tasks.currentMapTask
+  if (!t || !tasks.mapTaskInFlight) return null
+  if (t.type !== 'SWITCH_MAP' && t.type !== 'RELOCALIZE' && t.type !== 'DISCARD_MAPPING') return null
+  const label = t.type === 'RELOCALIZE' ? '重定位' : t.type === 'SWITCH_MAP' ? '切图' : '回旧图'
+  const stage = locStageText(t.stage) || (t.status === 'RELOCATING' ? '执行中' : '已下发')
+  const tipParts: string[] = []
+  if (t.map_name) tipParts.push(`地图：${t.map_name}`)
+  if (t.detail_message) tipParts.push(t.detail_message)
+  if (t.operation_id) tipParts.push(`操作 ${t.operation_id}`)
+  return { label, stage, tip: tipParts.join(' · ') || `${label}执行中` }
+})
+
 /** 低电量死锁救援：电量 ≤10% 且未在充电（机器人将拒绝移动指令，无法自主到桩） */
 const needRescue = computed(() => {
   const st = robot.status
@@ -176,6 +199,16 @@ async function onRescueCharge() {
 async function onCancelCharge() {
   await ElMessageBox.confirm('确认取消充电任务？（在桩上将停止充电）', '取消充电', { type: 'warning' })
   await tasks.cancelChargeTask()
+}
+
+async function onStopCharging() {
+  await ElMessageBox.confirm(
+    '确认远程停止充电？（机器人仍插在桩上，后续移动任务会正常执行）',
+    '停止充电',
+    { type: 'warning', confirmButtonText: '停止充电' },
+  )
+  await stopCharge()
+  ElMessage.success('已下发停止充电（set_charging=false）')
 }
 
 async function onCancelTask() {
@@ -254,7 +287,15 @@ async function onCancelTask() {
         style="cursor: pointer"
         @click="onMapMismatch"
       >⚠ 地图不一致：{{ mapAlign?.robot_map_name }} ≠ {{ mapAlign?.ref_map_name }}</el-tag>
-      <!-- 充电任务在途：不再单列充电 tag（左侧电量区 ⚡ 已表达充电中，目标看电量 tooltip），只留取消按钮 -->
+      <!-- 定位操作在途（切图/重定位/放弃建图）：机器人侧阶段实时刷新（SSE map-task），终态自动 toast -->
+      <el-tag
+        v-if="locTaskView"
+        size="small"
+        type="warning"
+        effect="dark"
+        class="loc-op-tag"
+        :title="locTaskView.tip"
+      >⏳ {{ locTaskView.label }}中 · {{ locTaskView.stage }}</el-tag>
       <el-button
         v-if="chargeTaskActive"
         size="small"
@@ -263,6 +304,14 @@ async function onCancelTask() {
         :title="tasks.chargeTask?.message ?? ''"
         @click="onCancelCharge"
       >取消充电</el-button>
+      <el-button
+        v-else-if="chargingWithoutTask"
+        size="small"
+        type="warning"
+        plain
+        title="充电任务已完成（对接成功即完成），机器人仍在桩上充电；点击远程断充"
+        @click="onStopCharging"
+      >停止充电</el-button>
       <el-button
         v-else-if="needRescue"
         size="small"
@@ -364,6 +413,10 @@ async function onCancelTask() {
 }
 
 .decommission-tag {
+  animation: pulse 2s infinite;
+}
+
+.loc-op-tag {
   animation: pulse 2s infinite;
 }
 

@@ -285,12 +285,22 @@ const locateGuide = reactive({
 const needsLocalization = computed(() =>
   robot.connStatus === 'open'
   && robot.status != null
+  // 状态失新（桥接连着但机器人停发 /agv/status）不判"未定位"：残留末帧可能已过期
+  && robot.snapshot?.status_fresh !== false
   && !robot.status.pose_initialized
   && robot.status.mode !== 'MAPPING'
   && robot.status.mode !== 'RELOCALIZING')
 
 watch(needsLocalization, (needed) => {
-  if (!needed || guide.visible || locateGuide.dismissed) return
+  if (!needed) {
+    // 定位就绪（或进入建图/重定位、状态失新）：自动撤下冷启动引导。
+    // 否则机器人启动收敛期（定位完成前 pose_initialized=false 的瞬时帧）触发过弹窗后，
+    // 即使随后 pose_initialized=true 弹窗也会滞留，误导"仍未定位"
+    locateGuide.visible = false
+    locateGuide.dismissed = false
+    return
+  }
+  if (guide.visible || locateGuide.dismissed) return
   // 默认选中当前部署中（ACTIVE）的地图
   locateGuide.mapId = editor.mapId
     ?? mapStore.maps.find((m) => m.status === 'ACTIVE')?.id

@@ -17,7 +17,6 @@ import com.agv.navdeployer.rms.task.RmsResultReporter;
 import com.agv.navdeployer.rms.task.RmsTaskService;
 import com.agv.navdeployer.service.MapModeTaskService;
 import com.agv.navdeployer.service.NavMapService;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -61,6 +60,22 @@ public class RmsConfig {
                 robot.getRobotType(), robot.getRobotCode());
     }
 
+    /**
+     * 任务模板存储（真机机制：模板经 task_template/add 下发落盘，任务引用未下发的
+     * 模板时拒绝「类型 x 的任务模板 x 不存在」）。目录为机器人侧自行约定，
+     * 默认 data/rms-templates（rms.behavior.template-dir 可改）。
+     */
+    @Bean
+    public com.agv.navdeployer.rms.task.RmsTemplateStore rmsTemplateStore(RmsProperties props) {
+        String dir = props.getBehavior().getTemplateDir();
+        java.nio.file.Path path = dir == null || dir.isBlank()
+                ? null : java.nio.file.Path.of(dir.trim());
+        com.agv.navdeployer.rms.task.RmsTemplateStore store =
+                new com.agv.navdeployer.rms.task.RmsTemplateStore(path);
+        log.info("rms template store ready: dir={}", path);
+        return store;
+    }
+
     @Bean
     public RmsReportGateway rmsReportGateway(RmsReportKeys keys, RobotStateView stateView,
                                              ObjectMapper mapper, RmsProperties props) {
@@ -82,10 +97,11 @@ public class RmsConfig {
                                                com.agv.navdeployer.service.NavPointService navPointService,
                                                com.agv.navdeployer.service.NavPathService navPathService,
                                                RmsTaskService taskService,
-                                               ObjectMapper mapper, RmsCommandKeys keys) {
+                                               ObjectMapper mapper, RmsCommandKeys keys,
+                                               RmsProperties rmsProperties) {
         return new RmsCommandGateway(taskService, mapService, telemetryService,
                 inspectionUploader, logCollector, teachCollector, scheduleAdapter, navPointService, navPathService,
-                mapper, keys);
+                mapper, keys, rmsProperties.getReport().getPeriodicLogIntervalMs());
     }
 
     @Bean
@@ -117,13 +133,12 @@ public class RmsConfig {
     public RmsMapService rmsMapService(MapModeTaskService mapTaskService,
                                        NavMapService navMapService,
                                        NavMapMapper navMapMapper,
-                                       RosCommandDispatcher dispatcher,
                                        SimAgvTelemetry telemetry,
                                        RmsMapState mapState,
                                        com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
                                        com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService) {
         return new RmsMapService(mapTaskService, navMapService, navMapMapper,
-                dispatcher, telemetry, mapState, mapMetaService, mapPackageService);
+                telemetry, mapState, mapMetaService, mapPackageService);
     }
 
     @Bean(destroyMethod = "shutdown")

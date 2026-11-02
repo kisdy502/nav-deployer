@@ -15,7 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 充电任务（前端「去充电」入口；RMS charge 任务走 ChargeService 同一底层链路）。
  */
-@Tag(name = "充电任务", description = "导航到充电点 → 开始充电 → 充到目标电量（阶段进度经 SSE charge 事件推送）")
+@Tag(name = "充电任务", description = "导航到充电点 → 对接充电桩开始充电即完成"
+        + "（充到多少/何时断充由上层调度控制；阶段进度经 SSE charge 事件推送）")
 @RestController
 @RequestMapping("/api/v1/charge")
 public class ChargeController {
@@ -36,7 +37,7 @@ public class ChargeController {
     }
 
     @Operation(summary = "发起充电", description = "waypoint_id（v2 充电点）优先，缺省用 x/y/theta；"
-            + "target_battery_pct 缺省用 charge.target_battery_pct 配置。导航闸门失败返回 400")
+            + "target_battery_pct 缺省用 charge.target_battery_pct 配置（仅记录展示）。导航闸门失败返回 400")
     @PostMapping("/start")
     public ApiResponse<ChargeTaskVO> start(@Valid @RequestBody ChargeStartDTO dto) {
         return ApiResponse.ok(chargeService.start(new ChargeService.ChargeCommand(
@@ -56,10 +57,18 @@ public class ChargeController {
         return ApiResponse.ok(chargeService.history(limit == null ? 50 : limit));
     }
 
-    @Operation(summary = "取消充电", description = "导航阶段连带取消移动；在桩上则调用停止充电（data=false）")
+    @Operation(summary = "取消充电", description = "导航阶段连带取消移动；对接阶段则调用停止充电（data=false）")
     @PostMapping("/cancel")
     public ApiResponse<ChargeTaskVO> cancel() {
         return ApiResponse.ok(chargeService.cancel("手动取消"));
+    }
+
+    @Operation(summary = "停止充电", description = "远程调用 set_charging data=false 断充（不依赖充电任务存在）。"
+            + "适用：充电任务对接成功即完成后机器人仍插桩充电，上层/本机要中断充电（移动走人时 bridge 也会自动断充）")
+    @PostMapping("/stop")
+    public ApiResponse<Void> stop() {
+        chargeService.stopCharging();
+        return ApiResponse.ok();
     }
 
     @Operation(summary = "救援充电", description = "跳过导航直接远程开始充电（机器人侧不校验是否在桩上）。"

@@ -65,6 +65,13 @@ public class MoveTask {
     /** rosbridge send_action_goal 的 id（当前段）。 */
     private String goalId;
 
+    /**
+     * 来源标识：manual=前端手动创建；rms:{task_id}=RMS 下发任务派发；
+     * charge:{chargeTaskId}=充电任务的内部导航（去桩路线/接近段）。
+     * 任务页据此区分手动/调度，并把同一 RMS 任务的多阶段执行关联展示。
+     */
+    private String source;
+
     /** FOLLOW_PATH 进度：当前段 / 总段数（从 1 开始）。 */
     private Integer segmentSeq;
 

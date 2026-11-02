@@ -51,7 +51,8 @@ public class RmsCommandGateway {
                              com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
                              com.agv.navdeployer.service.NavPointService navPointService,
                              com.agv.navdeployer.service.NavPathService navPathService,
-                             ObjectMapper mapper, RmsCommandKeys keys) {
+                             ObjectMapper mapper, RmsCommandKeys keys,
+                             long periodicLogIntervalMs) {
         this.taskService = taskService;
         this.mapService = mapService;
         this.telemetryService = telemetryService;
@@ -63,6 +64,7 @@ public class RmsCommandGateway {
         this.navPathService = navPathService;
         this.mapper = mapper;
         this.keys = keys;
+        this.periodicLogIntervalMs = periodicLogIntervalMs;
     }
 
     /**
@@ -74,20 +76,27 @@ public class RmsCommandGateway {
 
     /**
      * 会话建立后声明全部指令端点（exact + 通配；重建时重调）。
+     * 逐条声明日志为 DEBUG（重连时 ~40 条会刷屏），完成后汇总一条 INFO。
      */
     public void attach(ZenohChannel channel) throws Exception {
         this.currentChannel = channel;
+        int declared = 0;
         for (String segment : RmsCommandKeys.exactSegments()) {
             channel.declareQueryable(keys.bodyKey(segment), query -> dispatch(query, segment));
+            declared++;
         }
         for (String wildcard : RmsCommandKeys.wildcardSegments()) {
             channel.declareQueryable(keys.bodyKey(wildcard), query -> dispatch(query, wildcard));
+            declared++;
         }
+        log.info("RMS command endpoints ready: {} queryables declared (exact + wildcard)", declared);
     }
 
     /**
-     * 周期轮询类段：RMS 定时重复查询（心跳/状态/配置等），不打高亮日志防刷屏，
-     * 只保留一次性指令（task/add、task/start、建图、上传等）的完整报文。
+     * 周期轮询类段：RMS 定时重复查询（心跳/状态/配置等）。不刷屏但也不能完全静默——
+     * 每 periodicLogIntervalMs（默认 30s）节流打 1 条请求 + 1 条回包，
+     * 排查「RMS 看不到任务进度/状态」时保留链路痕迹；一次性指令（task/add、task/start、
+     * 建图、切图、重定位、上传等）始终全量打印完整报文。
      */
     private static final java.util.Set<String> PERIODIC_SEGMENTS = java.util.Set.of(
             BodySegment.STATUS_QUERY.segment(),
@@ -97,6 +106,9 @@ public class RmsCommandGateway {
             BodySegment.MAPPING_STATUS.segment(),
             BodySegment.TASK_STATUS.segment(),
             BodySegment.TASK_TEMPLATE_QUERY.segment());
+
+    /** 周期轮询段的日志节流间隔（毫秒），由装配方经 rms.report.periodic-log-interval-ms 注入。 */
+    private final long periodicLogIntervalMs;
 
     /**
      * 闭环指令段（切图 / 重定位）：业务需要等待机器人执行终态后才能给出成败结论，
@@ -126,7 +138,12 @@ public class RmsCommandGateway {
             if (actualSegment.isBlank() || actualSegment.contains("*")) {
                 actualSegment = declaredSegment;
             }
-            if (!PERIODIC_SEGMENTS.contains(actualSegment)) {
+            if (PERIODIC_SEGMENTS.contains(actualSegment)) {
+                // 周期轮询：节流打印（默认 30s 一条），保留链路痕迹不刷屏
+                RmsMessageLog.inboundQueryThrottled(
+                        String.valueOf(query.getKeyExpr()), rawPayload, periodicLogIntervalMs);
+            } else {
+                // 一次性指令：全量打印完整报文，每条可对账
                 RmsMessageLog.inboundQuery(String.valueOf(query.getKeyExpr()), rawPayload);
             }
         } catch (Exception exception) {
@@ -163,18 +180,27 @@ public class RmsCommandGateway {
     }
 
     /**
-     * 回包并关闭 query；非周期段打完整日志。
+     * 回包并关闭 query；一次性指令全量打日志，周期段节流打日志。
+     * 回包失败必须 ERROR：RMS 侧只会看到 query 超时，上位机日志是定位问题的唯一线索。
      */
     private void replyAndClose(Query query, String segment, Object reply) {
         try {
             String replyJson = mapper.writeValueAsString(reply);
-            if (!PERIODIC_SEGMENTS.contains(segment)) {
+            if (PERIODIC_SEGMENTS.contains(segment)) {
+                log.info("RMS periodic query key={} segment={} reply_status={} reply_msg={} (节流)",
+                        query.getKeyExpr(), segment, statusOf(reply), msgOf(reply));
+                RmsMessageLog.outboundReplyThrottled(
+                        String.valueOf(query.getKeyExpr()), replyJson, periodicLogIntervalMs);
+            } else {
                 log.info("RMS query key={} segment={} reply_status={} reply_msg={}",
                         query.getKeyExpr(), segment, statusOf(reply), msgOf(reply));
                 RmsMessageLog.outboundReply(String.valueOf(query.getKeyExpr()), replyJson);
             }
             ZenohChannel.replyJson(query, replyJson);
         } catch (Exception serializeFailure) {
+            log.error("RMS reply serialize failed, RMS will see query timeout: key={} segment={} reply={} msg={}",
+                    query.getKeyExpr(), segment, reply.getClass().getSimpleName(), serializeFailure.getMessage(),
+                    serializeFailure);
             ZenohChannel.replyError(query, "serialize reply failed");
         } finally {
             try {

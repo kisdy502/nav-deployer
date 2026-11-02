@@ -17,7 +17,7 @@ public class ChargeProperties {
     private String service = "/agv/set_charging";
     /** set_charging 服务调用超时（毫秒） */
     private long serviceTimeoutMs = 5000;
-    /** 默认目标电量百分比：达到即认为充电完成（0, 100] */
+    /** 目标电量百分比（0, 100]：仅记录展示——对接成功即完成，充到多少由上层调度跟踪 */
     private double targetBatteryPct = 100.0;
     /** set_charging 成功后等待遥测确认 charging=true 的超时（毫秒） */
     private long confirmTimeoutMs = 20000;
@@ -25,14 +25,20 @@ public class ChargeProperties {
     private long dockSettleMinMs = 2000;
     /** 停稳等待上限（毫秒）：odom 异常/不可用时的兜底，超过强制尝试 */
     private long dockSettleMaxMs = 15000;
+    /**
+     * 到桩校验半径（米）：开始充电前校验机器人与充电桩目标的平面距离必须 ≤ 该值。
+     * 背景：路线导航的终点是「离充电桩最近的 waypoint」（吸附，可能距桩数米），
+     * 且仿真机器人 set_charging 不校验位置——不校验就会出现"走到半路就开始充电"。
+     * 超出半径：先自动补一段精确接近段；补完仍超出则任务报错拒绝充电。
+     * 救援充电（模拟充电器，无需在桩上）不受此限制。
+     */
+    private double dockArrivalRadius = 0.5;
     /** /odom 静止判定线速度阈值（m/s，|vx|/|vy| 均须低于） */
     private double odomQuietLinearMs = 0.03;
     /** /odom 静止判定角速度阈值（rad/s） */
     private double odomQuietAngularRad = 0.05;
     /** 状态轮询周期（毫秒） */
     private long pollIntervalMs = 1000;
-    /** 充电中 charging=false / 电量数据无效的持续宽限：超过判失败（毫秒） */
-    private long staleGraceMs = 60000;
     /** 充电全流程看门狗（导航+充电总时长上限，毫秒），默认 4h */
     private long maxDurationMs = 14400000L;
 
@@ -84,6 +90,14 @@ public class ChargeProperties {
         this.dockSettleMaxMs = dockSettleMaxMs;
     }
 
+    public double getDockArrivalRadius() {
+        return dockArrivalRadius;
+    }
+
+    public void setDockArrivalRadius(double dockArrivalRadius) {
+        this.dockArrivalRadius = dockArrivalRadius;
+    }
+
     public double getOdomQuietLinearMs() {
         return odomQuietLinearMs;
     }
@@ -106,14 +120,6 @@ public class ChargeProperties {
 
     public void setPollIntervalMs(long pollIntervalMs) {
         this.pollIntervalMs = pollIntervalMs;
-    }
-
-    public long getStaleGraceMs() {
-        return staleGraceMs;
-    }
-
-    public void setStaleGraceMs(long staleGraceMs) {
-        this.staleGraceMs = staleGraceMs;
     }
 
     public long getMaxDurationMs() {

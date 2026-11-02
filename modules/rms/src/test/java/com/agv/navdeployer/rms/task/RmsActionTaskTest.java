@@ -37,7 +37,7 @@ class RmsActionTaskTest {
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(RobotOperationalService.class),
-                null);
+                null, RmsTemplateStore.inMemory());
     }
 
     @Test
@@ -55,7 +55,7 @@ class RmsActionTaskTest {
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(RobotOperationalService.class),
-                null);
+                null, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "tf-240354505530093568-240354505664311296", "act-1", null,
@@ -67,7 +67,7 @@ class RmsActionTaskTest {
             assertThat(result.get().data().actionType()).isEqualTo("action");
             assertThat(result.get().data().actionStatus()).isEqualTo(3);
             assertThat(result.get().data().resultReport()).isNull();
-            verify(moves, never()).create(any());
+            verify(moves, never()).create(any(), any());
         } finally {
             shutdown(service);
         }
@@ -90,7 +90,7 @@ class RmsActionTaskTest {
             assertThat(reported.await(3, TimeUnit.SECONDS)).isTrue();
             assertThat(result.get().data().actionStatus()).isEqualTo(13);
             assertThat(result.get().data().msg()).contains("no destination");
-            verify(moves, never()).create(any());
+            verify(moves, never()).create(any(), any());
         } finally {
             shutdown(service);
         }

@@ -19,7 +19,6 @@ const chargeItems = computed(() => {
     dock_settle_min_ms: '到桩最小停稳（ms）',
     dock_settle_max_ms: '停稳等待上限（ms）',
     poll_interval_ms: '轮询周期（ms）',
-    stale_grace_ms: '充电丢失宽限（ms）',
     max_duration_ms: '全流程看门狗（ms）',
   }
   if (!config.value) return []
@@ -114,11 +113,9 @@ onMounted(load)
           <el-descriptions-item label="状态上报周期">{{ config.rms.report.status_interval_ms }} ms</el-descriptions-item>
           <el-descriptions-item label="查询超时">{{ config.rms.zenoh.query_timeout_ms }} ms</el-descriptions-item>
           <el-descriptions-item label="key 前缀">{{ config.rms.zenoh.robot_key_prefix || '（默认）' }}</el-descriptions-item>
-          <el-descriptions-item label="充电点坐标">
-            <span v-if="config.rms.behavior.charge_pose">
-              ({{ config.rms.behavior.charge_pose.x }}, {{ config.rms.behavior.charge_pose.y }})
-            </span>
-            <span v-else class="warn">未配置（RMS 充电任务将回退报文目标）</span>
+          <el-descriptions-item label="任务模板目录">
+            {{ config.rms.behavior.template_dir || 'data/rms-templates' }}
+            <span class="warn">（充电任务需先 task_template/add 下发模板）</span>
           </el-descriptions-item>
           <el-descriptions-item label="回家点坐标">
             <span v-if="config.rms.behavior.home_pose">

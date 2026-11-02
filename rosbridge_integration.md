@@ -388,7 +388,7 @@ RViz「2D Goal Pose」发的标准话题，nav2 行为树直接接单，**适合
 - 三舵轮底盘（simulated_chassis）支持 `linear.y` 侧移；jzt / zioneers 差速底盘只有 `x` 与 `angular.z` 有效
 - 以 ~10Hz 持续发布，**停止时要发一次全零**（底盘有 0.5s 无输入自停保护，但显式清零更稳）
 
-### 5.5 重定位 —— `/agv/relocalize` 服务
+### 5.5 重定位 —— `/agv/relocalize` 服务（异步任务，operation_id 闭环）
 
 > 旧方案（往 `/initialpose` 话题 publish PoseWithCovarianceStamped）已废弃：
 > Cartographer 纯定位模式不消费该话题，发了也无效。现改为调用 bridge 的重定位服务。
@@ -401,10 +401,25 @@ RViz「2D Goal Pose」发的标准话题，nav2 行为树直接接单，**适合
   "map_name":"map1006Pro","x":-2.2196,"y":-1.6213,"yaw":-2.583}}
 ```
 
-响应：`{"success":true,"message":"...","map_name":"..."}`。
-服务语义（同步，可达数十秒）：停当前定位进程 → 加载该图 pbstream → 以指定
-x/y/yaw 调 `/start_trajectory` → 重建 map→odom→base。完成状态看
-`/agv/status.mode`：RELOCALIZING → NAVIGATION。
+响应：`{"success":true,"message":"...","map_name":"...","operation_id":"..."}`。
+`success=true` **仅代表已受理**；`operation_id` 是本次操作的跟踪句柄
+（新版 bridge；旧版无此字段，上位机自动回退 mode 流转判定）。
+
+**异步闭环（上位机已实现，对接方只需消费 REST/SSE）：**
+
+1. REST 响应即返回 `MapModeTaskVO`（type=RELOCALIZE，受理态 DISPATCHED）；
+2. 上位机订阅 `/agv/localization_operation`（reliable+transient_local，约 1s 心跳重发），
+   持续合并进度与终态；终态（SUCCEEDED/FAILED/TIMED_OUT）为权威结论，不可回退；
+3. WS 重连后上位机按 `operation_id` 调 `/agv/get_localization_operation` 补齐结论，
+   **不会自动重新下发**切图/重定位（机器人侧会拒绝并发请求）；
+4. 终态经 SSE `map-task` 事件推送给前端（含 stage / detail_message / 失败原因），
+   页面无需刷新；`operation_id` 为空时回退 mode 流转（见过 RELOCALIZING 后回 NAVIGATION 判成功）。
+
+语义注意（对齐机器人侧接口文档）：
+- 失败/超时不会自动恢复导航闸门，需修正原因后显式重新发起；
+- SUCCEEDED 表示定位流程收敛，`navigation_ready`（Nav2 是否就绪）需另行确认；
+- 机器人侧默认操作超时 `localization_operation_timeout_sec=600s`，
+  上位机兜底截止必须晚于它（默认 `sim_agv.localization_task_timeout_ms=660000`）。
 
 ---
 

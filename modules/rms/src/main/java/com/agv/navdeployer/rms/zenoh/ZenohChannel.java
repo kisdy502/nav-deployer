@@ -134,7 +134,8 @@ public final class ZenohChannel implements AutoCloseable {
             resources.add(expr);
             Publisher publisher = session.declarePublisher(expr);
             resources.add(publisher);
-            log.info("declared rms publisher key={}", key);
+            // DEBUG：会话重连时逐条 INFO 会与 queryable 声明一起刷屏（~40 条/次）
+            log.debug("declared rms publisher key={}", key);
             return publisher;
         } catch (Exception e) {
             expr.close();
@@ -164,7 +165,8 @@ public final class ZenohChannel implements AutoCloseable {
         QueryableOptions options = new QueryableOptions(true);
         CallbackQueryable queryable = session.declareQueryable(expr, handler::accept, options);
         resources.add(queryable);
-        log.info("declared rms queryable key={}", key);
+        // DEBUG：重连时 ~38 个 queryable 逐条 INFO 会刷屏，汇总日志由调用方（attach）打
+        log.debug("declared rms queryable key={}", key);
     }
 
     /**

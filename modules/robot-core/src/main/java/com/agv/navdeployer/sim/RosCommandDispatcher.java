@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -242,7 +243,7 @@ public class RosCommandDispatcher implements RosbridgeHandler {
                         values.path("map").isMissingNode() ? null : values.path("map")));
     }
 
-    /** /agv/load_map：切图（受理即返回，完成看 /agv/status.mode: RELOCALIZING -> NAVIGATION）。 */
+    /** /agv/load_map：切图。受理即返回（operationId 非空时终态以 localization_operation 为准，空 = 旧版机器人回退 mode 流转）。 */
     public CompletableFuture<MapServiceResult> loadMap(String mapName) {
         ObjectNode args = MAPPER.createObjectNode();
         args.put("map_name", mapName);
@@ -250,19 +251,21 @@ public class RosCommandDispatcher implements RosbridgeHandler {
                 .thenApply(values -> new MapServiceResult(
                         values.path("success").asBoolean(false),
                         values.path("message").asText(""),
-                        textOrEmpty(values, "map_name")));
+                        textOrEmpty(values, "map_name"),
+                        textOrEmpty(values, "operation_id")));
     }
 
-    /** /agv/start_mapping：进入建图（受理即返回，mode -> MAPPING）。 */
+    /** /agv/start_mapping：进入建图（受理即返回，mode -> MAPPING；建图不产生 operation_id）。 */
     public CompletableFuture<MapServiceResult> startMapping() {
         return callService(props.getStartMappingService(), null)
                 .thenApply(values -> new MapServiceResult(
                         values.path("success").asBoolean(false),
                         values.path("message").asText(""),
-                        null));
+                        null,
+                        ""));
     }
 
-    /** /agv/save_map：保存建图并回定位（受理即返回，MAPPING -> RELOCALIZING -> NAVIGATION）。 */
+    /** /agv/save_map：保存建图并回定位（受理即返回，MAPPING -> RELOCALIZING -> NAVIGATION；建图保存不产生 operation_id）。 */
     public CompletableFuture<MapServiceResult> saveMap(String mapName) {
         ObjectNode args = MAPPER.createObjectNode();
         args.put("map_name", mapName);
@@ -270,7 +273,8 @@ public class RosCommandDispatcher implements RosbridgeHandler {
                 .thenApply(values -> new MapServiceResult(
                         values.path("success").asBoolean(false),
                         values.path("message").asText(""),
-                        textOrEmpty(values, "map_name")));
+                        textOrEmpty(values, "map_name"),
+                        ""));
     }
 
     private static String textOrEmpty(JsonNode values, String field) {
@@ -280,8 +284,9 @@ public class RosCommandDispatcher implements RosbridgeHandler {
 
     /**
      * /agv/relocalize：在指定地图坐标重启 Cartographer 定位轨迹（真·重定位）。
-     * 桥侧实现要停定位进程、加载 pbstream、调 /start_trajectory，耗时可达数十秒，
-     * 超时取 90s；完成语义看 /agv/status.mode（RELOCALIZING -> NAVIGATION）。
+     * 受理即返回（接入错误立即 success=false）；operationId 非空时终态以
+     * localization_operation / get_localization_operation 为准。旧版机器人无该字段，
+     * 只能以 mode 流转（RELOCALIZING -> NAVIGATION）近似推断。
      */
     public CompletableFuture<RelocalizeResult> callRelocalize(String mapName, double x, double y, double yaw) {
         ObjectNode args = MAPPER.createObjectNode();
@@ -293,7 +298,30 @@ public class RosCommandDispatcher implements RosbridgeHandler {
                 .thenApply(values -> new RelocalizeResult(
                         values.path("success").asBoolean(false),
                         values.path("message").asText(""),
-                        textOrEmpty(values, "map_name")));
+                        textOrEmpty(values, "map_name"),
+                        textOrEmpty(values, "operation_id")));
+    }
+
+    /**
+     * /agv/get_localization_operation：按 operation_id 查询操作记录（空串 = 最近一次）。
+     * 响应 found=false（bridge 重启 / 记录被淘汰）返回 empty——不代表操作失败或成功，
+     * 结果未知由调用方决策。超时/异常同样返回 empty 并记日志（查询是补齐手段，不放大故障）。
+     */
+    public CompletableFuture<Optional<LocalizationOperation>> queryLocalizationOperation(String operationId) {
+        ObjectNode args = MAPPER.createObjectNode();
+        args.put("operation_id", operationId == null ? "" : operationId);
+        return callService(props.getGetLocalizationOperationService(), args)
+                .thenApply(values -> {
+                    if (!values.path("found").asBoolean(false)) {
+                        return Optional.<LocalizationOperation>empty();
+                    }
+                    return Optional.ofNullable(
+                            LocalizationOperation.fromMessage(values.path("operation")));
+                })
+                .exceptionally(throwable -> {
+                    log.warn("get_localization_operation({}) failed: {}", operationId, throwable.getMessage());
+                    return Optional.empty();
+                });
     }
 
     /** 发布全向底盘车体坐标系速度，单位分别为 m/s、m/s、rad/s。 */
@@ -363,8 +391,15 @@ public class RosCommandDispatcher implements RosbridgeHandler {
 
     private void completeService(JsonNode message) {
         CompletableFuture<JsonNode> future = pendingServices.remove(message.path("id").asText(""));
+        JsonNode values = message.path("values");
+        // 机器人业务拒绝（参数/地图/忙碌等）：即使消息高亮日志关闭也必须可见——
+        // 这是「请求发出去了但被拒」的唯一线索，漏了就只剩 future 超时
+        if (values != null && values.has("success") && !values.path("success").asBoolean(true)) {
+            log.warn("service {} rejected: {}", message.path("service").asText(""),
+                    values.path("message").asText("(no message)"));
+        }
         if (future != null) {
-            future.complete(message.path("values"));
+            future.complete(values);
         }
     }
 
@@ -441,8 +476,8 @@ public class RosCommandDispatcher implements RosbridgeHandler {
     public record SetControlResult(boolean success, String message, String state) {
     }
 
-    /** /agv/relocalize 服务响应。 */
-    public record RelocalizeResult(boolean success, String message, String mapName) {
+    /** /agv/relocalize 服务响应：success 仅代表受理；operationId 非空时终态看定位操作记录。 */
+    public record RelocalizeResult(boolean success, String message, String mapName, String operationId) {
     }
 
     /** /agv/list_maps 服务响应。 */
@@ -453,7 +488,7 @@ public class RosCommandDispatcher implements RosbridgeHandler {
     public record GetMapResult(boolean success, String message, String mapName, JsonNode grid) {
     }
 
-    /** 地图模式类服务（load_map/start_mapping/save_map）响应：受理结果，完成靠 mode 流转。 */
-    public record MapServiceResult(boolean success, String message, String mapName) {
+    /** 地图模式类服务（load_map/start_mapping/save_map）响应：受理结果；loadMap 携带 operationId，完成以定位操作记录为权威。 */
+    public record MapServiceResult(boolean success, String message, String mapName, String operationId) {
     }
 }

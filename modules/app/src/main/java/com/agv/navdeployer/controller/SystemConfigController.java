@@ -131,8 +131,8 @@ public class SystemConfigController {
 
     private Map<String, Object> behaviorSection() {
         Map<String, Object> behavior = new LinkedHashMap<>();
-        behavior.put("charge_pose", poseMap(rmsProps.getBehavior().getChargePose()));
         behavior.put("home_pose", poseMap(rmsProps.getBehavior().getHomePose()));
+        behavior.put("template_dir", rmsProps.getBehavior().getTemplateDir());
         return behavior;
     }
 
@@ -187,9 +187,8 @@ public class SystemConfigController {
         charge.put("confirm_timeout_ms", chargeProps.getConfirmTimeoutMs());
         charge.put("dock_settle_min_ms", chargeProps.getDockSettleMinMs());
         charge.put("dock_settle_max_ms", chargeProps.getDockSettleMaxMs());
-        charge.put("poll_interval_ms", chargeProps.getPollIntervalMs());
-        charge.put("stale_grace_ms", chargeProps.getStaleGraceMs());
-        charge.put("max_duration_ms", chargeProps.getMaxDurationMs());
+            charge.put("poll_interval_ms", chargeProps.getPollIntervalMs());
+            charge.put("max_duration_ms", chargeProps.getMaxDurationMs());
         return charge;
     }
 

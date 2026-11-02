@@ -48,14 +48,16 @@ public class SmartNavigationService {
      * 需要走完整条链的调用方（如充电）应使用 {@link #planRoutePathIds} 自行逐段串联。
      * 闸门（连接/定位/模式/单任务互斥/机械臂归位）由 MoveTaskService.create 统一校验。
      *
-     * @param label 日志标签（如 rms 任务 id / charge）
+     * @param label  日志标签（如 rms 任务 id / charge）
+     * @param source 移动任务来源标识（rms:{task_id} / charge:{chargeTaskId} / manual），
+     *               任务页据此关联同一 RMS 任务的多阶段执行
      */
-    public MoveTaskVO createOptimizedMoveTask(String label, double x, double y, double yaw) {
+    public MoveTaskVO createOptimizedMoveTask(String label, double x, double y, double yaw, String source) {
         List<Long> pathIds = planRoutePathIds(label, x, y);
         if (!pathIds.isEmpty()) {
-            return createFollowPathTask(pathIds.get(0));
+            return createFollowPathTask(pathIds.get(0), source);
         }
-        return createGoalTask(x, y, yaw);
+        return createGoalTask(x, y, yaw, source);
     }
 
     /**
@@ -125,15 +127,15 @@ public class SmartNavigationService {
     }
 
     /** 按路线（FOLLOW_PATH）创建移动任务：单条 path 内部多段由 MoveTaskService 串行执行。 */
-    public MoveTaskVO createFollowPathTask(long pathId) {
+    public MoveTaskVO createFollowPathTask(long pathId, String source) {
         return moveTaskService.create(new MoveTaskCreateDTO(
-                "FOLLOW_PATH", null, pathId, null, null, null, null, null));
+                "FOLLOW_PATH", null, pathId, null, null, null, null, null), source);
     }
 
     /** 直线导航兜底（GOAL，到点旋转对准 theta）。 */
-    public MoveTaskVO createGoalTask(double x, double y, double yaw) {
+    public MoveTaskVO createGoalTask(double x, double y, double yaw, String source) {
         return moveTaskService.create(new MoveTaskCreateDTO(
-                "GOAL", null, null, x, y, yaw, null, Boolean.TRUE));
+                "GOAL", null, null, x, y, yaw, null, Boolean.TRUE), source);
     }
 
     private record NearestWaypoint(com.agv.navdeployer.metadata.entity.MapWaypoint waypoint, double distance) {

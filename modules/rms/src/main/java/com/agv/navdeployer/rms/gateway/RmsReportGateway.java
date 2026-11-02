@@ -68,10 +68,11 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             }
 
             // body 通道：{data: {...}, serial_num, timestamp}（对齐 RMS 真机格式）
-            // 周期性状态上报不打高亮日志（刷屏）；verbose 开关打开时逐条打印（排查连不上/掉线问题用）
+            // 周期性状态上报默认节流不打全文（会话层每 periodicLogIntervalMs 汇总一条 INFO）；
+            // verbose 开关打开时逐条打高亮全文（排查连不上/掉线/RMS 显示不对时用）
             String reportStatus = mapper.writeValueAsString(stateView.buildStatusEnvelope());
             if (reportProps.isVerboseLog()) {
-                //RmsMessageLog.outboundPublish(keys.bodyStatusReport(), reportStatus);
+                RmsMessageLog.outboundPublish(keys.bodyStatusReport(), reportStatus);
             }
             publisher.put(reportStatus);
         }
@@ -80,9 +81,11 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             if (publisher == null) {
                 throw new IllegalStateException("legacy status publisher not initialized");
             }
-            // legacy 通道：平铺格式（兼容旧版 RMS）
+            // legacy 通道：平铺格式（兼容旧版 RMS），同样仅 verbose 时打全文
             String reportOldStatus = mapper.writeValueAsString(stateView.snapshot());
-//            log.info("上报旧格式状态:{}", reportOldStatus);
+            if (reportProps.isVerboseLog()) {
+                RmsMessageLog.outboundPublish(keys.legacyStatusReport(), reportOldStatus);
+            }
             publisher.put(reportOldStatus);
         }
     }

@@ -82,8 +82,8 @@ export const useRobotStore = defineStore('robot', () => {
     return robotControlApi(action)
   }
 
-  function setInitialPose(x: number, y: number, theta: number) {
-    return setInitialPoseApi(x, y, theta)
+  function setInitialPose(x: number, y: number, theta: number, mapName?: string) {
+    return setInitialPoseApi(x, y, theta, mapName)
   }
 
   function teleop(linearX: number, linearY: number, angularZ: number) {

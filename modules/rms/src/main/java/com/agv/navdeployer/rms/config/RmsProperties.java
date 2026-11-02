@@ -272,6 +272,33 @@ public class RmsProperties {
         private boolean publishBodyStatus = true;
         /** 排查开关：逐条打印心跳/状态上报结果（默认只打 30s 汇总） */
         private boolean verboseLog = false;
+        /**
+         * 周期类消息（RMS 轮询查询 status/pose/task_status 等、状态上报汇总）的日志节流间隔：
+         * 同一 key 每 intervalMs 最多 1 条 INFO。一次性指令（task/add、mapping/change…）
+         * 不受此限制、始终全量。建议 10000~30000ms。
+         */
+        private long periodicLogIntervalMs = 30_000;
+        /**
+         * 周期上报「结果无变化」时的保底日志间隔（心跳/状态上报成功且内容同上次时，
+         * 拉长到该间隔打 1 条保底，不再每 30s 重复同样内容）。
+         */
+        private long unchangedLogIntervalMs = 60_000;
+
+        public long getPeriodicLogIntervalMs() {
+            return periodicLogIntervalMs;
+        }
+
+        public void setPeriodicLogIntervalMs(long periodicLogIntervalMs) {
+            this.periodicLogIntervalMs = periodicLogIntervalMs;
+        }
+
+        public long getUnchangedLogIntervalMs() {
+            return unchangedLogIntervalMs;
+        }
+
+        public void setUnchangedLogIntervalMs(long unchangedLogIntervalMs) {
+            this.unchangedLogIntervalMs = unchangedLogIntervalMs;
+        }
 
         public boolean isVerboseLog() {
             return verboseLog;
@@ -329,8 +356,12 @@ public class RmsProperties {
         private String inspectionImageDir = "";
         /** teach 采集样例目录（含子目录）：teach/capture 打包 zip 时取前几个文件；为空回退 application.yaml+runtime 信息 */
         private String teachSampleDir = "";
-        /** 充电点坐标（charge / replace_battery 模板目标；未配置则此类任务失败） */
-        private Pose chargePose;
+        /**
+         * 任务模板存储目录（真机机制：模板由上层经 task_template/add 下发并落盘，
+         * 任务引用未下发的模板时提示"类型 x 的任务模板 x 不存在"）。
+         * 相对路径基于工作目录，机器人侧自行约定，上层无需感知。
+         */
+        private String templateDir = "data/rms-templates";
         /** 回家点坐标（return_home 模板目标） */
         private Pose homePose;
         /** compatible_chargers 上报值 */
@@ -384,12 +415,12 @@ public class RmsProperties {
             this.teachSampleDir = teachSampleDir;
         }
 
-        public Pose getChargePose() {
-            return chargePose;
+        public String getTemplateDir() {
+            return templateDir;
         }
 
-        public void setChargePose(Pose chargePose) {
-            this.chargePose = chargePose;
+        public void setTemplateDir(String templateDir) {
+            this.templateDir = templateDir;
         }
 
         public Pose getHomePose() {

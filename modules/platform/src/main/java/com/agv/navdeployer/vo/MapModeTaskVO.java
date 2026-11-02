@@ -5,8 +5,9 @@ import com.agv.navdeployer.service.MapModeStateMachine;
 import java.time.Instant;
 
 /**
- * 地图模式任务（切图，P3 扩展建图/保存）视图。
- * 服务响应仅代表已受理，终态由 /agv/status 的 mode 流转驱动。
+ * 地图模式任务（切图，P3 扩展建图/保存，重定位）视图。
+ * 服务响应仅代表已受理；终态以机器人定位操作记录（operation_id）为权威，
+ * 旧版机器人（无 operation_id）退化为 /agv/status mode 流转判定。
  */
 public record MapModeTaskVO(
         Long id,
@@ -16,6 +17,9 @@ public record MapModeTaskVO(
         String mapName,
         String robotMapName,
         String errorMessage,
+        String operationId,
+        String stage,
+        String detailMessage,
         Instant createdAt,
         Instant updatedAt,
         Instant finishedAt
@@ -29,6 +33,9 @@ public record MapModeTaskVO(
                 machine.getMapName(),
                 machine.getRobotMapName(),
                 machine.getErrorMessage(),
+                machine.getOperationId(),
+                machine.getStage(),
+                machine.getDetailMessage(),
                 machine.getCreatedAt(),
                 machine.getUpdatedAt(),
                 machine.getFinishedAt());
