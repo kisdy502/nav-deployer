@@ -1,7 +1,7 @@
 {
   "connect": {
     "endpoints": [
-      "tcp/localhost:7447"
+      "tcp/zenoh-router-1:7447"
     ]
   },
   "mode": "client",

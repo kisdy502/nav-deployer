@@ -38,8 +38,10 @@ FROM eclipse-temurin:21-jre-noble
 WORKDIR /app
 
 # 非 root 用户运行，更安全
+# data/rms-templates：RMS 任务模板落盘目录（rms.template_dir 默认 data/rms-templates，
+# compose 挂命名卷持久化——预建并赋权，防挂卷后目录为 root 属主导致 spring 用户写不进）
 RUN groupadd -r spring && useradd -r -g spring spring \
-    && mkdir -p /app/logs && chown -R spring:spring /app
+    && mkdir -p /app/logs /app/data/rms-templates && chown -R spring:spring /app
 
 COPY --from=build /build/modules/app/target/*.jar app.jar
 

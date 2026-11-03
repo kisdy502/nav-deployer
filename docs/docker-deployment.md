@@ -1,6 +1,6 @@
 # Docker 打包与部署
 
-更新日期：2026-10-22。对应根目录 `docker-compose.yml`、`deploy.sh` 和 `docker/Dockerfile`。
+更新日期：2026-11-03。对应根目录 `docker-compose.yml`、`deploy.sh` 和 `docker/Dockerfile`。
 
 ## 快速启动与 build / up 区别
 
@@ -17,11 +17,12 @@ bash deploy.sh up
 |---|---|
 | `bash deploy.sh build` | 执行 `docker compose build app`，只构建上位机镜像，不启动容器 |
 | `bash deploy.sh up` | 执行 `docker compose up -d --build`，构建应用并后台启动或更新 postgres、redis、minio、app |
+| `bash deploy.sh start` | 执行 `docker compose up -d --no-build`，不构建直接用现有镜像启动——上位机代码未变时秒起，适合"稳定跑上位机"模式 |
 | `bash deploy.sh logs` | 跟随上位机日志 |
 | `bash deploy.sh down` | 停止并移除本项目容器和默认网络，保留命名数据卷及外部机器人网络 |
 
 `up` 已包含构建，通常不必先 `build`。分两步用于先确认构建成功，第二步会复用缓存。
-已单独构建成功时，也可执行 `docker compose up -d --no-build` 直接启动。
+已单独构建成功时，也可执行 `docker compose up -d --no-build`（即 `start`）直接启动。
 
 镜像使用 Node 22 执行 `npm ci`、TypeScript 检查和 Vite 构建；使用 Maven / Java 21
 编译四个后端模块，将前端产物嵌入 Spring Boot 静态资源；最终使用 Ubuntu Noble 的 Java 21 JRE。
@@ -57,7 +58,7 @@ SIM_AGV_WS_URL=ws://agv-bridge:9090
 SIM_AGV_TF_CHILD_FRAME=AGV002/base_link
 # 可选；留空会从 WebSocket 地址推导 HTTP 8089
 MAP3D_BASE_URL=
-APP_IMAGE=nav-deployer:v0.2.0
+APP_IMAGE=nav-deployer:v0.0.7
 
 # false：不连接 RMS，仍连接仿真机器人；true：启用 RMS
 RMS_ENABLED=false
@@ -65,8 +66,10 @@ RMS_ZENOH_CONFIG_FILE=/app/config/zenoh.json5
 # 多上位机同时连接 RMS 时设置不同且跨重启稳定的 SN
 RMS_ROBOT_SN=
 RMS_INSPECTION_IMAGE_DIR=/app/inspection-images
-# Windows PowerShell / Git Bash；WSL 内的 Compose 改为 /mnt/c/Users/think/Pictures
-INSPECTION_IMAGE_HOST_DIR=C:/Users/think/Pictures
+# 留空 = 用仓库内 docker/inspection-images 样例目录（相对路径默认，跨引擎可用）；
+# 要挂本机图片按运行环境写绝对路径：Docker Desktop 用 C:/Users/think/Pictures，
+# WSL 内 Compose 用 /mnt/c/Users/think/Pictures（盘符路径在 WSL 引擎会报 not an absolute path）
+INSPECTION_IMAGE_HOST_DIR=
 RMS_TEACH_SAMPLE_DIR=
 ```
 
@@ -87,6 +90,7 @@ Compose 以此为默认值。机器人切为 `AGV001` 时，应同步改为 `AGV
 ```yaml
     volumes:
       - "app_logs:/app/logs"
+      - "rms_templates:/app/data/rms-templates"
       - "./modules/app/src/main/resources/config-json5.json:/app/config/zenoh.json5:ro"
       - type: bind
         source: ${INSPECTION_IMAGE_HOST_DIR:-C:/Users/think/Pictures}
@@ -96,17 +100,29 @@ Compose 以此为默认值。机器人切为 `AGV001` 时，应同步改为 `AGV
           create_host_path: false
 ```
 
+`rms_templates` 命名卷持久化 RMS 任务模板（`task_template/add` 下发的模板落盘于
+`rms.template_dir`，默认 `data/rms-templates`，容器内即 `/app/data/rms-templates`）。
+容器重建/升级后模板保留，上层调度无需重新下发；引用未下发模板的任务会按真机口径被拒绝。
+
 左侧是宿主机文件或目录，右侧是容器路径，`:ro` 表示只读。引号让整个路径明确作为字符串，
 Windows 路径建议使用 `/`。启动前确认左侧文件、目录实际存在，Docker Desktop 可访问，
 且容器运行用户有读取权限。换电脑或部署到 Linux 时，必须改为目标机器的实际路径。
 
 图片目录使用长格式 bind 挂载，避免 Windows 盘符与短格式分隔符混淆。
-若在 WSL 内运行 Linux 版 Compose，请在 `.env` 中设置
-`INSPECTION_IMAGE_HOST_DIR=/mnt/c/Users/think/Pictures`；Linux 服务器使用自己的绝对路径。
+默认源是仓库内相对路径 `./docker/inspection-images`（Compose 自动解析为绝对路径，
+Docker Desktop 与 WSL 引擎均可直接使用；往该目录放 jpg/png 即生效，目录不存在会报错）。
+要挂本机目录时在 `.env` 设 `INSPECTION_IMAGE_HOST_DIR`，注意按运行环境写对形式：
+Docker Desktop（PowerShell/Git Bash）用 `C:/Users/think/Pictures`；
+在 WSL 内运行 Linux 版 Compose 用 `/mnt/c/Users/think/Pictures`——盘符形式在 WSL
+引擎下会报 `not an absolute path`。
 此变量是宿主机目录，`RMS_INSPECTION_IMAGE_DIR=/app/inspection-images` 始终是容器内目录。
 `create_host_path: false` 会在目录不存在时报错，避免拼错路径后创建空目录。
+目录为空或无图片时，质检打包回退内置占位图，不影响任务执行。
 
-若要使用 `config-json5-audi.json`，替换挂载左侧文件名即可，右侧路径与 `.env` 保持一致。
+若要切换 zenoh 环境（bj/cc/sz/audi 变体），替换挂载左侧文件名即可，右侧路径与 `.env` 保持一致。
+当前默认挂载 `config-json5-docker.json`：endpoints 为 `tcp/host.docker.internal:7447`
+（宿主机发布端口 → zenoh-router-1）。容器内的 `localhost` 连不到任何 zenoh——
+`tcp/localhost:7447` 只适用于 IDEA 本机开发（classpath 内置变体）。
 修改文件中的 `connect.endpoints` 切换 Zenoh 服务器，例如：
 
 ```json
@@ -116,7 +132,8 @@ Windows 路径建议使用 `/`。启动前确认左侧文件、目录实际存�
 ```
 
 地址须能从容器内访问；`localhost` 指上位机容器自身。
-`RMS_ZENOH_CONFIG_FILE` 留空时读取镜像内置配置，非空时读取指定挂载文件。
+`RMS_ZENOH_CONFIG_FILE` 默认 `/app/config/zenoh.json5`（读取上述挂载文件）；显式留空
+才会退回镜像内置配置（容器内不可用）。
 当前默认启用 RMS；上述 `.env` 示例显式关闭，需连接时改成 `RMS_ENABLED=true`。
 
 质检代码读取 `RMS_INSPECTION_IMAGE_DIR` 指定的容器目录，因此填写 `/app/inspection-images`，

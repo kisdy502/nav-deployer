@@ -114,11 +114,14 @@ public class RmsTaskService {
      * 仿真侧消息更详细（中文 + 模板类型 + 标识）：
      * 「任务模板不存在：类型 charge 的任务模板 back-charge（id=…）未下发…」。
      * 模板标识优先 template_code，缺省回退任务类型名。仿真限制：无法解析真机行为树
-     * 模板的内部编排（充电点/路线在模板里），因此只做存在性校验；其余任务类型
-     * 暂不启用（navigate/质检等是仿真内置流程，无需模板下发）。
+     * 模板的内部编排（充电点/质检动作在模板里），因此只做存在性校验。
+     * 适用类型：charge / replace_battery / quality_inspection（质检与充电同口径——
+     * 任务流的多阶段 navigate 也携带任务流模板，未下发同样拒绝，对齐真机整体行为树语义）；
+     * navigate 等其余类型不启用（仿真内置流程，无需模板下发）。
      */
     private boolean templateMissing(RmsTask task) {
-        if (!(task.isTemplate("charge") || task.isTemplate("replace_battery"))) {
+        if (!(task.isTemplate("charge") || task.isTemplate("replace_battery")
+                || task.isTemplate("quality_inspection"))) {
             return false;
         }
         String type = task.taskTemplateType() == null ? "charge" : task.taskTemplateType();

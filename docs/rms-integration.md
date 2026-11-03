@@ -145,9 +145,9 @@ result_report。**禁止**在 zenoh 回调线程里发起 follow_edge 等待。
 | RMS 模板 | 内部动作 |
 |---|---|
 | rmf_navigate / navigate | SmartNavigationService（路线优先 Dijkstra FOLLOW_PATH，不可达回落 GOAL） |
-| charge / replace_battery | **ChargeService（与前端「去充电」共用链路）**：智能导航到充电点（charge-pose 配置或报文 destination）→ 调 `/agv/set_charging` data=true 并以遥测 charging=true 确认 → 充电中持续跟踪电量 → 达到目标电量（`parameters.target_battery_pct`，缺省 `charge.target_battery_pct`=100）才 COMPLETED；完成留桩，下次导航 bridge 自动断充；pause/stop 会连带取消充电并尽力 data=false |
+| charge / replace_battery | **ChargeService（与前端「去充电」共用链路）**：带 destination → 单段智能导航到桩（到桩校验）→ `/agv/set_charging` data=true；不带 destination → 原地充电（前置 navigate 已摆桩，真机行为树 Charge 节点语义）。**对接成功（遥测 charging=true 确认）即 COMPLETED**，不等电量目标——充到多少/何时断充由调度自行控制（如「充到 60% 允许作业」由调度跟踪电量派新任务）；完成留桩继续充电，下次导航 bridge 自动断充，也可调上位机 `POST /api/v1/charge/stop` 主动断充；pause/stop 会连带取消充电并尽力 data=false。引用未下发模板（`task_template/add`）会被双通道拒绝（status=2 + action_status=4） |
 | return_home | navigate 到 home 点位 → is_homing → 完成 |
-| quality_inspection | **占位执行器（已确认）**：仿真机械臂后续接入；当前固定延时后上报模拟结果，接臂时只换 executor |
+| quality_inspection | **模板校验（与充电同口径）**：引用未下发模板（`task_template/add`）双通道拒绝（status=2 + action_status=4），任务流的 navigate 阶段携带任务流模板同样校验；已下发 → 占位执行器：仿真机械臂接入前为固定延时 + 模拟结果，接臂时只换 executor |
 | fetch_cable（取放线束） | **占位执行器（已确认）**：固定延时（`action_duration_ms`）后 COMPLETED，仅上报简单状态信封，无 `result_report`；真实执行器接入时替换 |
 | 其他 task_type=action 模板 | **占位执行器**：协议规定 parameters.destination 仅 navigate 有效（RMS startActivity 下发 parameters 恒为空），故不校验 destination，固定延时后 COMPLETED；真实执行器接入时替换 |
 | pause_task / resume_task | 见 3.3 |

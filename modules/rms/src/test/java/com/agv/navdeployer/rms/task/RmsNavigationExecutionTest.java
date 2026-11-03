@@ -46,12 +46,16 @@ class RmsNavigationExecutionTest {
         });
         // SmartNavigationService 传真实实例 + null 路线依赖：tryRouteNavigation 内部异常被
         // 捕获回落 GOAL（与原 RmsTaskService 内联实现行为一致）
+        // 质检模板校验（与充电同口径）：任务流模板未下发会被拒绝——先下发任务类型名
+        // 对应的模板（请求未携带 template_code，按类型名 quality_inspection 引用）
+        RmsTemplateStore templateStore = RmsTemplateStore.inMemory();
+        templateStore.save("quality_inspection", null, "quality_inspection", "线束质检", "<root/>");
         RmsTaskService service = new RmsTaskService(registry, reporter,
                 mock(RobotStateView.class), moves, properties, null, null, null, null,
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(com.agv.navdeployer.service.RobotOperationalService.class),
-                null, RmsTemplateStore.inMemory());
+                null, templateStore);
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "workflow-1", "18", null, "navigate", "quality_inspection",

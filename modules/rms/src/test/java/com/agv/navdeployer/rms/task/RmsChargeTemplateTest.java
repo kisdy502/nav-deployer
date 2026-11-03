@@ -28,11 +28,11 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 
 /**
- * 真机模板机制仿真：充电任务引用的模板必须已由上层 task_template/add 下发并存储，
+ * 真机模板机制仿真：充电 / 质检任务引用的模板必须已由上层 task_template/add 下发并存储，
  * 未下发 → 受理成功 + 异步 result_report（action_status=4 通用 failed，对齐真机实测，
- * 消息为中文详细版，含模板类型）；已下发 → 携带 destination 时自主导航充电，
- * 未携带时原地充电（导航阶段已就位）；充电任务流的起点导航（task_type=navigate）
- * 只导航、完成上报，不触发充电。
+ * 消息为中文详细版，含模板类型）；已下发 → 充电凭 destination 自主导航、缺省原地充电，
+ * 质检进入占位执行；充电/质检任务流的起点导航（task_type=navigate，携带任务流模板）
+ * 同口径校验模板，已下发时只导航、完成上报，不触发业务动作。
  *
  * <p>异步断言说明：终态断言一律用 result_report 的 latch 等待（确定性），
  * 避免 mockito timeout 轮询验证与 worker 线程的 mock 调用互相阻塞。
@@ -57,13 +57,21 @@ class RmsChargeTemplateTest {
     private RmsTaskService newService(RmsTemplateStore store,
                                       AtomicReference<TaskResultEnvelope> envelope,
                                       CountDownLatch reported) {
-        RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());
+        return newService(store, envelope, reported, new RmsProperties());
+    }
+
+    /** 带自定义 properties 的变体（如质检占位时长设 0 加速测试）。 */
+    private RmsTaskService newService(RmsTemplateStore store,
+                                      AtomicReference<TaskResultEnvelope> envelope,
+                                      CountDownLatch reported,
+                                      RmsProperties properties) {
+        RmsResultReporter reporter = new RmsResultReporter(properties);
         reporter.attach((value, id) -> {
             envelope.set(value);
             reported.countDown();
         });
         return new RmsTaskService(new RmsTaskRegistry(), reporter,
-                mock(RobotStateView.class), mock(MoveTaskService.class), new RmsProperties(),
+                mock(RobotStateView.class), mock(MoveTaskService.class), properties,
                 null, null, null, null, null,
                 chargeService,
                 mock(RobotOperationalService.class),
@@ -304,5 +312,133 @@ class RmsChargeTemplateTest {
 
         assertThat(reloaded.delete("back-charge")).isTrue();
         assertThat(new RmsTemplateStore(dir).find("back-charge")).isEmpty();
+    }
+
+    // ==================== 质检任务模板校验（与充电同口径） ====================
+
+    private static final String INSPECTION_TREE_XML = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <root BTCPP_format="4" main_tree_to_execute="InspectionTask">
+              <BehaviorTree ID="InspectionTask">
+                <Sequence name="inspection_task">
+                  <MoveArm pose="inspect"/>
+                  <Inspect result="OK"/>
+                  <MoveArm pose="home"/>
+                </Sequence>
+              </BehaviorTree>
+            </root>
+            """;
+
+    /**
+     * 质检模板未下发（双通道，对齐充电）：
+     * 1) task/start 同步回包失败：status=2 + 中文详细消息（含模板类型/编码/template_id）；
+     * 2) 异步 result_report：action_status=4。绝不进入质检占位执行（不会上报 action_status=3）。
+     */
+    @Test
+    void qualityInspectionWithoutDownloadedTemplateRejected() throws Exception {
+        AtomicReference<TaskResultEnvelope> envelope = new AtomicReference<>();
+        CountDownLatch reported = new CountDownLatch(1);
+        RmsTaskService service = newService(RmsTemplateStore.inMemory(), envelope, reported);
+        try {
+            TaskCommandRequest request = new TaskCommandRequest(
+                    "qi-no-tpl-1", "1", null, "action", "quality_inspection",
+                    "back-inspect", "241819389364256999", Map.of());
+            service.addTask(request);
+            BodyReply started = service.startTask(request);
+            assertThat(started.status()).isEqualTo(2);
+            assertThat(started.msg()).contains("任务模板不存在")
+                    .contains("类型 quality_inspection").contains("back-inspect");
+            assertThat(reported.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(envelope.get().data().actionStatus()).isEqualTo(4);
+            assertThat(envelope.get().data().msg())
+                    .contains("任务模板不存在")
+                    .contains("类型 quality_inspection")
+                    .contains("back-inspect")
+                    .contains("template_id=241819389364256999");
+        } finally {
+            shutdown(service);
+        }
+    }
+
+    /** 质检模板已下发：占位执行正常完成（action_status=3），不再被模板校验拦截。 */
+    @Test
+    void qualityInspectionExecutesAfterTemplateDownload() throws Exception {
+        RmsTemplateStore store = RmsTemplateStore.inMemory();
+        store.save("back-inspect", "tpl-qi-1", "quality_inspection", "线束质检", INSPECTION_TREE_XML);
+        RmsProperties properties = new RmsProperties();
+        properties.getBehavior().setInspectionDurationMs(0);
+        AtomicReference<TaskResultEnvelope> envelope = new AtomicReference<>();
+        CountDownLatch reported = new CountDownLatch(1);
+        RmsTaskService service = newService(store, envelope, reported, properties);
+        try {
+            TaskCommandRequest request = new TaskCommandRequest(
+                    "qi-tpl-1", "1", null, "action", "quality_inspection",
+                    "back-inspect", null, Map.of());
+            BodyReply started = service.startTask(request);
+            assertThat(started.status()).as("start reply: %s", started.msg()).isZero();
+            assertThat(reported.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(envelope.get().data().actionStatus()).isEqualTo(3);
+        } finally {
+            shutdown(service);
+        }
+    }
+
+    /**
+     * 质检任务流的多阶段 navigate（携带任务流模板，与用户调度实际形态一致）：
+     * 未下发 → 同步 status=2 + 异步 action_status=4（模板是整个任务流的，起点导航同样拒绝）；
+     * 下发后 → navigate 阶段只导航（移动任务派发、COMPLETED 上报），不触发质检动作。
+     */
+    @Test
+    void navigateStageOfQualityFlowRequiresTemplate() throws Exception {
+        RmsTemplateStore store = RmsTemplateStore.inMemory();
+
+        AtomicReference<TaskResultEnvelope> envelope = new AtomicReference<>();
+        var reportCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());
+        reporter.attach((value, id) -> {
+            envelope.set(value);
+            reportCount.incrementAndGet();
+        });
+        MoveTaskService moves = mock(MoveTaskService.class);
+        com.agv.navdeployer.vo.MoveTaskVO moveVo = new com.agv.navdeployer.vo.MoveTaskVO();
+        moveVo.setId(66L);
+        moveVo.setTaskType("GOAL");
+        var statuses = new java.util.concurrent.atomic.AtomicReference<>("SUCCEEDED");
+        org.mockito.Mockito.when(moves.create(any(), any())).thenAnswer(
+                inv -> { moveVo.setStatus(statuses.get()); return moveVo; });
+        org.mockito.Mockito.when(moves.get(66L)).thenAnswer(inv -> {
+            moveVo.setStatus(statuses.get());
+            return moveVo;
+        });
+        RmsTaskService service = new RmsTaskService(new RmsTaskRegistry(), reporter,
+                mock(RobotStateView.class), moves, new RmsProperties(),
+                null, null, null, null,
+                new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
+                chargeService,
+                mock(RobotOperationalService.class),
+                null, store);
+        try {
+            // 阶段1（模板未下发）：navigate 被拒——同步 status=2 + 异步 action_status=4
+            TaskCommandRequest navigate = new TaskCommandRequest(
+                    "qi-flow-1", "1", null, "navigate", "quality_inspection",
+                    "back-inspect", null,
+                    Map.of("destination", Map.of("x", 32.09, "y", -5.07, "yaw", 0.0)));
+            BodyReply rejected = service.startTask(navigate);
+            assertThat(rejected.status()).isEqualTo(2);
+            assertThat(rejected.msg()).contains("类型 quality_inspection").contains("back-inspect");
+            awaitReport(reportCount, 1);
+            assertThat(envelope.get().data().actionStatus()).isEqualTo(4);
+            verify(moves, never()).create(any(), any());
+
+            // 阶段2（模板已下发）：同 navigate 任务重发 → 只导航，COMPLETED
+            store.save("back-inspect", null, "quality_inspection", "线束质检", INSPECTION_TREE_XML);
+            envelope.set(null);
+            assertThat(service.startTask(navigate).status()).isZero();
+            awaitReport(reportCount, 2);
+            assertThat(envelope.get().data().actionStatus()).isEqualTo(3);
+            verify(moves).create(any(), any());
+        } finally {
+            shutdown(service);
+        }
     }
 }
