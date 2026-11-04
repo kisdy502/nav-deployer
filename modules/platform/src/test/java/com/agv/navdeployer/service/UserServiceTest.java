@@ -52,6 +52,7 @@ class UserServiceTest {
                 "user-avatars", "minioadmin", "minioadmin123", "us-east-1");
     }
 
+    /** 验证创建用户：插入数据库后回填自增 id，并返回含完整字段的 VO。 */
     @Test
     void create_should_insert_and_return_vo() {
         when(userMapper.insert(any(User.class))).thenAnswer(inv -> {
@@ -67,6 +68,7 @@ class UserServiceTest {
         verify(userMapper).insert(any(User.class));
     }
 
+    /** 验证按 id 查询存在的用户时正确映射为 VO（含头像 key）。 */
     @Test
     void getById_should_return_vo_when_user_exists() {
         when(userMapper.selectById(1L)).thenReturn(user(1L, "zhangsan", 25, "avatars/a.png"));
@@ -77,6 +79,7 @@ class UserServiceTest {
         assertEquals("avatars/a.png", vo.getAvatarKey());
     }
 
+    /** 验证查询不存在的用户时抛出 NotFoundException 且消息包含该 id。 */
     @Test
     void getById_should_throw_when_user_missing() {
         when(userMapper.selectById(9L)).thenReturn(null);
@@ -86,6 +89,7 @@ class UserServiceTest {
         assertTrue(ex.getMessage().contains("9"));
     }
 
+    /** 验证列表查询：按名称条件过滤并返回映射后的 VO 列表。 */
     @Test
     void list_should_filter_by_name_and_order_desc() {
         when(userMapper.selectList(any())).thenReturn(java.util.List.of(user(1L, "zhangsan", 25, null)));
@@ -97,6 +101,7 @@ class UserServiceTest {
         verify(userMapper).selectList(any());
     }
 
+    /** 验证更新用户：用传入字段覆盖并持久化，返回更新后的 VO。 */
     @Test
     void update_should_update_fields() {
         User existing = user(1L, "old", 20, null);
@@ -109,6 +114,7 @@ class UserServiceTest {
         verify(userMapper).updateById(existing);
     }
 
+    /** 验证更新不存在的用户时抛出 NotFoundException。 */
     @Test
     void update_should_throw_when_user_missing() {
         when(userMapper.selectById(9L)).thenReturn(null);
@@ -116,6 +122,7 @@ class UserServiceTest {
         assertThrows(NotFoundException.class, () -> userService.update(9L, new UserUpdateDTO("new", 30)));
     }
 
+    /** 验证删除用户时同时删除数据库记录和 MinIO 中的头像对象。 */
     @Test
     void delete_should_remove_row_and_avatar_object() throws Exception {
         when(userMapper.selectById(1L)).thenReturn(user(1L, "zhangsan", 25, "avatars/a.png"));
@@ -126,6 +133,7 @@ class UserServiceTest {
         verify(minioClient).removeObject(any(RemoveObjectArgs.class));
     }
 
+    /** 验证用户无头像时删除只清数据库记录，不调用 MinIO 删除。 */
     @Test
     void delete_should_skip_minio_when_no_avatar() throws Exception {
         when(userMapper.selectById(1L)).thenReturn(user(1L, "zhangsan", 25, null));
@@ -136,6 +144,7 @@ class UserServiceTest {
         verify(minioClient, never()).removeObject(any(RemoveObjectArgs.class));
     }
 
+    /** 验证上传空文件被拒绝且不更新用户数据。 */
     @Test
     void uploadAvatar_should_reject_empty_file() {
         MultipartFile empty = new MockMultipartFile("file", new byte[0]);
@@ -147,6 +156,7 @@ class UserServiceTest {
         verify(userMapper, never()).updateById(any(User.class));
     }
 
+    /** 验证上传非图片扩展名（如 .txt）的头像被拒绝，防止存入非法文件。 */
     @Test
     void uploadAvatar_should_reject_unsupported_extension() {
         MultipartFile file = new MockMultipartFile("file", "a.txt", "text/plain", new byte[]{1});
@@ -155,6 +165,7 @@ class UserServiceTest {
         verify(userMapper, never()).updateById(any(User.class));
     }
 
+    /** 验证上传头像：对象写入 MinIO 并将新 key 保存到用户记录（替换旧头像 key）。 */
     @Test
     void uploadAvatar_should_upload_object_and_save_key() throws Exception {
         stubTransactionExecute();
@@ -170,6 +181,7 @@ class UserServiceTest {
         assertTrue(vo.getAvatarKey().endsWith(".png"));
     }
 
+    /** 验证为不存在的用户上传头像时抛出 NotFoundException。 */
     @Test
     void uploadAvatar_should_throw_when_user_missing() throws Exception {
         stubTransactionExecute();
@@ -179,6 +191,7 @@ class UserServiceTest {
         assertThrows(NotFoundException.class, () -> userService.uploadAvatar(9L, file));
     }
 
+    /** 验证用户未设置头像时获取头像地址抛出 NotFoundException。 */
     @Test
     void getAvatarUrl_should_throw_when_no_avatar() {
         when(userMapper.selectById(1L)).thenReturn(user(1L, "zhangsan", 25, null));
@@ -186,6 +199,7 @@ class UserServiceTest {
         assertThrows(NotFoundException.class, () -> userService.getAvatarUrl(1L, "http://localhost:9000"));
     }
 
+    /** 验证签名下载 URL 按调用方指定的 endpoint 生成，且带有效期与签名参数。 */
     @Test
     void getAvatarUrl_should_return_url_signed_for_requested_endpoint() {
         when(userMapper.selectById(1L)).thenReturn(user(1L, "zhangsan", 25, "avatars/a.png"));
@@ -197,6 +211,7 @@ class UserServiceTest {
         assertTrue(vo.url().contains("X-Amz-Signature"));
     }
 
+    /** 验证 MinIO 取对象失败时下载头像抛出 IllegalStateException，不向外泄漏底层异常。 */
     @Test
     void getAvatar_should_throw_when_minio_fails() throws Exception {
         when(userMapper.selectById(1L)).thenReturn(user(1L, "zhangsan", 25, "avatars/a.png"));

@@ -66,6 +66,7 @@ class MapAlignmentGuardTest {
         assertThat(guard.current().state()).isEqualTo(MapAlignmentGuard.Alignment.MISMATCH);
     }
 
+    /** 机器人加载地图与 v2 已发布基准图一致 → 校验放行，状态 ALIGNED。 */
     @Test
     void v2PublishedAlignedPasses() {
         robotOnMap("map1027S");
@@ -84,6 +85,7 @@ class MapAlignmentGuardTest {
         assertThat(guard.current().state()).isEqualTo(MapAlignmentGuard.Alignment.ALIGNED);
     }
 
+    /** v2 无已发布基准图、回退 v1 ACTIVE 比对不一致 → 拒绝并报「地图不一致」。 */
     @Test
     void v1MismatchMustReject() {
         robotOnMap("map1025L");

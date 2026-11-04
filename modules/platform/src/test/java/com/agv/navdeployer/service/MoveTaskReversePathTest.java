@@ -22,6 +22,7 @@ class MoveTaskReversePathTest {
                 null, false, false, sx, sy, syaw);
     }
 
+    /** 反向后段序倒排为 C→B→A，各段目标位姿取原源点位姿 */
     @Test
     void reversesSegmentOrderAndSwapsEndpoints() {
         // 路线 A(0,0)→B(10,0)→C(10,10)，反向后应为 C→B→A，各段目标取原源点位姿
@@ -46,6 +47,7 @@ class MoveTaskReversePathTest {
         assertEquals(0.1, second.theta(), 1e-9);
     }
 
+    /** 曲线控制点倒序以反向遍历同一条贝塞尔，reverse 固件标志置 false */
     @Test
     void reversesControlPointOrderButNotReverseFlag() {
         // 三次贝塞尔控制点 [c1,c2] 倒序为 [c2,c1]；reverse 固件标志置 false（已自行倒转）
@@ -58,6 +60,7 @@ class MoveTaskReversePathTest {
         assertFalse(reversed.get(0).reverse());
     }
 
+    /** 机器人严格更靠近路线终点才反向，靠近起点或距两端等距时保持正向 */
     @Test
     void nearestEndDecision() {
         // 两段路线 (0,0)→(10,0)→(10,10)

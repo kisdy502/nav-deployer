@@ -36,6 +36,7 @@ class RmsPropertiesTest {
         return binder.bind("rms", Bindable.of(RmsProperties.class)).get();
     }
 
+    /** yaml 直接写字面量 robot_sn（含首尾空格）应 trim 后覆盖种子默认 SN 并标记已配置。 */
     @Test
     void yamlLiteralValueOverridesGeneratedSn() {
         // yml 直接写值（可随时改动），含前后空格应被 trim
@@ -47,6 +48,7 @@ class RmsPropertiesTest {
         assertThat(props.getRobot().isRobotSnConfigured()).isTrue();
     }
 
+    /** 占位符 ${RMS_ROBOT_SN:} 在环境变量存在时展开为其值，强制覆盖种子默认 SN。 */
     @Test
     void envVarThroughPlaceholderOverridesGeneratedSn() {
         // ${RMS_ROBOT_SN:} + 环境变量存在 → 占位符展开后强制覆盖
@@ -58,6 +60,7 @@ class RmsPropertiesTest {
         assertThat(props.getRobot().isRobotSnConfigured()).isTrue();
     }
 
+    /** 占位符展开为空串（环境变量未设置）时回退共享默认 SN 且标记未配置。 */
     @Test
     void emptyPlaceholderFallsBackToSharedDefaultSn() {
         // ${RMS_ROBOT_SN:} + 环境变量未设置 → 展开为空串 → 不覆盖默认 SN
@@ -68,6 +71,7 @@ class RmsPropertiesTest {
         assertThat(props.getRobot().isRobotSnConfigured()).isFalse();
     }
 
+    /** 未配置 robot_sn 键时回退共享默认 SN，多次读取值稳定不漂移。 */
     @Test
     void missingKeyFallsBackToSharedDefaultSn() {
         // yml 有其他 rms.* 配置但未配置 robot_sn → 回退默认 SN，且多次读取稳定不漂移

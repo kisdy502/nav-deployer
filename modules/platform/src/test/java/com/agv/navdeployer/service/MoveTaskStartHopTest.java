@@ -19,6 +19,7 @@ class MoveTaskStartHopTest {
                 null, false, false, sx, sy, 0);
     }
 
+    /** 机器人距首段源点超过阈值时前插"驶向起点"段，原路线段保持不变 */
     @Test
     void prependsHopWhenRobotFarFromStart() {
         List<MoveTaskService.SegmentPlan> segments = List.of(seg(0, 0, 10, 0));
@@ -33,6 +34,7 @@ class MoveTaskStartHopTest {
         assertSame(segments.get(0), result.get(1));
     }
 
+    /** hop 段朝向取首段源→目标的边方向，与机器人当前朝向无关 */
     @Test
     void hopHeadingFollowsFirstEdgeDirection() {
         List<MoveTaskService.SegmentPlan> segments = List.of(seg(0, 0, 0, 10));
@@ -41,12 +43,14 @@ class MoveTaskStartHopTest {
         assertEquals(Math.PI / 2, hop.theta(), 1e-9);
     }
 
+    /** 机器人位于起点阈值内时不插 hop，原样返回同一路线实例 */
     @Test
     void noHopWhenRobotNearStart() {
         List<MoveTaskService.SegmentPlan> segments = List.of(seg(0, 0, 10, 0));
         assertSame(segments, MoveTaskService.withStartHopIfNeeded(segments, 0.3, 0.0, 0.5));
     }
 
+    /** 缺少机器人位姿或首段源点坐标时跳过纠偏，不插 hop */
     @Test
     void noHopWithoutPoseOrSource() {
         List<MoveTaskService.SegmentPlan> segments = List.of(seg(0, 0, 10, 0));
@@ -56,6 +60,7 @@ class MoveTaskStartHopTest {
         assertSame(noSource, MoveTaskService.withStartHopIfNeeded(noSource, 20.0, 5.0, 0.5));
     }
 
+    /** 机器人更靠近终点时选择反向执行；近起点或无位姿/源点时保持正向 */
     @Test
     void reverseWhenRobotCloserToEnd() {
         // 路线 (0,0)→(10,0)，机器人站在终点附近 → 应反向

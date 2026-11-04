@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class RmsNavigationExecutionTest {
+    /** 质检工作流导航阶段等待真实移动终态：EXECUTING 期间不上报，SUCCEEDED/FAILED/TIMEOUT/CANCELLED 终态后按对应 actionStatus 收口并透传移动错误消息。 */
     @ParameterizedTest
     @ValueSource(strings = {"SUCCEEDED", "FAILED", "TIMEOUT", "CANCELLED"})
     void inspectionWorkflowNavigationWaitsForActualMoveResult(String terminalStatus) throws Exception {
@@ -46,16 +47,13 @@ class RmsNavigationExecutionTest {
         });
         // SmartNavigationService 传真实实例 + null 路线依赖：tryRouteNavigation 内部异常被
         // 捕获回落 GOAL（与原 RmsTaskService 内联实现行为一致）
-        // 质检模板校验（与充电同口径）：任务流模板未下发会被拒绝——先下发任务类型名
-        // 对应的模板（请求未携带 template_code，按类型名 quality_inspection 引用）
-        RmsTemplateStore templateStore = RmsTemplateStore.inMemory();
-        templateStore.save("quality_inspection", null, "quality_inspection", "线束质检", "<root/>");
+        // 移动与业务解耦：navigate 阶段不校验任务流模板（即使携带 quality_inspection 模板也纯移动）
         RmsTaskService service = new RmsTaskService(registry, reporter,
                 mock(RobotStateView.class), moves, properties, null, null, null, null,
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 mock(com.agv.navdeployer.service.ChargeService.class),
                 mock(com.agv.navdeployer.service.RobotOperationalService.class),
-                null, templateStore);
+                null, RmsTemplateStore.inMemory());
         try {
             TaskCommandRequest request = new TaskCommandRequest(
                     "workflow-1", "18", null, "navigate", "quality_inspection",

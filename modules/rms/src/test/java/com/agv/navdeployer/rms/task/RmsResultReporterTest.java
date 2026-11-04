@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RmsResultReporterTest {
 
+    /** 质检任务完成上报携带业务载荷（NG 结果 + 线束参数 + points 点位明细），形状与真机报文一致。 */
     @Test
     void reportsCompletedInspectionWithNgBusinessResultAndRealMachineShape() {
         RmsProperties properties = new RmsProperties();
@@ -35,6 +36,7 @@ class RmsResultReporterTest {
         assertThat((java.util.List<?>) data.resultReport().get("points")).hasSize(2);
     }
 
+    /** navigate 任务即使带 quality_inspection 模板，完成上报也不携带质检业务载荷。 */
     @Test
     void reportsCompletedNavigationWithoutInspectionPayload() {
         RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());
@@ -53,6 +55,7 @@ class RmsResultReporterTest {
         assertThat(data.resultReport()).isNull();
     }
 
+    /** AGV 节点失败上报保留错误码 13 与原始可读失败原因，不带业务载荷。 */
     @Test
     void preservesAgvNodeFailureCodeAndReadableReason() {
         RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());
@@ -72,6 +75,7 @@ class RmsResultReporterTest {
         assertThat(data.resultReport()).isNull();
     }
 
+    /** 质检执行失败（拍照节点）上报错误码 10 与失败原因，不发布业务质检结果。 */
     @Test
     void doesNotPublishBusinessInspectionResultWhenInspectionExecutionFailed() {
         RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());
@@ -91,6 +95,7 @@ class RmsResultReporterTest {
         assertThat(data.resultReport()).isNull();
     }
 
+    /** 全量校验 RmsTaskStatus 到 action_status 的映射与真机机身枚举一一对应。 */
     @Test
     void alignsEveryActionStatusCodeWithRobotBodyEnum() {
         assertThat(RmsTaskStatus.IDLE.actionStatusCode()).isZero();

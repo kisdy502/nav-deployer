@@ -14,8 +14,10 @@ services:
     image: ${APP_IMAGE:-nav-deployer:v0.0.7}
     container_name: nav-deployer-app
     ports:
-      # 宿主机端口 18084：8083 留给 IDEA 本地实例，18083 已被 RMS(robot-management-service) 占用
-      - "18084:8083"
+      # 与 IDEA 时代地址完全一致：前端 http://localhost:5173、后端 http://localhost:8083
+      # （不再保留 IDEA/Docker 双实例并行，容器独占这些端口）
+      - "5173:8083"
+      - "8083:8083"
     environment:
       # 基础设施与 zenoh 路由同在 robot-platform-network：直接用容器 DNS + 容器内端口
       # （postgres 容器内是 5432，宿主机 55432 仅本机 IDEA 用）
@@ -66,7 +68,7 @@ services:
       # 路径对应 rms.template_dir 默认值 data/rms-templates，可用 RMS_TEMPLATE_DIR 覆盖）
       - rms_templates:/app/data/rms-templates
       # zenoh 连接配置（docker 变体：host.docker.internal:7447；切换 bj/cc/sz 环境替换左侧文件名）
-      - ./modules/app/src/main/resources/config-json5-docker.json:/app/config/zenoh.json5:ro
+      - ./modules/app/src/main/resources/config-json5-sz.json:/app/config/zenoh.json5:ro
       # teach 采集 / 质检图片样例目录挂载示例：
       # - ./docker/samples:/app/samples:ro     # 配合 RMS_TEACH_SAMPLE_DIR=/app/samples
       # 质检图片样例目录：默认仓库内样例目录（相对路径由 Compose 解析为绝对路径，

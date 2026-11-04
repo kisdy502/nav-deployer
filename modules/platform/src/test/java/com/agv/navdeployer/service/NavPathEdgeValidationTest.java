@@ -27,6 +27,7 @@ class NavPathEdgeValidationTest {
         return new PathEdgeDTO(source, target, type, cps, 0.6, false, false);
     }
 
+    /** 首尾相接的直线+单控制点曲线序列通过校验 */
     @Test
     void acceptsContinuousStraightAndCurveSequence() {
         Map<Long, NavPoint> points = Map.of(1L, point(1), 2L, point(2), 3L, point(3));
@@ -36,6 +37,7 @@ class NavPathEdgeValidationTest {
         NavPathService.validateEdgeSequence(edges, points);
     }
 
+    /** 后一段源点不等于前一段目标点时以"不连续"拒绝 */
     @Test
     void rejectsDiscontinuousSequence() {
         Map<Long, NavPoint> points = Map.of(1L, point(1), 2L, point(2), 3L, point(3));
@@ -47,6 +49,7 @@ class NavPathEdgeValidationTest {
         assertEquals(true, e.getMessage().contains("不连续"));
     }
 
+    /** 边引用不在本图点位表中的点时以"不属于该地图"拒绝 */
     @Test
     void rejectsPointFromOtherMap() {
         Map<Long, NavPoint> points = Map.of(1L, point(1));
@@ -56,6 +59,7 @@ class NavPathEdgeValidationTest {
         assertEquals(true, e.getMessage().contains("不属于该地图"));
     }
 
+    /** 源点与目标点相同的自环边被拒绝 */
     @Test
     void rejectsSelfLoop() {
         Map<Long, NavPoint> points = Map.of(1L, point(1));
@@ -65,6 +69,7 @@ class NavPathEdgeValidationTest {
         assertEquals(true, e.getMessage().contains("同一点位"));
     }
 
+    /** 曲线边缺控制点时以"控制点必须 1~2 个"拒绝 */
     @Test
     void rejectsCurveWithoutEnoughControlPoints() {
         Map<Long, NavPoint> points = Map.of(1L, point(1), 2L, point(2));
@@ -74,6 +79,7 @@ class NavPathEdgeValidationTest {
         assertEquals(true, e.getMessage().contains("控制点必须 1~2 个"));
     }
 
+    /** 曲线边配置 3 个控制点超出上限同样被拒绝 */
     @Test
     void rejectsCurveWithTooManyControlPoints() {
         Map<Long, NavPoint> points = Map.of(1L, point(1), 2L, point(2));
@@ -86,6 +92,7 @@ class NavPathEdgeValidationTest {
                         List.of(edge(1, 2, "CURVE", three)), points));
     }
 
+    /** 直线边不允许配置控制点，配置即拒绝 */
     @Test
     void rejectsStraightWithControlPoints() {
         Map<Long, NavPoint> points = Map.of(1L, point(1), 2L, point(2));

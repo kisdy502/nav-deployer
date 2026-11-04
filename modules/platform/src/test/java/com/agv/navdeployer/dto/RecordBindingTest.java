@@ -10,18 +10,21 @@ class RecordBindingTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /** RobotControlDTO 能从 JSON 绑定 action 字段 */
     @Test
     void robotControlDtoBinds() throws Exception {
         var dto = mapper.readValue("{\"action\":\"start\"}", RobotControlDTO.class);
         assertEquals("start", dto.action());
     }
 
+    /** SaveMapDTO 能从 JSON 绑定 mapName 字段 */
     @Test
     void saveMapDtoBinds() throws Exception {
         var dto = mapper.readValue("{\"mapName\":\"probe_test\"}", SaveMapDTO.class);
         assertEquals("probe_test", dto.mapName());
     }
 
+    /** RobotMapImportDTO 能从 JSON 绑定 robotMapName 字段 */
     @Test
     void robotMapImportDtoBinds() throws Exception {
         var dto = mapper.readValue("{\"robotMapName\":\"map0923\"}", RobotMapImportDTO.class);

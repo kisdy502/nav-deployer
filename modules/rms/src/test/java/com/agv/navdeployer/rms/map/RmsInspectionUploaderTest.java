@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RmsInspectionUploaderTest {
 
+    /** 质检 zip 应含 report.json/summary.txt 及引用的左右 3D 图片，report 携带 NG 业务结果与线束参数及点位明细。 */
     @Test
     void zipUsesSameNgResultAndContainsReferencedImages() throws Exception {
         RmsProperties properties = new RmsProperties();

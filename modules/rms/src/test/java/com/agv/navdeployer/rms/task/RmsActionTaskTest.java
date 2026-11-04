@@ -40,6 +40,7 @@ class RmsActionTaskTest {
                 null, RmsTemplateStore.inMemory());
     }
 
+    /** action 任务无 destination 时按占位动作原地完成（actionStatus=3），不创建内部移动任务。 */
     @Test
     void actionTaskWithoutDestinationCompletesInPlace() throws Exception {
         RmsProperties properties = new RmsProperties();
@@ -73,6 +74,7 @@ class RmsActionTaskTest {
         }
     }
 
+    /** navigate 任务无 destination 时仍快速失败（actionStatus=13 提示 no destination），不下发移动。 */
     @Test
     void navigateTaskWithoutDestinationStillFailsFast() throws Exception {
         RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());

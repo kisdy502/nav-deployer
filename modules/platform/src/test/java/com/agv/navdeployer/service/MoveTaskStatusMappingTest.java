@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class MoveTaskStatusMappingTest {
 
+    /** GoalStatus 4/5/6 分别映射为成功/取消/失败终态 */
     @Test
     void mapTerminalStatuses() {
         assertEquals(MoveTask.STATUS_SUCCEEDED,
@@ -21,6 +22,7 @@ class MoveTaskStatusMappingTest {
                 MoveTaskService.terminalStatus(6, false, false));
     }
 
+    /** 看门狗超时先取消后收到的 CANCELED 应记为 TIMEOUT 而非普通取消 */
     @Test
     void timeoutWinsOverPlainCancel() {
         // 看门狗先取消、超时后收到的 CANCELED 应记为 TIMEOUT
@@ -28,6 +30,7 @@ class MoveTaskStatusMappingTest {
                 MoveTaskService.terminalStatus(5, true, true));
     }
 
+    /** 未知或非终态 status 一律兜底映射为失败 */
     @Test
     void unknownStatusFallsBackToFailed() {
         assertEquals(MoveTask.STATUS_FAILED,

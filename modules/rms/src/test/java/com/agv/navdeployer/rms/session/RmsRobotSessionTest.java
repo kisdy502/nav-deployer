@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 
 class RmsRobotSessionTest {
 
+    /** 注册失败时必须关闭新打开的 zenoh 通道，且 session 不残留 channel 引用。 */
     @Test
     void closesFreshChannelWhenRegistrationFails() throws Exception {
         Fixture fixture = new Fixture();
@@ -41,6 +42,7 @@ class RmsRobotSessionTest {
         session.shutdown();
     }
 
+    /** 重连前应关闭旧通道、取消旧心跳/状态上报任务并以新任务替换，避免重复上报。 */
     @Test
     void closesOldChannelAndCancelsOldReportTasksBeforeReconnect() throws Exception {
         Fixture fixture = new Fixture();

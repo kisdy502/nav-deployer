@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RmsReportKeysTest {
 
+    /** 任务结果上报 key 应拼成平铺形态（不含任务 ID 路径段），与云端订阅的 task/result_report 对齐。 */
     @Test
     void taskResultReportUsesFlatSegment() {
         RmsReportKeys keys = new RmsReportKeys("zioneer", "qc-robot", "RB-001");

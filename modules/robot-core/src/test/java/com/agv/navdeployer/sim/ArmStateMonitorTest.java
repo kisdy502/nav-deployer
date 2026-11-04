@@ -45,6 +45,7 @@ class ArmStateMonitorTest {
         return new ArmStateMonitor(telemetry, inFlight::get, props);
     }
 
+    /** 双臂所有关节均在归位容差内时判定为 HOME，移动闸门放行 */
     @Test
     void homedWhenAllJointsWithinTolerance() {
         SimAgvTelemetry telemetry = new SimAgvTelemetry();
@@ -54,6 +55,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.movementAllowed()).isTrue();
     }
 
+    /** 任一关节超出容差（右臂偏移 0.9）即判定为 DEPLOYED，移动闸门拦截 */
     @Test
     void deployedWhenAnyJointBeyondTolerance() {
         SimAgvTelemetry telemetry = new SimAgvTelemetry();
@@ -63,6 +65,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.movementAllowed()).isFalse();
     }
 
+    /** arm_move 在途时状态优先判定为 MOVING（即使关节已归位），移动闸门拦截 */
     @Test
     void movingWinsWhileArmMoveInFlight() {
         SimAgvTelemetry telemetry = new SimAgvTelemetry();
@@ -72,6 +75,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.movementAllowed()).isFalse();
     }
 
+    /** 无关节遥测时判定为 UNKNOWN：宽松模式放行移动，严格模式（armStrictUnknown）拦截 */
     @Test
     void unknownWithoutJointsPolicyDependsOnStrictFlag() {
         SimAgvTelemetry telemetry = new SimAgvTelemetry();
@@ -85,6 +89,7 @@ class ArmStateMonitorTest {
         assertThat(monitor(telemetry, new AtomicInteger(0), strict).movementAllowed()).isFalse();
     }
 
+    /** 闸门禁用（armGateEnabled=false）时恒判 HOME 且放行，不受关节偏移与在途指令影响 */
     @Test
     void gateDisabledAlwaysAllows() {
         SimAgvTelemetry telemetry = new SimAgvTelemetry();
@@ -96,6 +101,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.movementAllowed()).isTrue();
     }
 
+    /** 归位配置角色数与关节数不匹配（右臂仅 3 项）时判定为 UNKNOWN 而非误判归位 */
     @Test
     void mismatchedConfigCountsAsUnknown() {
         SimAgvTelemetry telemetry = new SimAgvTelemetry();
@@ -106,6 +112,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.state()).isEqualTo(ArmStateMonitor.ArmState.UNKNOWN);
     }
 
+    /** 左臂语义名与右臂数值名混合时均按角色对位归位角，判定与名字字母序无关 */
     @Test
     void roleMappingIndependentOfNameSortOrder() {
         // 左臂语义名（elbow 字母序在前）+ 右臂数值名：都按角色对位归位角
@@ -127,6 +134,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.state()).isEqualTo(ArmStateMonitor.ArmState.DEPLOYED);
     }
 
+    /** 单臂 profile（ur5e_* 原始命名、无左右标记）按左臂归位配置判定 HOME/DEPLOYED */
     @Test
     void singleArmProfileUsesLeftHomeConfig() {
         // 单臂 profile：ur5e_* 原始命名（无 arm/left 标记），按左臂配置判定
@@ -148,6 +156,7 @@ class ArmStateMonitorTest {
         assertThat(monitor.state()).isEqualTo(ArmStateMonitor.ArmState.DEPLOYED);
     }
 
+    /** 单臂 profile 下夹爪关节不参与判定：六主轴归位即 HOME，不因角色无法识别退化为 UNKNOWN */
     @Test
     void gripperJointsIgnoredInSingleArmProfile() {
         // 机器人侧新增夹爪关节（ur5e_gripper_*_joint）：六主轴归位时夹爪不参与判定，
@@ -175,6 +184,7 @@ class ArmStateMonitorTest {
                 "ur5e_wrist_1_joint", "ur5e_wrist_2_joint", "ur5e_wrist_3_joint");
     }
 
+    /** sidePositions 按关节名字母序提取指定侧的六个位置，未知侧返回空数组 */
     @Test
     void sidePositionsSortedByName() {
         SimAgvTelemetry.JointSnapshot snapshot = joints(0, 0);

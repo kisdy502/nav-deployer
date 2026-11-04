@@ -25,6 +25,7 @@ import static org.mockito.Mockito.verify;
  */
 class RmsMapGateTest {
 
+    /** 地图不一致时 task/start 返回 409 并透传错误详情，不占用 busy 闸门、不下发内部移动。 */
     @Test
     void startTaskRejectedOnMapMismatchAndErrorPropagates() throws Exception {
         RmsProperties properties = new RmsProperties();

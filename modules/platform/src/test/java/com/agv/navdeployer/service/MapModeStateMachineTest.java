@@ -22,6 +22,7 @@ class MapModeStateMachineTest {
                 42L, "工厂一楼", target, Instant.now().plusMillis(deadlineMillis));
     }
 
+    /** 切图正常路径：受理后旧图短暂 NAVIGATION 不误判，经 RELOCALIZING 收敛到目标图后判成功 */
     @Test
     void happyPathDispatchedToRelocatingToSucceeded() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -40,6 +41,7 @@ class MapModeStateMachineTest {
         assertTrue(machine.getFinishedAt() != null);
     }
 
+    /** 小地图收敛快：未观察到 RELOCALIZING、直接看到 NAVIGATION+目标图也立即判成功 */
     @Test
     void directNavigationOnTargetSucceedsEvenWithoutRelocalizingFrame() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -48,6 +50,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "map0922", 100, STALE_LIMIT));
     }
 
+    /** 机器人进入建图模式（MAPPING）视为切图被抢占，立即判失败并携带原因 */
     @Test
     void mappingPreemptsAndFails() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -56,6 +59,7 @@ class MapModeStateMachineTest {
         assertEquals("机器人进入建图模式（MAPPING），切图被抢占", machine.getErrorMessage());
     }
 
+    /** RELOCALIZING 后收敛到非目标地图说明切换异常，判失败 */
     @Test
     void relayingThenNavigationWithWrongMapFails() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -64,6 +68,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "another_map", 100, STALE_LIMIT));
     }
 
+    /** 状态断流超过 stale 上限只挂起不判死，链路恢复后继续跟踪直至成功 */
     @Test
     void staleStatusHoldsUntilRecoveryOrDeadline() {
         // 保存地图/重启定位窗口里状态断流：挂起不判死，deadline 兜底
@@ -78,6 +83,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "map0922", 100, STALE_LIMIT));
     }
 
+    /** 断流一直持续到 deadline 时仍由超时兜底判失败 */
     @Test
     void staleStatusUntilDeadlineFails() {
         // 失联贯穿到 deadline：仍由超时兜底判失败
@@ -88,6 +94,7 @@ class MapModeStateMachineTest {
                 machine.onDeadline(Instant.now()));
     }
 
+    /** deadline 到期 mode 未达预期判失败，错误信息标明任务类型 */
     @Test
     void deadlineFails() {
         MapModeStateMachine machine = machine("map0922", -1); // 已过期
@@ -96,6 +103,7 @@ class MapModeStateMachineTest {
         assertEquals("SWITCH_MAP 超时（mode 未在期限内达到预期）", machine.getErrorMessage());
     }
 
+    /** 旧版机器人不上报 mode（null）时不误判，保持等待由 deadline 兜底 */
     @Test
     void legacyRobotWithoutModeKeepsWaitingUntilDeadline() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -103,6 +111,7 @@ class MapModeStateMachineTest {
         assertEquals(MapModeStateMachine.Status.DISPATCHED, machine.getStatus());
     }
 
+    /** 进入终态后到达的 mode 事件被忽略，不再改写结论 */
     @Test
     void terminalStateIgnoresFurtherEvents() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -119,6 +128,7 @@ class MapModeStateMachineTest {
                 null, null, null, Instant.now().plusMillis(deadlineMillis));
     }
 
+    /** 下发建图后观察到 MAPPING 即判成功，受理初期的 NAVIGATION 属正常窗口 */
     @Test
     void startMappingSucceedsOnMappingMode() {
         MapModeStateMachine machine = startMappingMachine(90_000);
@@ -128,6 +138,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("MAPPING", "", 100, STALE_LIMIT));
     }
 
+    /** 机器人进入切图流程（RELOCALIZING）视为建图被抢占，判失败 */
     @Test
     void startMappingPreemptedByRelocalizing() {
         MapModeStateMachine machine = startMappingMachine(90_000);
@@ -143,6 +154,7 @@ class MapModeStateMachineTest {
                 null, "map_new", "map_new", Instant.now().plusMillis(deadlineMillis));
     }
 
+    /** 保存地图正常路径：MAPPING 执行期不迁移不失败，经 RELOCALIZING 收敛到新图判成功 */
     @Test
     void saveMapHappyPathMappingThenRelocatingThenNavigation() {
         MapModeStateMachine machine = saveMapMachine(90_000);
@@ -159,6 +171,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "map_new", 100, STALE_LIMIT));
     }
 
+    /** 保存地图后收敛到非目标新图（地图不符）判失败 */
     @Test
     void saveMapRelayingThenNavigationWithWrongMapFails() {
         MapModeStateMachine machine = saveMapMachine(90_000);
@@ -168,6 +181,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "other_map", 100, STALE_LIMIT));
     }
 
+    /** 机器人保存失败时维持 MAPPING 无失败信号，只能靠超时兜底判失败 */
     @Test
     void saveMapTimeoutWhenRobotStaysMapping() {
         // 机器人保存失败时维持 MAPPING（只清除内部标志），上位机只能靠超时兜底
@@ -184,6 +198,7 @@ class MapModeStateMachineTest {
                 9L, "map_old", "map_old", Instant.now().plusMillis(deadlineMillis));
     }
 
+    /** 放弃建图正常路径：load_map 执行期维持 MAPPING，回旧图定位收敛后判成功 */
     @Test
     void discardHappyPathMappingThenRelocatingThenBackToOldMap() {
         MapModeStateMachine machine = discardMachine(90_000);
@@ -199,6 +214,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "map_old", 100, STALE_LIMIT));
     }
 
+    /** 放弃建图后未回到指定旧图（地图不符）判失败 */
     @Test
     void discardRelayingThenNavigationWithWrongMapFails() {
         MapModeStateMachine machine = discardMachine(90_000);
@@ -208,6 +224,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "other_map", 100, STALE_LIMIT));
     }
 
+    /** 机器人未处理 load_map 维持 MAPPING 时，靠超时兜底判失败 */
     @Test
     void discardTimeoutWhenRobotStaysMapping() {
         // 机器人侧未处理 load_map（建图终止失败）时维持 MAPPING，只能靠超时兜底
@@ -225,6 +242,7 @@ class MapModeStateMachineTest {
                 finished, success, message, true, false, 3.2, Instant.now());
     }
 
+    /** 挂接 operation_id 后 mode 到 NAVIGATION+目标图不再单独判成功，由操作记录 RUNNING 驱动进度、SUCCEEDED 作权威终态 */
     @Test
     void switchMapWithOperationIgnoresModeSuccessAndWaitsAuthority() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -250,6 +268,7 @@ class MapModeStateMachineTest {
         assertTrue(machine.getFinishedAt() != null);
     }
 
+    /** 操作记录 FAILED 时透传机器人原因判失败，终态后迟到回调不改写结论 */
     @Test
     void switchMapWithOperationFailedCarriesRobotReason() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -265,6 +284,7 @@ class MapModeStateMachineTest {
         assertEquals(MapModeStateMachine.Status.FAILED, machine.getStatus());
     }
 
+    /** 操作记录 TIMED_OUT 判失败，错误信息标注机器人侧定位操作超时 */
     @Test
     void timedOutOperationFailsWithTimeoutReason() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -275,6 +295,7 @@ class MapModeStateMachineTest {
         assertEquals("机器人侧定位操作超时（TIMED_OUT）", machine.getErrorMessage());
     }
 
+    /** 非本任务 operation_id 的操作记录不被消费，状态保持不变 */
     @Test
     void operationOfOtherIdNotConsumed() {
         MapModeStateMachine machine = machine("map0922", 90_000);
@@ -284,6 +305,7 @@ class MapModeStateMachineTest {
         assertEquals(MapModeStateMachine.Status.DISPATCHED, machine.getStatus());
     }
 
+    /** 权威通道下 deadline 可延长：原期限到达但延长未到期不判死，操作终态仍可正常落地 */
     @Test
     void deadlineExtendableForAuthorityChannel() {
         MapModeStateMachine machine = machine("map0922", 1); // 1ms 后到期
@@ -303,6 +325,7 @@ class MapModeStateMachineTest {
                 null, "map0922", "map0922", Instant.now().plusMillis(deadlineMillis));
     }
 
+    /** 旧版重定位 fallback：未见 RELOCALIZING 前的 NAVIGATION 不误判成功，翻转后收敛才判成功 */
     @Test
     void relocalizeLegacyFallbackNeedsRelocalizingFirst() {
         MapModeStateMachine machine = relocalizeMachine(90_000);
@@ -316,6 +339,7 @@ class MapModeStateMachineTest {
                 machine.onStatus("NAVIGATION", "map0922", 100, STALE_LIMIT));
     }
 
+    /** 带操作记录的重定位以权威通道为准：mode 流转不判成功，FAILED 透传机器人原因 */
     @Test
     void relocalizeWithOperationAuthoritative() {
         MapModeStateMachine machine = relocalizeMachine(90_000);
@@ -333,6 +357,7 @@ class MapModeStateMachineTest {
         assertEquals("pbstream 加载失败", machine.getErrorMessage());
     }
 
+    /** 机器人进入建图模式（MAPPING）视为重定位被抢占，判失败 */
     @Test
     void relocalizePreemptedByMappingFails() {
         MapModeStateMachine machine = relocalizeMachine(90_000);
@@ -341,6 +366,7 @@ class MapModeStateMachineTest {
         assertEquals("机器人进入建图模式（MAPPING），重定位被抢占", machine.getErrorMessage());
     }
 
+    /** 进度版本号仅在 stage 或 message 变化时递增，相同心跳重发不产生 SSE 抖动 */
     @Test
     void progressVersionBumpsOnlyOnStageOrMessageChange() {
         MapModeStateMachine machine = machine("map0922", 90_000);

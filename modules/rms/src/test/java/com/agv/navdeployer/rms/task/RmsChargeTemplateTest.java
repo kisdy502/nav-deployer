@@ -25,14 +25,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
- * 真机模板机制仿真：充电 / 质检任务引用的模板必须已由上层 task_template/add 下发并存储，
- * 未下发 → 受理成功 + 异步 result_report（action_status=4 通用 failed，对齐真机实测，
- * 消息为中文详细版，含模板类型）；已下发 → 充电凭 destination 自主导航、缺省原地充电，
- * 质检进入占位执行；充电/质检任务流的起点导航（task_type=navigate，携带任务流模板）
- * 同口径校验模板，已下发时只导航、完成上报，不触发业务动作。
+ * 真机模板机制仿真（移动与业务解耦）：模板校验仅针对 task_type=action 的业务阶段
+ * （charge / replace_battery / quality_inspection）——未下发 → 受理成功 + 异步
+ * result_report（action_status=4 通用 failed，对齐真机实测，中文详细消息含模板类型）；
+ * 已下发 → 充电凭 destination 自主导航、缺省原地充电，质检进入占位执行。
+ * navigate 阶段无论是否携带任务流模板都纯移动执行（新架构移动不带模板，旧架构带模板兼容放行）。
  *
  * <p>异步断言说明：终态断言一律用 result_report 的 latch 等待（确定性），
  * 避免 mockito timeout 轮询验证与 worker 线程的 mock 调用互相阻塞。
@@ -215,14 +216,14 @@ class RmsChargeTemplateTest {
     }
 
     /**
-     * 充电任务流指定起点的两阶段流程：导航任务（task_type=navigate）即使携带
-     * charge 模板类型也只导航（移动任务派发、COMPLETED 上报），绝不触发充电；
-     * 充电由上层后续 start-activity 的充电任务原地执行。
+     * 充电任务流指定起点的两阶段流程（移动与业务解耦）：
+     * 导航任务（task_type=navigate，携带 charge 任务流模板）<b>不校验模板</b>、只导航
+     * （移动任务派发、COMPLETED 上报）；充电由上层后续 start-activity 的充电任务原地执行，
+     * 该 action 阶段才校验模板（已下发 → 原地充电完成）。
      */
     @Test
     void navigateStageOfChargeFlowOnlyNavigates() throws Exception {
         RmsTemplateStore store = RmsTemplateStore.inMemory();
-        store.save("back-charge", null, "charge", "简单充电", BEHAVIOR_TREE_XML);
         org.mockito.Mockito.when(chargeService.start(any())).thenReturn(chargeVo(8001L, "MOVING"));
         org.mockito.Mockito.when(chargeService.get(8001L)).thenReturn(chargeVo(8001L, "SUCCEEDED"));
         org.mockito.Mockito.when(chargeService.startDirect(any(), any())).thenReturn(chargeVo(8002L, "MOVING"));
@@ -254,7 +255,7 @@ class RmsChargeTemplateTest {
                 mock(RobotOperationalService.class),
                 null, store);
         try {
-            // 阶段1：navigate（模板类型是 charge——任务流模板）→ 只导航，完成上报 COMPLETED
+            // 阶段1：navigate（模板类型是 charge——旧架构兼容，模板未下发也不拦）→ 只导航
             TaskCommandRequest navigate = new TaskCommandRequest(
                     "charge-flow-1", "1", null, "navigate", "charge",
                     "back-charge", null,
@@ -266,7 +267,9 @@ class RmsChargeTemplateTest {
             verify(chargeService, never()).start(any());
             verify(chargeService, never()).startDirect(any(), any());
 
-            // 阶段2：上层确认导航完成后发 start-activity 充电任务（不带 destination）→ 原地充电
+            // 阶段2：上层确认导航完成后发 start-activity 充电任务（不带 destination）；
+            // 此 action 阶段才校验模板——先下发再执行 → 原地充电
+            store.save("back-charge", null, "charge", "简单充电", BEHAVIOR_TREE_XML);
             envelope.set(null);
             TaskCommandRequest charge = new TaskCommandRequest(
                     "charge-flow-1", "2", null, "action", "charge",
@@ -296,6 +299,36 @@ class RmsChargeTemplateTest {
             }
         }
         throw new AssertionError("result_report count " + counter.get() + " < " + expected + " within 10s");
+    }
+
+    /** 按名匹配语义（业务要求）：名字即可——后缀/文件名不参与匹配；首尾空格容错；大小写敏感。 */
+    @Test
+    void templateMatchedByNameOnlyTrimmedAndCaseSensitive() {
+        RmsTemplateStore store = RmsTemplateStore.inMemory();
+        store.save(" back-inspect ", null, "quality_inspection", "线束质检", INSPECTION_TREE_XML);
+        // 名字即可：去空格后命中（下发报文带冗余空白不影响匹配）
+        assertThat(store.find("back-inspect")).isPresent();
+        assertThat(store.find(" back-inspect ")).isPresent();
+        // 大小写敏感：不同大小写不算同一模板
+        assertThat(store.find("Back-Inspect")).isEmpty();
+        // 后缀无关：模板按 code 匹配，落盘文件才叫 back-inspect.json——引用不得拼后缀
+        assertThat(store.find("back-inspect.json")).isEmpty();
+    }
+
+    /**
+     * 原始模板文件（直接放入目录的行为树 XML 等）按文件名去后缀注册：
+     * 任务只带名字（LAD-28-A-not-lift）即可命中，无需 task_template/add、无需后缀。
+     */
+    @Test
+    void rawTemplateFileRegisteredByBaseName(@TempDir Path dir) throws Exception {
+        java.nio.file.Files.writeString(dir.resolve("LAD-28-A-not-lift.xml"), INSPECTION_TREE_XML);
+        RmsTemplateStore store = new RmsTemplateStore(dir);
+        assertThat(store.find("LAD-28-A-not-lift")).as("按文件名（去后缀）应命中").isPresent();
+        assertThat(store.find("LAD-28-A-not-lift").orElseThrow().content())
+                .contains("InspectionTask");
+        // 名字即可：带后缀引用不命中（后缀不参与匹配），大小写敏感
+        assertThat(store.find("LAD-28-A-not-lift.xml")).isEmpty();
+        assertThat(store.find("lad-28-a-not-lift")).isEmpty();
     }
 
     /** 模板落盘持久化：重启（新 store 实例同目录）后模板仍在，删除后消失。 */
@@ -384,12 +417,13 @@ class RmsChargeTemplateTest {
     }
 
     /**
-     * 质检任务流的多阶段 navigate（携带任务流模板，与用户调度实际形态一致）：
-     * 未下发 → 同步 status=2 + 异步 action_status=4（模板是整个任务流的，起点导航同样拒绝）；
-     * 下发后 → navigate 阶段只导航（移动任务派发、COMPLETED 上报），不触发质检动作。
+     * 质检任务流（移动与业务解耦，用户调度实际形态 navigate×N + start-activity action）：
+     * - navigate 阶段携带任务流模板但<b>不校验</b>：模板未下发也纯移动完成（COMPLETED）；
+     * - action 阶段才校验：未下发 → 同步 status=2 + 异步 action_status=4，不派发业务动作；
+     *   下发后重发同任务 → 占位质检完成（COMPLETED）。
      */
     @Test
-    void navigateStageOfQualityFlowRequiresTemplate() throws Exception {
+    void navigateStageOfQualityFlowSkipsTemplateCheck() throws Exception {
         RmsTemplateStore store = RmsTemplateStore.inMemory();
 
         AtomicReference<TaskResultEnvelope> envelope = new AtomicReference<>();
@@ -410,33 +444,46 @@ class RmsChargeTemplateTest {
             moveVo.setStatus(statuses.get());
             return moveVo;
         });
+        RmsProperties properties = new RmsProperties();
+        properties.getBehavior().setInspectionDurationMs(0);
         RmsTaskService service = new RmsTaskService(new RmsTaskRegistry(), reporter,
-                mock(RobotStateView.class), moves, new RmsProperties(),
+                mock(RobotStateView.class), moves, properties,
                 null, null, null, null,
                 new com.agv.navdeployer.service.SmartNavigationService(moves, null, null, null, null),
                 chargeService,
                 mock(RobotOperationalService.class),
                 null, store);
         try {
-            // 阶段1（模板未下发）：navigate 被拒——同步 status=2 + 异步 action_status=4
+            // 阶段1：navigate（模板未下发）→ 纯移动，COMPLETED
             TaskCommandRequest navigate = new TaskCommandRequest(
                     "qi-flow-1", "1", null, "navigate", "quality_inspection",
                     "back-inspect", null,
                     Map.of("destination", Map.of("x", 32.09, "y", -5.07, "yaw", 0.0)));
-            BodyReply rejected = service.startTask(navigate);
-            assertThat(rejected.status()).isEqualTo(2);
-            assertThat(rejected.msg()).contains("类型 quality_inspection").contains("back-inspect");
+            assertThat(service.startTask(navigate).status())
+                    .as("navigate 不校验模板，应放行").isZero();
             awaitReport(reportCount, 1);
-            assertThat(envelope.get().data().actionStatus()).isEqualTo(4);
-            verify(moves, never()).create(any(), any());
-
-            // 阶段2（模板已下发）：同 navigate 任务重发 → 只导航，COMPLETED
-            store.save("back-inspect", null, "quality_inspection", "线束质检", INSPECTION_TREE_XML);
-            envelope.set(null);
-            assertThat(service.startTask(navigate).status()).isZero();
-            awaitReport(reportCount, 2);
             assertThat(envelope.get().data().actionStatus()).isEqualTo(3);
             verify(moves).create(any(), any());
+
+            // 阶段2：action 质检（模板仍未下发）→ 双通道拒绝，不执行业务
+            envelope.set(null);
+            TaskCommandRequest inspect = new TaskCommandRequest(
+                    "qi-flow-1", "2", null, "action", "quality_inspection",
+                    "back-inspect", null, Map.of());
+            BodyReply rejected = service.startTask(inspect);
+            assertThat(rejected.status()).isEqualTo(2);
+            assertThat(rejected.msg()).contains("类型 quality_inspection").contains("back-inspect");
+            awaitReport(reportCount, 2);
+            assertThat(envelope.get().data().actionStatus()).isEqualTo(4);
+            verify(moves, times(1)).create(any(), any());
+
+            // 阶段3：下发模板后重发同任务 → 占位质检完成
+            store.save("back-inspect", null, "quality_inspection", "线束质检", INSPECTION_TREE_XML);
+            envelope.set(null);
+            assertThat(service.startTask(inspect).status()).isZero();
+            awaitReport(reportCount, 3);
+            assertThat(envelope.get().data().actionStatus()).isEqualTo(3);
+            verify(moves, times(1)).create(any(), any());
         } finally {
             shutdown(service);
         }

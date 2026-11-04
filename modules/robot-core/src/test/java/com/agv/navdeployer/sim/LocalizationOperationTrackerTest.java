@@ -30,6 +30,7 @@ class LocalizationOperationTrackerTest {
                 java.time.Instant.now());
     }
 
+    /** RUNNING→SUCCEEDED 正常流转：终态后 hasRunningOperation 清零并更新 latest */
     @Test
     void runningThenSucceeded() {
         LocalizationOperationTracker tracker = tracker();
@@ -43,6 +44,7 @@ class LocalizationOperationTrackerTest {
         assertEquals("op-1", tracker.latest().operationId());
     }
 
+    /** 已到终态（TIMED_OUT）的记录不被迟到的 RUNNING 回调回退 */
     @Test
     void terminalRecordNotRevertedByLateRunningCallback() {
         LocalizationOperationTracker tracker = tracker();
@@ -51,6 +53,7 @@ class LocalizationOperationTrackerTest {
         assertEquals("TIMED_OUT", tracker.get("op-1").state());
     }
 
+    /** awaitTerminal 挂起等待，终态（FAILED）到达时完成并返回该终态记录 */
     @Test
     void awaitTerminalCompletesWhenFinishedArrives() throws Exception {
         LocalizationOperationTracker tracker = tracker();
@@ -62,6 +65,7 @@ class LocalizationOperationTrackerTest {
         assertEquals("FAILED", terminal.state());
     }
 
+    /** 操作已处于终态时 awaitTerminal 立即完成，无需等待 */
     @Test
     void awaitTerminalImmediateWhenAlreadyFinished() throws Exception {
         LocalizationOperationTracker tracker = tracker();
@@ -70,6 +74,7 @@ class LocalizationOperationTrackerTest {
         assertEquals("SUCCEEDED", terminal.state());
     }
 
+    /** 超时时间内无终态到达时 awaitTerminal 以异常完成（ExecutionException） */
     @Test
     void awaitTerminalTimesOutWhenNoTerminalArrives() {
         LocalizationOperationTracker tracker = tracker();
@@ -79,6 +84,7 @@ class LocalizationOperationTrackerTest {
                 () -> future.get(1, TimeUnit.SECONDS));
     }
 
+    /** 只消费配置话题的消息：其他话题与缺少 operation_id 的旧版消息均忽略 */
     @Test
     void publishesForConfiguredTopicOnly() throws Exception {
         LocalizationOperationTracker tracker = tracker();
@@ -102,6 +108,7 @@ class LocalizationOperationTrackerTest {
         assertNull(tracker.get(""));
     }
 
+    /** TIMED_OUT 终态的 failureReason 归一化后仍含原始状态标识，未上报的可选字段为 null */
     @Test
     void failureReasonNormalizesTimeout() {
         LocalizationOperation timedOut = new LocalizationOperation("op-7", "LOAD_MAP", "m",

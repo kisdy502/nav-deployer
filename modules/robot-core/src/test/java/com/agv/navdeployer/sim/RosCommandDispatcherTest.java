@@ -18,6 +18,7 @@ class RosCommandDispatcherTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** values 为纯字符串（机器人拒绝原因文案）时原样透传给回调的 message */
     @Test
     void preservesRobotRejectionReasonWhenValuesIsAString() throws Exception {
         RosCommandDispatcher dispatcher = new RosCommandDispatcher(new SimAgvProperties());
@@ -33,6 +34,7 @@ class RosCommandDispatcherTest {
         verify(listener).onResult(0, false, "Goal rejected: robot STOPPED", "");
     }
 
+    /** 嵌套式 values{status,result{success,message,command_id}} 的 action_result 可正确解析回调 */
     @Test
     void acceptsNestedRosbridgeActionResult() throws Exception {
         RosCommandDispatcher dispatcher = new RosCommandDispatcher(new SimAgvProperties());
@@ -49,6 +51,7 @@ class RosCommandDispatcherTest {
         verify(listener).onResult(4, true, "arrived", "move-x");
     }
 
+    /** follow_edge 的 send_action_goal 报文顶层与 args 字段逐项对齐 rosbridge 契约 */
     @Test
     void buildFollowEdgeOpMatchesBridgeContract() throws Exception {
         RosCommandDispatcher.FollowEdgeGoal goal = new RosCommandDispatcher.FollowEdgeGoal(
@@ -83,6 +86,7 @@ class RosCommandDispatcherTest {
         assertEquals(2.0, args.path("control_points").get(0).path("y").asDouble(), 1e-9);
     }
 
+    /** goal 中 null 字符串字段序列化为空串兜底，edge_type 缺省取 STRAIGHT */
     @Test
     void nullStringFieldsFallBackToEmpty() throws Exception {
         RosCommandDispatcher.FollowEdgeGoal goal = new RosCommandDispatcher.FollowEdgeGoal(
@@ -99,6 +103,7 @@ class RosCommandDispatcherTest {
         assertTrue(args.path("control_points").isEmpty());
     }
 
+    /** call_service 报文契约：args 原样透传，null args 兜底为空对象 */
     @Test
     void buildCallServiceOpMatchesBridgeContract() throws Exception {
         JsonNode args = MAPPER.readTree("{\"map_name\":\"map0922\"}");
@@ -115,6 +120,7 @@ class RosCommandDispatcherTest {
         assertEquals(0, noArgs.path("args").size());
     }
 
+    /** cmd_vel 发布全向 Twist 契约：linear.x/y + angular.z，linear.z 恒为 0 */
     @Test
     void buildVelocityOpMatchesOmnidirectionalTwistContract() {
         JsonNode op = RosCommandDispatcher.buildVelocityOp("/cmd_vel", 0.3, -0.2, 0.6);

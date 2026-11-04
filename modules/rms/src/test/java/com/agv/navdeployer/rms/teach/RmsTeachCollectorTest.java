@@ -23,6 +23,7 @@ class RmsTeachCollectorTest {
         return new RmsTeachCollector(new com.fasterxml.jackson.databind.ObjectMapper(), properties);
     }
 
+    /** 缺少必填参数（camera/upload_url）时返回 400 并回显 msg_id，提示必填。 */
     @Test
     void rejectsMissingRequiredParams() {
         RmsTeachCollector collector = collector(new RmsProperties());
@@ -33,6 +34,7 @@ class RmsTeachCollectorTest {
         assertThat(reply.path("msg").asText()).contains("必填");
     }
 
+    /** camera 取值不在支持列表时返回 400 并提示 camera 非法。 */
     @Test
     void rejectsInvalidCamera() {
         RmsTeachCollector collector = collector(new RmsProperties());
@@ -43,6 +45,7 @@ class RmsTeachCollectorTest {
         assertThat(reply.path("msg").asText()).contains("camera");
     }
 
+    /** 打包 zip 含 teach_capture.json 元数据（模板/相机/msg_id）及采样目录下全部样本文件。 */
     @Test
     void zipContainsMetaAndSampleFiles() throws Exception {
         Path dir = Files.createTempDirectory("teach-samples");
@@ -64,6 +67,7 @@ class RmsTeachCollectorTest {
         assertThat(meta.path("msg_id").asLong()).isEqualTo(99);
     }
 
+    /** 采样目录不存在时降级打包，zip 仍含元数据与 runtime-info.txt 兜底文件。 */
     @Test
     void zipFallsBackWhenSampleDirMissing() throws Exception {
         RmsProperties properties = new RmsProperties();

@@ -14,6 +14,7 @@ class ScheduleMapAdapterTest {
 
     private final ScheduleMapAdapter adapter = new ScheduleMapAdapter();
 
+    /** 真实样例 zip 导入：栅格元数据与尺寸、19 个点位（含 WORK/CHARGER/HOME 分布）及 36 条路线均符合预期 */
     @Test
     void importSampleZip() throws Exception {
         byte[] zip = Files.readAllBytes(Path.of("map_0728.zip"));
@@ -51,6 +52,7 @@ class ScheduleMapAdapterTest {
         assertThat(route.targetCode()).isNotBlank();
     }
 
+    /** 导出 zip 六件套齐全；往返导入后栅格语义与点位保留，单条通道边展开为正反两条 Route */
     @Test
     void exportThenImportRoundTrip() throws Exception {
         // 4x4 假栅格：未知/空闲/占据混合
@@ -116,6 +118,7 @@ class ScheduleMapAdapterTest {
         assertThat(lxmap).doesNotContain("\"navdeployer\"");
     }
 
+    /** 已有正反成对边时导出只产出两条 Route，不再自动补反向造成重复 */
     @Test
     void doesNotDuplicateAnExistingReverseEdgeWhenExportingBidirectionalRoutes() throws Exception {
         com.agv.navdeployer.vo.MapGridVO grid = new com.agv.navdeployer.vo.MapGridVO(
@@ -138,6 +141,7 @@ class ScheduleMapAdapterTest {
         assertThat(lxmap).contains("Cairn: Route 2 2 1 ");
     }
 
+    /** 路线引用不存在的点位时抛异常拒绝生成残缺地图，而非静默丢弃 */
     @Test
     void refusesToSilentlyDropRouteReferencingMissingPoint() {
         com.agv.navdeployer.vo.MapGridVO grid = new com.agv.navdeployer.vo.MapGridVO(

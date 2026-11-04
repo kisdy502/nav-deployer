@@ -15,6 +15,7 @@ class LiveMapCacheTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** 正常 2x2 OccupancyGrid 报文可完整解析出 frame、分辨率、尺寸、原点与栅格数据 */
     @Test
     void parseValidOccupancyGrid() throws Exception {
         String raw = """
@@ -40,6 +41,7 @@ class LiveMapCacheTest {
         assertEquals(50, grid.data()[3]);
     }
 
+    /** data 长度与 width*height 不一致时拒收报文（返回 null） */
     @Test
     void rejectInconsistentGeometry() throws Exception {
         String raw = """
@@ -51,6 +53,7 @@ class LiveMapCacheTest {
         assertNull(LiveMapCache.parse(MAPPER.readTree(raw)));
     }
 
+    /** 缺少 data 数组的报文拒收（返回 null） */
     @Test
     void rejectMissingDataArray() throws Exception {
         String raw = """
@@ -61,6 +64,7 @@ class LiveMapCacheTest {
         assertNull(LiveMapCache.parse(MAPPER.readTree(raw)));
     }
 
+    /** 仅 /map 话题的 publish 更新缓存快照，其他话题不覆盖已缓存的最新帧 */
     @Test
     void cacheKeepsLatestFrameOnTopicMatch() throws Exception {
         LiveMapCache cache = new LiveMapCache("/map");

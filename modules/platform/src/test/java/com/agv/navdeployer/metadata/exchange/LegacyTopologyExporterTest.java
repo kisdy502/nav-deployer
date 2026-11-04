@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class LegacyTopologyExporterTest {
+    /** 新版点位类型映射保留旧四类，其余类型（含 null）一律兜底为 NORMAL */
     @Test
     void retainsLegacyTypesAndDefaultsNewTypes() {
         assertThat(List.of("NORMAL", "WORK", "CHARGER", "HOME", "path", "workstation",
@@ -28,6 +29,7 @@ class LegacyTopologyExporterTest {
         assertThat(LegacyTopologyExporter.legacyType(null)).isEqualTo("NORMAL");
     }
 
+    /** v2 导出 zip 同时保留原始元数据与旧版 lxmap 拓扑，双向路线展开为正反两条 Route */
     @Test
     void v2ZipContainsLegacyTopologyAndOriginalMetadata() throws Exception {
         var grid = new MapGridVO("map", 0.05, 1, 1, -1.0, -2.0, 0.0,

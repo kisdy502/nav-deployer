@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import static org.junit.jupiter.api.Assertions.*;
 
 class Map3dControllerTest {
+    /** 验证控制器代理上游 status 接口的 JSON 并完整透传二进制点云（.ply）字节；同时验证地图名含路径穿越（../）时拒绝请求 */
     @Test
     void proxiesStatusAndStreamsBinary() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

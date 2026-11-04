@@ -20,6 +20,7 @@ class RmsTelemetryServiceJointsTest {
         return new SimAgvTelemetry.JointSnapshot(names, positions, Instant.now());
     }
 
+    /** 混合关节按名称前缀拆到 left/right/waist 三组并按关节序号排序，舵轮与未知关节不下发。 */
     @Test
     void groupsAndSortsJointsByName() {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -40,6 +41,7 @@ class RmsTelemetryServiceJointsTest {
         assertTrue(data.size() == 3);
     }
 
+    /** 关节快照为 null 时三组关节均输出空数组而非缺键或异常。 */
     @Test
     void nullSnapshotYieldsEmptyArrays() {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -49,6 +51,7 @@ class RmsTelemetryServiceJointsTest {
         assertArrayEquals(new double[0], (double[]) data.get("waist_joints"));
     }
 
+    /** 关节名匹配大小写不敏感，大小写混杂命名仍能正确分组。 */
     @Test
     void caseInsensitiveMatching() {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -59,6 +62,7 @@ class RmsTelemetryServiceJointsTest {
         assertArrayEquals(new double[]{0.2}, (double[]) data.get("right_joints"));
         assertArrayEquals(new double[]{0.3}, (double[]) data.get("waist_joints"));
     }
+    /** 单臂 ur5e 场景关节回退归入 left_joints 并按名排序，轮关节不下发。 */
     @Test
     void singleUr5eReportsActualJoints() {
         Map<String, Object> data = new LinkedHashMap<>();

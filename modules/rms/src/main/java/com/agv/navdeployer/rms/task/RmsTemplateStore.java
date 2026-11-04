@@ -55,7 +55,7 @@ public final class RmsTemplateStore {
             return;
         }
         try (Stream<Path> files = Files.list(baseDir)) {
-            files.filter(path -> path.getFileName().toString().endsWith(".json"))
+            files.filter(path -> !path.getFileName().toString().startsWith("."))
                     .forEach(this::loadOne);
         } catch (IOException exception) {
             log.warn("rms template dir load failed: {} msg={}", baseDir, exception.getMessage());
@@ -63,24 +63,53 @@ public final class RmsTemplateStore {
         log.info("rms templates loaded: dir={} count={}", baseDir, templates.size());
     }
 
+    /**
+     * 单文件加载，两种形态（业务：模板以文件形式存在，任务引用只带名字，后缀不参与匹配）：
+     * 1) 本机 JSON 包装（task_template/add 落盘）：按内容 template_code 注册；
+     * 2) 原始模板文件（行为树 XML 等，直接放入目录）：按<b>文件名去扩展名</b>注册，原文存档。
+     */
     private void loadOne(Path file) {
         try {
-            Map<?, ?> raw = MAPPER.readValue(Files.readString(file, StandardCharsets.UTF_8), Map.class);
-            String code = text(raw, "template_code");
-            if (code == null || code.isBlank()) {
-                return;
+            String raw = Files.readString(file, StandardCharsets.UTF_8);
+            Map<?, ?> parsed = null;
+            try {
+                parsed = MAPPER.readValue(raw, Map.class);
+            } catch (Exception ignored) {
+                // 非 JSON（原始 XML 等）：按文件名注册
             }
-            templates.put(code, new Template(code, text(raw, "template_id"),
-                    text(raw, "template_type"), text(raw, "template_description"),
-                    text(raw, "template_content"), text(raw, "template_add_time")));
+            if (parsed != null) {
+                String code = normalize(text(parsed, "template_code"));
+                if (code != null) {
+                    templates.put(code, new Template(code, text(parsed, "template_id"),
+                            text(parsed, "template_type"), text(parsed, "template_description"),
+                            text(parsed, "template_content"), text(parsed, "template_add_time")));
+                    return;
+                }
+                // JSON 但不是本机包装（无 template_code 字段）：同样按文件名注册
+            }
+            registerByFileName(file, raw);
         } catch (Exception exception) {
             log.warn("rms template file load failed: {} msg={}", file, exception.getMessage());
         }
     }
 
-    /** 保存/覆盖模板（同 code 覆盖），持久化失败不阻断（内存为准，WARN 留痕）。 */
+    /** 原始模板文件注册：文件名去最后一个扩展名作为 code（LAD-28-A-not-lift.xml → LAD-28-A-not-lift），内容原文存档备查。 */
+    private void registerByFileName(Path file, String raw) {
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        String code = normalize(dot > 0 ? name.substring(0, dot) : name);
+        if (code == null) {
+            return;
+        }
+        templates.put(code, new Template(code, code, "", "file: " + name, raw,
+                OffsetDateTime.now().toString()));
+        log.info("rms template registered by file name: {} -> {}", name, code);
+    }
+
+    /** 保存/覆盖模板（同 code 覆盖；code 去首尾空格——报文多余空格不影响按名匹配），持久化失败不阻断（内存为准，WARN 留痕）。 */
     public Template save(String code, String templateId, String type,
                          String description, String content) {
+        code = normalize(code);
         Template template = new Template(code,
                 templateId == null || templateId.isBlank() ? code : templateId,
                 type == null ? "" : type,
@@ -110,7 +139,7 @@ public final class RmsTemplateStore {
 
     /** 删除模板；不存在返回 false。 */
     public boolean delete(String code) {
-        Template removed = templates.remove(code);
+        Template removed = templates.remove(normalize(code));
         if (removed == null) {
             return false;
         }
@@ -124,8 +153,10 @@ public final class RmsTemplateStore {
         return true;
     }
 
+    /** 按名查找：精确匹配（大小写敏感），后缀/文件名不参与——任务引用与下发使用同一 code 字符串。 */
     public Optional<Template> find(String code) {
-        return code == null || code.isBlank()
+        code = normalize(code);
+        return code == null
                 ? Optional.empty() : Optional.ofNullable(templates.get(code));
     }
 
@@ -137,6 +168,15 @@ public final class RmsTemplateStore {
     private static String fileNameOf(String code) {
         String safe = code.replaceAll("[^a-zA-Z0-9._\\-\\u4e00-\\u9fa5]", "_");
         return safe + ".json";
+    }
+
+    /** code 归一：去首尾空格（空白视为 null）——报文冗余空白不影响按名匹配。 */
+    private static String normalize(String code) {
+        if (code == null) {
+            return null;
+        }
+        String trimmed = code.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private static String text(Map<?, ?> map, String key) {

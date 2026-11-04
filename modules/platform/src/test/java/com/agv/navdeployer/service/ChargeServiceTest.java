@@ -180,6 +180,7 @@ class ChargeServiceTest {
                 assertThat(args.path("data").asBoolean()).as("只应发送 data=true").isTrue());
     }
 
+    /** 机器人拒绝开始充电（服务返回 success=false，如未对接好）→ 任务 FAILED 并带拒绝原因。 */
     @Test
     void chargeServiceRejectionFailsTask() throws Exception {
         build();
@@ -195,6 +196,7 @@ class ChargeServiceTest {
         assertThat(failed.message()).contains("拒绝开始充电").contains("not docked");
     }
 
+    /** 到桩导航失败（move task FAILED）→ 充电任务 FAILED，报「导航到充电点失败」。 */
     @Test
     void navigationFailureFailsTask() throws Exception {
         build();
@@ -208,6 +210,7 @@ class ChargeServiceTest {
         assertThat(failed.message()).contains("导航到充电点失败");
     }
 
+    /** 服务返回成功但遥测一直未确认 charging=true → 确认超时任务 FAILED（服务成功≠完成）。 */
     @Test
     void telemetryConfirmTimeoutFailsTask() throws Exception {
         build();
@@ -282,6 +285,7 @@ class ChargeServiceTest {
         assertThat(done.message()).contains("充电已开始");
     }
 
+    /** 到桩后须等 odom 速度归零（停稳）才调 set_charging——运动中调用会被机器人拒绝。 */
     @Test
     void dockWaitsForOdomQuietBeforeStartCharging() throws Exception {
         build();
@@ -307,6 +311,7 @@ class ChargeServiceTest {
         awaitStatus(task.id(), "SUCCEEDED");
     }
 
+    /** 救援充电（电量耗尽死锁）跳过导航原地开始充电，不经任何 move task 派发。 */
     @Test
     void rescueSkipsNavigationAndChargesDirectly() throws Exception {
         build();
@@ -324,6 +329,7 @@ class ChargeServiceTest {
         verify(smartNavigation, never()).createFollowPathTask(anyLong(), any());
     }
 
+    /** 已有进行中的充电任务时再次发起被拒绝，防止并发充电任务。 */
     @Test
     void secondStartRejectedWhileActive() throws Exception {
         build();
