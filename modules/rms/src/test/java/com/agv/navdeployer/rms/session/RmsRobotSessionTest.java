@@ -76,6 +76,7 @@ class RmsRobotSessionTest {
         assertThat(scheduler(session).getQueue()).isEmpty();
         verify(second).close();
         verify(factory, times(2)).apply(any());
+        verify(fixture.resultReporter, times(2)).attach(fixture.reportGateway);
     }
 
     private static ScheduledFuture<?> task(RmsRobotSession session, String field) {

@@ -169,6 +169,9 @@ public class RmsRobotSession {
 
             reportGateway.declarePublishers();
 
+            // 通道与最终 robot_code 就绪后重放断线期间的终态结果。
+            resultReporter.attach(reportGateway);
+
             // C：声明全部指令端点（queryable key 已用 effective code）
             commandGateway.attach(fresh);
 

@@ -12,6 +12,40 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RmsResultReporterTest {
 
+    @Test
+    void retriesFailedTemplateResultBeforeNextResult() {
+        RmsResultReporter reporter = new RmsResultReporter(new RmsProperties());
+        java.util.List<TaskResultEnvelope> published = new java.util.ArrayList<>();
+        java.util.concurrent.atomic.AtomicBoolean unavailable =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        reporter.attach((envelope, id) -> {
+            if (unavailable.get()) {
+                throw new IllegalStateException("disconnected");
+            }
+            published.add(envelope);
+        });
+        RmsTask missingTemplate = new RmsTask(new TaskCommandRequest(
+                "missing-template", "action-1", null, "action", "charge",
+                "back-charge", null, Map.of()));
+        missingTemplate.setStatus(RmsTaskStatus.FAILED);
+        missingTemplate.setMessage("任务模板不存在");
+        reporter.report(missingTemplate);
+        assertThat(published).isEmpty();
+
+        unavailable.set(false);
+        RmsTask next = new RmsTask(new TaskCommandRequest(
+                "next", "action-2", null, "action", "charge",
+                "back-charge", null, Map.of()));
+        next.setStatus(RmsTaskStatus.COMPLETED);
+        reporter.report(next);
+
+        assertThat(published).extracting(value -> value.data().taskId())
+                .containsExactly("missing-template", "next");
+        assertThat(published.getFirst().data().actionStatus()).isEqualTo(4);
+        assertThat(published.getFirst().data().actionId()).isEqualTo("action-1");
+        assertThat(published.getFirst().data().msg()).isEqualTo("任务模板不存在");
+    }
+
     /** 质检任务完成上报携带业务载荷（NG 结果 + 线束参数 + points 点位明细），形状与真机报文一致。 */
     @Test
     void reportsCompletedInspectionWithNgBusinessResultAndRealMachineShape() {

@@ -66,6 +66,11 @@ public class RmsResultReporter {
             return;
         }
         try {
+            replayPending();
+            if (!pending.isEmpty()) {
+                enqueue(envelope, task.taskId());
+                return;
+            }
             current.publish(envelope, task.taskId());
         } catch (Exception exception) {
             // 通道异常：入队等 attach/下次上报时重放
