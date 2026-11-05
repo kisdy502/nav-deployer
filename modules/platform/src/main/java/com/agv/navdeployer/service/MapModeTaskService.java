@@ -124,15 +124,24 @@ public class MapModeTaskService {
             throw new NotFoundException("地图 " + navMapId + " 不存在");
         }
         String robotMapName = resolveRobotMapName(map, robotMapNameOverride);
+        return switchMap(map.getId(), map.getMapName(), robotMapName);
+    }
+
+    public MapModeTaskVO switchNativeMap(String mapName, String robotMapName) {
+        requireIdleAndGates(MODE_NAVIGATION, true);
+        return switchMap(null, mapName, robotMapName);
+    }
+
+    private MapModeTaskVO switchMap(Long navMapId, String mapName, String robotMapName) {
         requireValidRobotMapName(robotMapName);
 
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.SWITCH_MAP,
-                map.getId(), map.getMapName(), robotMapName,
+                navMapId, mapName, robotMapName,
                 Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
 
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
-        if (robotMapName.equals(status.mapName())) {
+        if (status != null && robotMapName.equals(status.mapName())) {
             // 已在目标地图：无需重启定位，直接成功并对齐 ACTIVE
             machine.onStatus(MODE_NAVIGATION, robotMapName, 0, Long.MAX_VALUE);
         } else {

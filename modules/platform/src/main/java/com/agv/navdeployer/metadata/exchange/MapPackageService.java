@@ -147,6 +147,12 @@ public class MapPackageService {
     // ==================== 导出：DB → 新格式 zip ====================
 
     public byte[] exportZip(Long mapId) {
+        return exportZip(mapId, null);
+    }
+
+    public static final String LIGHTNING_PACKAGE = "native/lightning.zip";
+
+    public byte[] exportZip(Long mapId, byte[] nativePackage) {
         try {
             MapFullVO full = mapMetaService.loadFull(mapId);
             MapMeta map = mapMetaService.requireMap(mapId);
@@ -171,6 +177,9 @@ public class MapPackageService {
                 putEntry(zip, ENTRY_PNG, png);
                 putEntry(zip, ENTRY_YAML, yaml);
                 putEntry(zip, ENTRY_LXMAP, LegacyTopologyExporter.export(grid, full));
+                if (nativePackage != null) {
+                    putEntry(zip, LIGHTNING_PACKAGE, nativePackage);
+                }
             }
             int floorCount = full.floors().size();
             log.info("v2 map package exported: id={}, name={}, floors={}, {} bytes",
@@ -356,6 +365,12 @@ public class MapPackageService {
 
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO importZip(byte[] zipBytes, String nameOverride, String modifiedBy) {
+        return importZip(zipBytes, nameOverride, modifiedBy, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public MapV2VO importZip(byte[] zipBytes, String nameOverride, String modifiedBy,
+                             java.util.function.BiConsumer<String, byte[]> installLightning) {
         try {
             Map<String, byte[]> entries = readZipEntries(zipBytes);
             // 兼容新旧命名：map_info.json（真机）/ map-info.json（早期导出）；pgm 按后缀兜底
@@ -410,15 +425,29 @@ public class MapPackageService {
             byte[] compressed = GridObjectStore.gzip(webMapper.writeValueAsBytes(grid));
             String objectKey = "v2-maps/" + java.util.UUID.randomUUID() + "/grid.json.gz";
             gridStore.put(objectKey, compressed);
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) {
+                                gridStore.removeQuietly(objectKey);
+                            }
+                        }
+                    });
             map.setObjectKey(objectKey);
             map.setDataSize((long) compressed.length);
             mapMetaMapper.insert(map);
 
             importTree(map, file.mapInfo());
+            if (installLightning != null && entries.containsKey(LIGHTNING_PACKAGE)) {
+                installLightning.accept(mapName, entries.get(LIGHTNING_PACKAGE));
+                map.setRobotMapName(mapName);
+                mapMetaMapper.updateById(map);
+            }
             log.info("v2 map package imported: id={}, name={}, floors={}",
                     map.getId(), mapName, file.mapInfo().floors() == null ? 0 : file.mapInfo().floors().size());
             return MapV2VO.from(map);
-        } catch (IllegalStateException | IllegalArgumentException e) {
+        } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException("地图包导入失败: " + e.getMessage(), e);
@@ -734,11 +763,23 @@ public class MapPackageService {
 
     private static Map<String, byte[]> readZipEntries(byte[] zipBytes) throws java.io.IOException {
         Map<String, byte[]> entries = new LinkedHashMap<>();
+        int remainingBytes = 192 * 1024 * 1024;
+        int entryCount = 0;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
+                if (++entryCount > 1024 || entry.getSize() > remainingBytes) {
+                    throw new IllegalArgumentException("地图 ZIP 解压后超过大小或文件数限制");
+                }
+                byte[] content = zip.readNBytes(remainingBytes + 1);
+                remainingBytes -= content.length;
+                if (remainingBytes < 0) {
+                    throw new IllegalArgumentException("地图 ZIP 解压后超过大小限制");
+                }
                 if (!entry.isDirectory()) {
-                    entries.put(entry.getName(), zip.readAllBytes());
+                    if (entries.putIfAbsent(entry.getName(), content) != null) {
+                        throw new IllegalArgumentException("地图 ZIP 包含重复文件");
+                    }
                 }
             }
         }

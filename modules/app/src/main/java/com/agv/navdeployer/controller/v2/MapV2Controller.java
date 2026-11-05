@@ -9,6 +9,7 @@ import com.agv.navdeployer.metadata.exchange.MapPackageService;
 import com.agv.navdeployer.metadata.service.MapMetaService;
 import com.agv.navdeployer.metadata.vo.MapFullVO;
 import com.agv.navdeployer.metadata.vo.MapV2VO;
+import com.agv.navdeployer.rms.map.NativeMapClient;
 import com.agv.navdeployer.vo.MapGridVO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -40,13 +42,16 @@ public class MapV2Controller {
     private final MapMetaService mapMetaService;
     private final MapPackageService mapPackageService;
     private final ObjectMapper objectMapper;
+    private final NativeMapClient nativeMaps;
 
     public MapV2Controller(MapMetaService mapMetaService,
                            MapPackageService mapPackageService,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           NativeMapClient nativeMaps) {
         this.mapMetaService = mapMetaService;
         this.mapPackageService = mapPackageService;
         this.objectMapper = objectMapper;
+        this.nativeMaps = nativeMaps;
     }
 
     @Operation(summary = "地图列表")
@@ -68,8 +73,14 @@ public class MapV2Controller {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "map_name", required = false) String mapName,
             @RequestParam(value = "modified_by", required = false) String modifiedBy) throws Exception {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(mapPackageService.importZip(file.getBytes(), mapName, modifiedBy)));
+        try {
+            var imported = mapPackageService.importZip(file.getBytes(), mapName, modifiedBy,
+                    nativeMaps.enabled() ? nativeMaps::installMap : null);
+            return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(imported));
+        } catch (NativeMapClient.TransferException exception) {
+            throw new ResponseStatusException(exception.conflict() ? HttpStatus.CONFLICT : HttpStatus.BAD_GATEWAY,
+                    exception.getMessage(), exception);
+        }
     }
 
     @Operation(summary = "旧版地图迁移", description = "nav_map → v2 多楼层格式；点位类型映射、路线曲线字段完整保留")
@@ -121,14 +132,21 @@ public class MapV2Controller {
         return ApiResponse.ok(mapMetaService.replaceGridFromLive(id, dto == null ? null : dto.modifiedBy()));
     }
 
-    @Operation(summary = "导出新格式地图包", description = "map-info.json + global.yaml/pgm/png 四件套 zip（zenoh 上传 RMS 同格式）")
+    @Operation(summary = "导出新格式地图包", description = "栅格及地图元数据，配置 Lightning 传输时包含原生定位包")
     @GetMapping("/{id}/package")
     public ResponseEntity<byte[]> exportPackage(@PathVariable Long id) {
         MapV2VO map = mapMetaService.get(id);
-        byte[] zip = mapPackageService.exportZip(id);
+        byte[] nativePackage;
+        try {
+            nativePackage = nativeMaps.exportIfConfigured(map.mapName(), map.robotMapName());
+        } catch (NativeMapClient.TransferException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
+        byte[] zip = mapPackageService.exportZip(id, nativePackage);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + map.mapName() + ".zip\"")
+                .header("X-Native-Map-Included", Boolean.toString(nativePackage != null))
                 .contentType(MediaType.parseMediaType("application/zip"))
                 .body(zip);
     }

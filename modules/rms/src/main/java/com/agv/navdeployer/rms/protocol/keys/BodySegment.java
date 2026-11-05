@@ -31,6 +31,7 @@ public enum BodySegment {
     MAPPING_GET_CURRENT("mapping/get_current", true),
     MAPPING_DELETE("mapping/delete", true),
     MAPPING_GET("mapping/get", true),
+    MAPPING_DOWNLOAD("mapping/download", true),
 
     TASK_TEMPLATE_ADD("task_template/add", true),
     TASK_TEMPLATE_QUERY("task_template/query", true),

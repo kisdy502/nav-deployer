@@ -43,9 +43,9 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT:6379}
   servlet:
     multipart:
-      # 地图包 zip（含 pgm 栅格）较大，放宽上传限制
-      max-file-size: 50MB
-      max-request-size: 60MB
+      # V2 整机地图包含栅格、业务元数据和 Lightning 点云。
+      max-file-size: 160MB
+      max-request-size: 161MB
 
 mybatis-plus:
   global-config:

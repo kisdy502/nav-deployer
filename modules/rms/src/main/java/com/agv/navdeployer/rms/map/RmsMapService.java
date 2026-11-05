@@ -13,7 +13,11 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 /**
  * RMS 地图类指令的业务编排：协议适配（zenoh 命令 ↔ 业务 bean）+ 复用既有服务。
@@ -30,6 +34,7 @@ public class RmsMapService {
     private static final Logger log = LoggerFactory.getLogger(RmsMapService.class);
 
     private static final String MODE_MAPPING = "MAPPING";
+    private static final int MAX_DOWNLOAD_BYTES = 160 * 1024 * 1024;
 
     /** start_mapping 后 telemetry 镜像刷到 MAPPING 的滞后宽限（镜像 1Hz，取 5s 余量）。 */
     private static final long STALE_GRACE_MS = 5_000L;
@@ -41,6 +46,7 @@ public class RmsMapService {
     private final RmsMapState mapState;
     private final com.agv.navdeployer.metadata.service.MapMetaService mapMetaService;
     private final com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService;
+    private final NativeMapClient nativeMaps;
 
     public RmsMapService(MapModeTaskService mapTaskService,
                          NavMapService navMapService,
@@ -48,7 +54,8 @@ public class RmsMapService {
                          SimAgvTelemetry telemetry,
                          RmsMapState mapState,
                          com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
-                         com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService) {
+                         com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService,
+                         NativeMapClient nativeMaps) {
         this.mapTaskService = mapTaskService;
         this.navMapService = navMapService;
         this.navMapMapper = navMapMapper;
@@ -56,6 +63,7 @@ public class RmsMapService {
         this.mapState = mapState;
         this.mapMetaService = mapMetaService;
         this.mapPackageService = mapPackageService;
+        this.nativeMaps = nativeMaps;
     }
 
     /** start_mapping：map_name 可选（停止时的默认保存名）。 */
@@ -127,12 +135,22 @@ public class RmsMapService {
             return BodyReply.failure(400, "缺少地图名：mapping/change 未携带 map_name");
         }
         try {
-            NavMap map = findMapByName(mapName);
-            if (map == null) {
-                return BodyReply.failure(404, "地图不存在: " + mapName);
+            var v2Map = mapMetaService.findByUploadName(mapName);
+            com.agv.navdeployer.vo.MapModeTaskVO task;
+            if (v2Map != null && v2Map.getRobotMapName() != null) {
+                task = mapTaskService.switchNativeMap(v2Map.getMapName(), v2Map.getRobotMapName());
+            } else {
+                NavMap map = findMapByName(mapName);
+                if (map == null) {
+                    return BodyReply.failure(404, "找不到可切换的机器人地图: " + mapName);
+                }
+                task = mapTaskService.switchMap(map.getId(), null);
             }
-            com.agv.navdeployer.vo.MapModeTaskVO task = mapTaskService.switchMap(map.getId(), null);
             BodyReply finalReply = awaitMapTaskTerminal(task.id(), 100_000L, "change map");
+            if (finalReply.status() == 0 && v2Map != null && v2Map.getRobotMapName() != null
+                    && !com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED.equals(v2Map.getStatus())) {
+                mapMetaService.publish(v2Map.getId(), "RMS");
+            }
             log.info("RMS mapping/change 终态回包: map={} taskId={} status={} msg={}",
                     mapName, task.id(), finalReply.status(), finalReply.msg());
             return finalReply;
@@ -272,16 +290,24 @@ public class RmsMapService {
             // v2 多楼层地图 → 新格式 zip
             var v2Map = mapMetaService.findByUploadName(mapName);
             if (v2Map != null) {
-                byte[] zip = mapPackageService.exportZip(v2Map.getId());
+                byte[] nativePackage = nativeMaps.exportIfConfigured(v2Map.getMapName(), v2Map.getRobotMapName());
+                byte[] zip = mapPackageService.exportZip(v2Map.getId(), nativePackage);
+                if (nativePackage != null && zip.length > MAX_DOWNLOAD_BYTES) {
+                    return BodyReply.failure(413, "整机地图 ZIP 超过 160 MiB");
+                }
                 uploadZipToUrl(uploadUrl, v2Map.getMapName(), zip);
-                log.info("RMS mapping/get 新格式上传成功: map={} url={} size={}bytes",
-                        mapName, uploadUrl, zip.length);
-                return BodyReply.success("map exported: " + mapName, null);
+                log.info("RMS mapping/get 新格式上传成功: map={} size={}bytes native={}",
+                        mapName, zip.length, nativePackage != null);
+                return BodyReply.success("map exported: " + mapName,
+                        Map.of("native_included", nativePackage != null));
             }
 
             NavMap map = findMapByName(mapName);
             if (map == null) {
                 return BodyReply.failure(404, "地图不存在: " + mapName);
+            }
+            if (nativeMaps.enabled()) {
+                return BodyReply.failure(422, "Lightning 整机同步需要先将旧版地图迁移为 V2");
             }
 
             // 从 DB 取栅格数据，用 ScheduleMapAdapter 打包
@@ -308,29 +334,99 @@ public class RmsMapService {
 
     private void uploadZipToUrl(String url, String mapName, byte[] body) throws Exception {
         String boundary = "----NavDeployerBoundary" + System.currentTimeMillis();
-        var output = new java.io.ByteArrayOutputStream();
-        // 表单字段 1：map_name（服务端 import-zip 要求，curl -F "map_name=xxx" 等价）
-        output.writeBytes(("--" + boundary + "\r\n"
+        String prefix = "--" + boundary + "\r\n"
                 + "Content-Disposition: form-data; name=\"map_name\"\r\n\r\n"
-                + mapName + "\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        // 表单字段 2：file（zip 二进制，curl -F "file=@test.zip" 等价）
-        output.writeBytes(("--" + boundary + "\r\n"
+                + mapName + "\r\n"
+                + "--" + boundary + "\r\n"
                 + "Content-Disposition: form-data; name=\"file\"; filename=\"" + mapName + ".zip\"\r\n"
-                + "Content-Type: application/zip\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        output.write(body);
-        output.writeBytes(("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                + "Content-Type: application/zip\r\n\r\n";
+        var multipart = java.net.http.HttpRequest.BodyPublishers.concat(
+                java.net.http.HttpRequest.BodyPublishers.ofString(prefix),
+                java.net.http.HttpRequest.BodyPublishers.ofByteArray(body),
+                java.net.http.HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n"));
 
         var request = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(url))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(output.toByteArray()))
-                .timeout(java.time.Duration.ofSeconds(30))
+                .POST(multipart)
+                .timeout(java.time.Duration.ofSeconds(nativeMaps.enabled() ? 90 : 30))
                 .build();
         var response = java.net.http.HttpClient.newHttpClient().send(
                 request, java.net.http.HttpResponse.BodyHandlers.ofString());
         log.info("mapping/get 上传响应: status={}\nbody={}", response.statusCode(), response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalStateException("HTTP " + response.statusCode() + ": " + response.body());
+        }
+    }
+
+    /** 下载并导入上位机地图库，机器人安装和切图有独立的结果。 */
+    public BodyReply downloadMap(String payload, com.fasterxml.jackson.databind.ObjectMapper mapper) {
+        String mapName;
+        URI uri;
+        try {
+            var request = mapper.readTree(payload);
+            if (request == null || !request.path("map_name").isTextual()
+                    || !request.path("map_url").isTextual()) {
+                return BodyReply.failure(400, "map_name 和 map_url 必须为字符串");
+            }
+            mapName = text(request, "map_name");
+            String mapUrl = text(request, "map_url");
+            if (mapName == null || mapUrl == null || mapName.length() > 512 || mapUrl.length() > 512) {
+                return BodyReply.failure(400, "map_name 和 map_url 必填且最长 512 字符");
+            }
+            uri = URI.create(mapUrl);
+            if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    || uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {
+                return BodyReply.failure(400, "map_url 必须是有效的 HTTP(S) 下载地址");
+            }
+        } catch (IOException | IllegalArgumentException exception) {
+            return BodyReply.failure(400, "地图下发请求格式无效");
+        }
+
+        byte[] zip;
+        try {
+            zip = fetchMapZip(uri);
+        } catch (IOException exception) {
+            log.warn("RMS mapping/download 下载失败: map={}, errorType={}",
+                    mapName, exception.getClass().getSimpleName());
+            return BodyReply.failure(502, "地图 ZIP 下载失败，请检查地址、有效期和包大小");
+        }
+        try {
+            var imported = mapPackageService.importZip(zip, mapName, "RMS", nativeMaps::installMap);
+            boolean installed = imported.robotMapName() != null;
+            return BodyReply.success(installed ? "map imported and installed" : "map imported on host", Map.of(
+                    "map_id", imported.id(),
+                    "map_name", mapName,
+                    "robot_installed", installed));
+        } catch (NativeMapClient.TransferException exception) {
+            return BodyReply.failure(exception.conflict() ? 409 : 502, exception.getMessage());
+        } catch (IllegalArgumentException exception) {
+            return BodyReply.failure(422, exception.getMessage());
+        } catch (RuntimeException exception) {
+            log.warn("RMS mapping/download 导入失败: map={}", mapName, exception);
+            return BodyReply.failure(500, "地图导入失败，请检查包格式或同名地图");
+        }
+    }
+
+    private static byte[] fetchMapZip(URI uri) throws IOException {
+        var connection = (HttpURLConnection) uri.toURL().openConnection();
+        connection.setInstanceFollowRedirects(false);
+        connection.setConnectTimeout(5_000);
+        connection.setReadTimeout(15_000);
+        try {
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK
+                    || connection.getContentLengthLong() > MAX_DOWNLOAD_BYTES) {
+                throw new IOException("地图下载响应无效或超过大小限制");
+            }
+            try (var input = connection.getInputStream()) {
+                byte[] zip = input.readNBytes(MAX_DOWNLOAD_BYTES + 1);
+                if (zip.length == 0 || zip.length > MAX_DOWNLOAD_BYTES) {
+                    throw new IOException("地图 ZIP 大小无效");
+                }
+                return zip;
+            }
+        } finally {
+            connection.disconnect();
         }
     }
 

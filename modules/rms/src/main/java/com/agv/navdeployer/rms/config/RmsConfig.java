@@ -136,9 +136,17 @@ public class RmsConfig {
                                        SimAgvTelemetry telemetry,
                                        RmsMapState mapState,
                                        com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
-                                       com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService) {
+                                       com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService,
+                                       com.agv.navdeployer.rms.map.NativeMapClient nativeMaps) {
         return new RmsMapService(mapTaskService, navMapService, navMapMapper,
-                telemetry, mapState, mapMetaService, mapPackageService);
+                telemetry, mapState, mapMetaService, mapPackageService, nativeMaps);
+    }
+
+    @Bean
+    public com.agv.navdeployer.rms.map.NativeMapClient nativeMapClient(
+            @org.springframework.beans.factory.annotation.Value("${native-map.base-url:}") String nativeMapUrl,
+            @org.springframework.beans.factory.annotation.Value("${native-map.token:}") String nativeMapToken) {
+        return new com.agv.navdeployer.rms.map.NativeMapClient(nativeMapUrl, nativeMapToken);
     }
 
     @Bean(destroyMethod = "shutdown")

@@ -39,6 +39,8 @@ services:
       SIM_AGV_TF_CHILD_FRAME: ${SIM_AGV_TF_CHILD_FRAME:-AGV002/base_link}
       # 留空时从 rosbridge 主机名推导 HTTP 8089。
       MAP3D_BASE_URL: ${MAP3D_BASE_URL:-}
+      NATIVE_MAP_BASE_URL: ${NATIVE_MAP_BASE_URL:-}
+      NATIVE_MAP_TOKEN: ${NATIVE_MAP_TOKEN:-}
       # ---- RMS 对接（zenoh）----
       # 未显式关闭时容器会连接打包内置的 zenoh 路由（config-json5.json）并自动注册
       RMS_ENABLED: ${RMS_ENABLED:-true}

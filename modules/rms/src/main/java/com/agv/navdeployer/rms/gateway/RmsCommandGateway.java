@@ -111,12 +111,14 @@ public class RmsCommandGateway {
     private final long periodicLogIntervalMs;
 
     /**
-     * 闭环指令段（切图 / 重定位）：业务需要等待机器人执行终态后才能给出成败结论，
+     * 耗时指令（切图、重定位、地图传输）等待业务结果后回包，
      * 在独立线程执行并延迟回包，避免长时间阻塞 zenoh IO 线程（其他 queryable 仍在服务）。
      * 若 RMS 侧 query 超时先放弃，迟到的回包会被 zenoh 丢弃（reply 抛错仅记日志），不影响链路。
      */
     private static final java.util.Set<String> CLOSED_LOOP_SEGMENTS = java.util.Set.of(
             BodySegment.MAPPING_CHANGE.segment(),
+            BodySegment.MAPPING_GET.segment(),
+            BodySegment.MAPPING_DOWNLOAD.segment(),
             BodySegment.AGV_RELOCATE.segment());
 
     private final java.util.concurrent.ExecutorService closedLoopExecutor =
@@ -138,7 +140,9 @@ public class RmsCommandGateway {
             if (actualSegment.isBlank() || actualSegment.contains("*")) {
                 actualSegment = declaredSegment;
             }
-            if (PERIODIC_SEGMENTS.contains(actualSegment)) {
+            if (BodySegment.MAPPING_DOWNLOAD.segment().equals(actualSegment)) {
+                RmsMessageLog.inboundQuery(String.valueOf(query.getKeyExpr()), "[map URL redacted]");
+            } else if (PERIODIC_SEGMENTS.contains(actualSegment)) {
                 // 周期轮询：节流打印（默认 30s 一条），保留链路痕迹不刷屏
                 RmsMessageLog.inboundQueryThrottled(
                         String.valueOf(query.getKeyExpr()), rawPayload, periodicLogIntervalMs);
@@ -160,8 +164,7 @@ public class RmsCommandGateway {
                 try {
                     reply = handle(segment, payload);
                 } catch (Exception exception) {
-                    log.warn("RMS closed-loop query failed key={} payload={} msg={}",
-                            query.getKeyExpr(), payload, exception.getMessage(), exception);
+                    log.warn("RMS closed-loop query failed key={}", query.getKeyExpr(), exception);
                     reply = BodyReply.failure(500, "nav-deployer failed: " + exception.getMessage());
                 }
                 replyAndClose(query, segment, reply);
@@ -289,6 +292,7 @@ public class RmsCommandGateway {
             case MAPPING_CHANGE -> mapService.changeMap(parseMapNameRequest(rawPayload));
             case MAPPING_GET_CURRENT -> mapService.getCurrentMap();
             case MAPPING_DELETE -> mapService.deleteMap(parseMapNameRequest(rawPayload));
+            case MAPPING_DOWNLOAD -> mapService.downloadMap(rawPayload, mapper);
             case MAPPING_GET ->
                     mapService.exportMap(rawPayload, mapper, scheduleAdapter, navPointService, navPathService);
             case AGV_RELOCATE -> mapService.relocate(parseRelocateRequest(rawPayload));
