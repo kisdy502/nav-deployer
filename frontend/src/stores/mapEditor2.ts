@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { shallowRef } from 'vue'
 import { ElMessage } from 'element-plus'
-import * as mapsApi from '@/api/maps'
 import type {
   ConnSaveDTO,
   ConnV2VO,
@@ -36,6 +35,7 @@ import {
   deleteZoneV2,
   getMapFullV2,
   getMapGridV2,
+  getLiveGridV2,
   updateConnV2,
   updateFloorV2,
   updatePathV2,
@@ -214,7 +214,7 @@ export const useMapEditor2Store = defineStore('mapEditor2', {
         if (liveRequestInFlight) return
         liveRequestInFlight = true
         try {
-          const g = await mapsApi.getLiveGrid()
+          const g = await getLiveGridV2()
           if (!g.received_at || g.received_at !== this.liveGrid?.received_at) {
             this.liveGrid = g
           }

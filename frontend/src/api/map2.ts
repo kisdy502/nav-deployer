@@ -21,6 +21,7 @@ import type { MapGridVO } from '@/types/api'
 // ---------- 地图 ----------
 
 export const listMapsV2 = () => get<MapV2VO[]>('/maps')
+export const getLiveGridV2 = () => get<MapGridVO>('/maps/live')
 export const getMapV2 = (id: number) => get<MapV2VO>(`/maps/${id}`)
 export const getMapFullV2 = (id: number) => get<MapFullVO>(`/maps/${id}/full`)
 /** 栅格：裸 JSON，无包裹 */

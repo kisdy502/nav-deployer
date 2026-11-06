@@ -59,6 +59,12 @@ public class MapV2Controller {
         return ApiResponse.ok(mapMetaService.list());
     }
 
+    @Operation(summary = "实时栅格", description = "/map 最新一帧（OccupancyGrid 展平视图）")
+    @GetMapping("/live")
+    public ApiResponse<MapGridVO> live() {
+        return ApiResponse.ok(mapMetaService.liveGrid());
+    }
+
     @Operation(summary = "从实时快照建图", description = "保存当前 /map 栅格为新地图，自动创建默认楼层 F1")
     @PostMapping("/from-live")
     public ResponseEntity<ApiResponse<MapV2VO>> createFromLive(@Valid @RequestBody MapCreateFromLiveDTO dto) {

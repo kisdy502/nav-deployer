@@ -288,6 +288,10 @@ public class MapMetaService {
         return MapV2VO.from(map);
     }
 
+    public MapGridVO liveGrid() {
+        return snapshotLiveGrid();
+    }
+
     private MapGridVO snapshotLiveGrid() {
         mapSubscriptionGuard.touch();
         LiveMapCache.OccupancyGrid grid = liveMapCache.snapshot();
