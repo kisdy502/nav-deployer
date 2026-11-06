@@ -190,6 +190,16 @@ public class RmsMapService {
             return BodyReply.failure(400, "缺少地图名：mapping/delete 未携带 map_name");
         }
         try {
+            var v2Map = mapMetaService.findByUploadName(mapName);
+            if (v2Map != null) {
+                try {
+                    mapMetaService.delete(v2Map.getId());
+                } catch (IllegalStateException conflict) {
+                    return BodyReply.failure(400, conflict.getMessage());
+                }
+                log.info("RMS mapping/delete done, mapName={} mapId={}(v2)", mapName, v2Map.getId());
+                return BodyReply.success("delete map accepted: " + mapName, null);
+            }
             if (isActiveMap(mapName)) {
                 return BodyReply.failure(400, "当前使用中的地图不可删除: " + mapName);
             }
