@@ -8,6 +8,8 @@ import com.agv.navdeployer.sim.RosbridgeClient;
 import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.agv.navdeployer.sim.SimAgvTelemetryCollector;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
@@ -34,8 +36,12 @@ public class RosbridgeConfig {
     }
 
     @Bean
-    public LiveMapCache liveMapCache(SimAgvProperties props) {
-        return new LiveMapCache(props.getMapTopic());
+    public LiveMapCache liveMapCache(SimAgvProperties props, ObjectMapper mapper,
+                                    @Value("${map2d.use-rosbridge:false}") boolean legacy) {
+        if (legacy || !props.isEnabled() || !props.isMapEnabled()) {
+            return new LiveMapCache(props.getMapTopic());
+        }
+        return new LiveMapCache(props.getMapTopic(), props.robotHttpUri(8092).resolve("/maps/live"), mapper);
     }
 
     @Bean
@@ -89,7 +95,8 @@ public class RosbridgeConfig {
     public ApplicationRunner rosbridgeBootstrap(SimAgvProperties props,
                                                 RosbridgeClient rosbridgeClient,
                                                 RosbridgeClient mapRosbridgeClient,
-                                                MapSubscriptionGuard mapSubscriptionGuard) {
+                                                MapSubscriptionGuard mapSubscriptionGuard,
+                                                @Value("${map2d.use-rosbridge:false}") boolean legacy) {
         return args -> {
             com.agv.navdeployer.sim.RosbridgeMessageLog.configure(
                     props.isWsMessageLogCommandsEnabled(), props.isWsMessageLogEnabled(),
@@ -124,9 +131,11 @@ public class RosbridgeConfig {
             // 连接后立即收到 latched 的最新操作，约每秒还有心跳重发，500ms 轮询消费不丢终态
             rosbridgeClient.subscribe(props.getLocalizationOperationTopic(),
                     props.getLocalizationOperationTopicType(), 0, 0, true);
-            mapSubscriptionGuard.attach(mapRosbridgeClient);
+            if (legacy) {
+                mapSubscriptionGuard.attach(mapRosbridgeClient);
+                mapRosbridgeClient.connect();
+            }
             rosbridgeClient.connect();
-            mapRosbridgeClient.connect();
         };
     }
 }

@@ -156,48 +156,16 @@ rms:
 # through agv_bridge_v2: /agv/status (1Hz), /tf (map->AGV001/base_link, 10Hz).
 # Prerequisite: `docker compose --profile navigation up -d` on the sim host.
 # ============================================================
-map3d:
-  # 空值时从 sim_agv.ws_url 推导机器人主机，使用 HTTP 8089。
-  base-url: ${MAP3D_BASE_URL:}
-
 sim_agv:
   enabled: ${SIM_AGV_ENABLED:true}
   ws_url: ${SIM_AGV_WS_URL:ws://localhost:9090}
-  status_topic: /agv/status
-  tf_topic: /tf
-  # 静态 TF：雷达安装关系（base_link → laser 的平移+旋转），点云安装变换优先来源；拿不到时回退 scan*_mount_yaw_deg
-  tf_static_topic: /tf_static
   # Must match the bridge agv_id (child_frame_id = <agv_id>/base_link).
   tf_child_frame: ${SIM_AGV_TF_CHILD_FRAME:AGV001/base_link}
   tf_throttle_ms: 0
   # /odom（里程计位姿+速度）：odom_relay_node 转发，twist 驱动状态栏速度显示；
   # 位姿部分同时补充两段式插值环（odom→base_link 段），与 /tf 同源不冲突
   odom_enabled: ${SIM_AGV_ODOM_ENABLED:true}
-  odom_topic: /odom
-  reconnect_delay_ms: 3000
-  scan_enabled: true
-  pose_topic: /agv/pose
   scan_throttle_ms: 200
-  scan_topic_1: /scan_1
-  scan_topic_2: /scan_2
-  # 雷达安装朝向偏移（度）：雷达自身坐标系相对 base_link 的固定旋转角。
-  # 双雷达对装（背靠背）时，反装的那个通常为 180。若画面上某雷达点云与实际障碍方向相反，调整此值（0/90/180/270）。
-  # 雷达安装变换不在此配置：唯一来源是机器人自描述（/tf_static，URDF 发布）。
-  # 缺失时后端打 ERROR 并丢弃该雷达点云，绝不用猜测值兼容。
-  summary_interval_ms: 5000
-  # 建图：/map 大消息订阅（分片重组在 RosbridgeClient 内完成）。
-  # 按需订阅：仅 MAPPING 模式或 /live 被轮询时挂载（MapSubscriptionGuard），
-  # 平时 rosbridge 上没有 /map 压力，遥控 /cmd_vel 不再被周期性挤慢。
-  map_enabled: true
-  map_topic: /map
-  map_throttle_ms: 3000
-  map_fragment_size: 500000
-  # 下行通道：follow_edge action / set_control 服务 / 重定位
-  follow_edge_action: /agv/follow_edge
-  follow_edge_action_type: agv_bridge_v2_interfaces/action/FollowEdge
-  set_control_service: /agv/set_control
-  # 三舵轮全向底盘遥控：geometry_msgs/Twist，linear.x 前进、linear.y 左移、angular.z 左转
-  cmd_vel_topic: /cmd_vel
   # rosbridge 收发消息日志（按消息价值分级）：
   # 指令类（call_service/service_response/action goal·result/重定位/切图）——每条必打、
   #   【全量内容】（上限 full_chars=64KB），可完整复制分析。
@@ -207,49 +175,15 @@ sim_agv:
   #   sensor_interval_ms 一条摘要（默认 30s），无变化分析价值。
   ws_message_log_commands_enabled: ${SIM_AGV_WS_CMD_LOG:true}
   ws_message_log_enabled: ${SIM_AGV_WS_MSG_LOG:true}
-  ws_message_log_max_chars: 300
   ws_message_log_full_chars: ${SIM_AGV_WS_FULL_LOG_CHARS:65536}
-  ws_message_log_topic_interval_ms: 10000
   ws_message_log_unchanged_interval_ms: ${SIM_AGV_WS_UNCHANGED_LOG_MS:60000}
   ws_message_log_sensor_interval_ms: ${SIM_AGV_WS_SENSOR_LOG_MS:60000}
-  service_timeout_ms: 5000
   goal_timeout_s: 600
-  default_max_speed: 0.6
-  default_step: 0.1
-  # FOLLOW_PATH 起点纠偏：机器人距首段起点超过该距离（米）时，自动先插一段"驶向起点"
-  follow_path_start_radius: 0.5
   # 机械臂归位联锁（真机安全语义：臂未归位时移动作业可能撞击人员/设施）。
   # HOME=各侧臂关节角与归位姿态差 < arm_home_tolerance_rad；UNKNOWN（无关节数据）时
   # arm_strict_unknown=true 拒绝 / false 放行（兼容不发布 /joint_states 的旧机器人栈）
   arm_gate_enabled: ${SIM_AGV_ARM_GATE_ENABLED:true}
   arm_strict_unknown: ${SIM_AGV_ARM_STRICT_UNKNOWN:false}
-  arm_home_tolerance_rad: 0.1
-  # 归位姿态（弧度）：按语义角色顺序 [pan, lift, elbow, wrist1, wrist2, wrist3]。
-  # 机器人侧标定（关节名字母序 [elbow,lift,pan,wrist1..3] = [2.65,-2.6,0,-1.6208,-1.5708,0]）换算；
-  # 运行期可被前端「设为归位位」覆盖
-  arm_home_left:  [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
-  arm_home_right: [0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0]
-  # 质检展开位姿（角色顺序）：质检任务三阶段序列（展臂→采集→收臂归位）的第一阶段目标
-  arm_inspect_pose: [0.5, -1.2, 1.0, -0.5, 0, 0]
-  # 地图管理服务（agv_bridge_v2 v0.3.0+；服务响应=已受理）
-  list_maps_service: /agv/list_maps
-  get_map_service: /agv/get_map
-  load_map_service: /agv/load_map
-  start_mapping_service: /agv/start_mapping
-  save_map_service: /agv/save_map
-  # 定位操作闭环（新版 bridge）：load_map/relocalize 受理返回 operation_id，
-  # 终态（SUCCEEDED/FAILED/TIMED_OUT）以该话题推送为准（reliable+transient_local，
-  # 约 1s 心跳重发）；旧版机器人无 operation_id 自动回退 mode 流转判定
-  localization_operation_topic: /agv/localization_operation
-  # 重连/受理后按 operation_id 补查操作记录的服务（空串=最近一次）
-  get_localization_operation_service: /agv/get_localization_operation
-  # 带 operation_id 任务的兜底截止：必须晚于机器人侧 localization_operation_timeout_sec
-  # （默认 600s），否则上位机会抢在机器人 TIMED_OUT 结论前误判 FAILED。默认 660s。
-  localization_task_timeout_ms: 660000
-  # 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
-  # 放宽到 15s：/agv/status(1Hz) 与 ~3MB 的 /map JSON 共用一条 rosbridge websocket，
-  # 宿主机负载高时小消息会被挤过 5s；rosbridge 重连窗口同理。只拦"桥接真死"，放过抖动。
-  status_fresh_ms: 15000
   # 模式任务（切图等）整体截止时间
   mode_task_timeout_ms: 90000
 

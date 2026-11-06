@@ -1,28 +1,82 @@
 package com.agv.navdeployer.sim;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.zip.GZIPInputStream;
 
 public class LiveMapCache implements RosbridgeHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LiveMapCache.class);
 
     private final String mapTopic;
+    private final URI httpEndpoint;
+    private final ObjectMapper mapper;
+    private final HttpClient httpClient;
     private volatile OccupancyGrid latest;
+    private String etag;
 
     public LiveMapCache(String mapTopic) {
+        this(mapTopic, null, null);
+    }
+
+    public LiveMapCache(String mapTopic, URI httpEndpoint, ObjectMapper mapper) {
         this.mapTopic = mapTopic;
+        this.httpEndpoint = httpEndpoint;
+        this.mapper = mapper;
+        this.httpClient = httpEndpoint == null ? null : HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2)).build();
     }
 
     public String topic() {
         return mapTopic;
     }
 
-    public OccupancyGrid snapshot() {
-        return latest;
+    public synchronized OccupancyGrid snapshot() {
+        if (httpEndpoint == null) {
+            return latest;
+        }
+        var request = HttpRequest.newBuilder(httpEndpoint)
+                .header("Accept-Encoding", "gzip").timeout(Duration.ofSeconds(3));
+        if (etag != null) {
+            request.header("If-None-Match", etag);
+        }
+        try {
+            var response = httpClient.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+            try (InputStream body = new ByteArrayInputStream(response.body())) {
+                if (response.statusCode() == 304) {
+                    return latest;
+                }
+                if (response.statusCode() != 200) {
+                    return null;
+                }
+                try (InputStream decoded = response.headers().firstValue("Content-Encoding")
+                        .filter("gzip"::equalsIgnoreCase).isPresent() ? new GZIPInputStream(body) : body) {
+                    OccupancyGrid grid = parse(mapper.readTree(decoded));
+                    if (grid != null) {
+                        latest = grid;
+                        etag = response.headers().firstValue("ETag").orElse(null);
+                    }
+                    return grid;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            log.debug("Could not fetch live occupancy grid over HTTP", e);
+        }
+        return null;
     }
 
     @Override

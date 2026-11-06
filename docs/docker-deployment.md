@@ -56,8 +56,6 @@ Compose 自动读取它用于变量替换，无需添加 `env_file`。建议配�
 ROBOT_DOCKER_NETWORK=simulated_chassis_agv_network
 SIM_AGV_WS_URL=ws://agv-bridge:9090
 SIM_AGV_TF_CHILD_FRAME=AGV002/base_link
-# 可选；留空会从 WebSocket 地址推导 HTTP 8089
-MAP3D_BASE_URL=
 APP_IMAGE=nav-deployer:v0.0.7
 
 # false：不连接 RMS，仍连接仿真机器人；true：启用 RMS
@@ -72,6 +70,12 @@ RMS_INSPECTION_IMAGE_DIR=/app/inspection-images
 INSPECTION_IMAGE_HOST_DIR=
 RMS_TEACH_SAMPLE_DIR=
 ```
+
+机器人服务共用 `SIM_AGV_WS_URL` 的主机名。默认端口为 WebSocket 9090、
+3D 地图 8089、mesh 8090、原生地图 8091 和实时 2D 地图 8092。
+部署时让上位机能够用同一主机名访问这些端口。
+原生地图导入导出启用时，两端使用相同的 `NATIVE_MAP_TOKEN`。
+
 
 `.env` 只影响 Compose 中引用并传入容器的变量，不会自动将任意变量注入应用。
 终端已有的同名环境变量可能覆盖 `.env`；用 `docker compose config` 查看最终配置时，

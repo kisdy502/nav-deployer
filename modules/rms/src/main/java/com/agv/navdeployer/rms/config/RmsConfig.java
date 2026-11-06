@@ -17,6 +17,7 @@ import com.agv.navdeployer.rms.task.RmsResultReporter;
 import com.agv.navdeployer.rms.task.RmsTaskService;
 import com.agv.navdeployer.service.MapModeTaskService;
 import com.agv.navdeployer.service.NavMapService;
+import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -132,9 +133,10 @@ public class RmsConfig {
 
     @Bean
     public com.agv.navdeployer.rms.map.NativeMapClient nativeMapClient(
-            @org.springframework.beans.factory.annotation.Value("${native-map.base-url:}") String nativeMapUrl,
-            @org.springframework.beans.factory.annotation.Value("${native-map.token:}") String nativeMapToken) {
-        return new com.agv.navdeployer.rms.map.NativeMapClient(nativeMapUrl, nativeMapToken);
+            SimAgvProperties robot,
+            @org.springframework.beans.factory.annotation.Value("${native-map.token:${NATIVE_MAP_TOKEN:}}") String nativeMapToken) {
+        String baseUrl = nativeMapToken.isBlank() ? "" : robot.robotHttpUri(8091).toString();
+        return new com.agv.navdeployer.rms.map.NativeMapClient(baseUrl, nativeMapToken);
     }
 
     @Bean(destroyMethod = "shutdown")

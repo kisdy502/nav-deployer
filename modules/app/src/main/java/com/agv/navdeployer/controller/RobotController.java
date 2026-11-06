@@ -175,16 +175,12 @@ public class RobotController {
         if (raw.isBlank() || raw.contains("..") || raw.contains("\\") || raw.chars().anyMatch(Character::isISOControl)) {
             return ResponseEntity.badRequest().build();
         }
-        String host;
+        java.net.URI target;
         try {
-            host = java.net.URI.create(simProps.getWsUrl()).getHost();
-        } catch (Exception e) {
-            host = null;
+            target = java.net.URI.create(simProps.robotHttpUri(simProps.getUrdfMeshPort()) + "/" + raw);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(503).body(out -> out.write("invalid robot mesh address".getBytes()));
         }
-        if (host == null || host.isBlank()) {
-            return ResponseEntity.status(503).body(out -> out.write("invalid sim-agv.ws-url".getBytes()));
-        }
-        java.net.URI target = java.net.URI.create("http://" + host + ":" + simProps.getUrdfMeshPort() + "/" + raw);
         java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(target)
                 .timeout(java.time.Duration.ofSeconds(60)).GET().build();
         try {

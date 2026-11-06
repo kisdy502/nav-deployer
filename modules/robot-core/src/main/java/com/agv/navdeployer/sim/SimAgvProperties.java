@@ -2,6 +2,8 @@ package com.agv.navdeployer.sim;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,7 +33,7 @@ public class SimAgvProperties {
 
     private boolean mapEnabled = true;
     private String mapTopic = "/map";
-    private int mapThrottleMs = 5000;
+    private int mapThrottleMs = 3000;
     private int mapFragmentSize = 500000;
 
     // 客户端一连接就订阅，若机器人侧话题还没 advertise（桥接节点阻塞初始化中），
@@ -94,6 +96,18 @@ public class SimAgvProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public URI robotHttpUri(int port) {
+        String host = URI.create(wsUrl).getHost();
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("SIM_AGV_WS_URL must include the robot hostname");
+        }
+        try {
+            return new URI("http", null, host, port, null, null, null);
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Invalid robot HTTP address", e);
+        }
     }
 
     public String getWsUrl() {

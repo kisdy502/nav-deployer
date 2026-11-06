@@ -1,7 +1,6 @@
 package com.agv.navdeployer.controller;
 
 import com.agv.navdeployer.sim.SimAgvProperties;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,12 +27,8 @@ public class Map3dController {
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5)).build();
 
-    public Map3dController(SimAgvProperties properties,
-                           @Value("${map3d.base-url:}") String configuredUrl) {
-        URI websocket = URI.create(properties.getWsUrl());
-        this.baseUrl = configuredUrl.isBlank()
-                ? "http://" + (websocket.getHost().contains(":") ? "[" + websocket.getHost() + "]" : websocket.getHost()) + ":8089"
-                : configuredUrl.replaceAll("/+$", "");
+    public Map3dController(SimAgvProperties properties) {
+        this.baseUrl = properties.robotHttpUri(8089).toString();
     }
 
     private HttpResponse<InputStream> request(String name, String asset) throws Exception {
