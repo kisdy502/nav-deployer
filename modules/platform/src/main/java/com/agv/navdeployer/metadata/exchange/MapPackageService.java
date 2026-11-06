@@ -68,20 +68,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
-/**
- * 新格式地图包（核心四件套，命名对齐真机 shenzhen_v7.zip）：
- *
- * <pre>
- *   map_info.json      版本信息 + 地图元数据（楼层/点位/区域/货架/路线/楼层间连接，camelCase）
- *   global_map.pgm     栅格（P5：254 空/0 占据/205 未知）
- *   global_map.png     同尺寸灰度预览
- *   global_map.yaml    栅格元数据（map_server 风格 + mode/width/height）
- *   global_map.yaml.lxmap 旧调度拓扑兼容文件
- * </pre>
- *
- * <p>真机包内的 global_map.json / global_map.feature.json / virtual_walls.json
- * 不生成；额外生成 global_map.yaml.lxmap 兼容旧调度服务器。
- */
 @Component
 public class MapPackageService {
 
@@ -144,8 +130,6 @@ public class MapPackageService {
         this.webMapper = webMapper;
     }
 
-    // ==================== 导出：DB → 新格式 zip ====================
-
     public byte[] exportZip(Long mapId) {
         return exportZip(mapId, null);
     }
@@ -166,7 +150,6 @@ public class MapPackageService {
             byte[] pgm = PgmImageUtil.buildPgm(grid.getWidth(), grid.getHeight(), grid.getData());
             byte[] png = PgmImageUtil.buildPng(grid.getWidth(), grid.getHeight(), grid.getData());
 
-            // 完整 map_info.json 落日志：RMS 侧解析失败时对照内容排查（类型词表/字段缺失等）
             log.info("map package {} ({} bytes):\n{}",
                     ENTRY_MAP_INFO, mapInfoJson.length, new String(mapInfoJson, StandardCharsets.UTF_8));
 
@@ -184,7 +167,6 @@ public class MapPackageService {
             int floorCount = full.floors().size();
             log.info("v2 map package exported: id={}, name={}, floors={}, {} bytes",
                     mapId, map.getMapName(), floorCount, buffer.size());
-            // 以包内实际条目为准再打一遍（反读 zip，暴露任何命名/路径前缀问题）
             logZipEntries(buffer.toByteArray());
             return buffer.toByteArray();
         } catch (IllegalStateException | IllegalArgumentException e) {
@@ -194,7 +176,6 @@ public class MapPackageService {
         }
     }
 
-    /** 反读 zip 打印每个条目的真实文件名与大小（排查 RMS 侧按名取文件失败）。 */
     private void logZipEntries(byte[] zipBytes) {
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
             StringBuilder names = new StringBuilder();
@@ -218,7 +199,6 @@ public class MapPackageService {
     }
 
     private MapPackageFile buildPackageFile(MapMeta map, MapFullVO full) {
-        // 点位 id → code（路线 from/to/waypoints 输出编码）
         Map<Long, String> waypointCodes = new HashMap<>();
         full.floors().forEach(bundle -> bundle.waypoints()
                 .forEach(waypoint -> waypointCodes.put(waypoint.id(), waypoint.waypointCode())));
@@ -309,7 +289,6 @@ public class MapPackageService {
         return new MapPackageFile(versionInfo, mapInfo);
     }
 
-    /** 路线 → PathData；段扩展仅在存在曲线/段级差异时携带。 */
     private static PathData toPathData(PathV2VO path, Map<Long, String> waypointCodes) {
         List<String> waypoints = path.waypointIds().stream()
                 .map(id -> waypointCodes.getOrDefault(id, String.valueOf(id)))
@@ -345,7 +324,6 @@ public class MapPackageService {
                 segments);
     }
 
-    /** 栅格 yaml（对齐真机 global_map.yaml：image/mode/resolution/width/height/origin/negate/thresholds）。 */
     private static byte[] buildYaml(MapGridVO grid) {
         String yaml = "# v2 map package metadata\n"
                 + "image: " + ENTRY_PGM + "\n"
@@ -360,8 +338,6 @@ public class MapPackageService {
                 + "free_thresh: 0.25\n";
         return yaml.getBytes(StandardCharsets.UTF_8);
     }
-
-    // ==================== 导入：新格式 zip → DB ====================
 
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO importZip(byte[] zipBytes, String nameOverride, String modifiedBy) {
@@ -401,7 +377,6 @@ public class MapPackageService {
                 throw new IllegalStateException("地图名称已存在: " + mapName + "（可换名导入）");
             }
 
-            // 地图头 + 栅格
             MapMeta map = new MapMeta();
             map.setMapName(mapName);
             map.setCoordinateSystem(file.mapInfo().coordinateSystem() != null
@@ -478,7 +453,6 @@ public class MapPackageService {
             floorMapper.insert(floor);
             floorIdByCode.put(floorCode, floor.getId());
 
-            // 点位
             List<WaypointData> waypoints = floorData.waypoints() == null ? List.of() : floorData.waypoints();
             for (WaypointData waypointData : waypoints) {
                 String code = waypointData.id();
@@ -506,7 +480,6 @@ public class MapPackageService {
                 waypointIdByCode.put(code, waypoint.getId());
             }
 
-            // 区域
             List<ZoneData> zones = floorData.zoneConstraints() == null ? List.of() : floorData.zoneConstraints();
             for (ZoneData zoneData : zones) {
                 String type = normalizeZoneType(zoneData.type());
@@ -531,7 +504,6 @@ public class MapPackageService {
                 zoneMapper.insert(zone);
             }
 
-            // 货架（含层/格位）
             List<ShelfData> shelves = floorData.shelves() == null ? List.of() : floorData.shelves();
             for (ShelfData shelfData : shelves) {
                 MapShelf shelf = new MapShelf();
@@ -592,7 +564,6 @@ public class MapPackageService {
                 }
             }
 
-            // 路线（含段扩展）
             List<PathData> paths = floorData.paths() == null ? List.of() : floorData.paths();
             for (PathData pathData : paths) {
                 List<String> codes = pathData.waypoints() == null ? List.of() : pathData.waypoints();
@@ -652,7 +623,6 @@ public class MapPackageService {
             }
         }
 
-        // 楼层间连接
         List<InterFloorConnData> conns = mapInfo.interFloorConnections() == null
                 ? List.of() : mapInfo.interFloorConnections();
         for (InterFloorConnData connData : conns) {
@@ -792,7 +762,6 @@ public class MapPackageService {
         zip.closeEntry();
     }
 
-    /** 按候选名顺序取第一个存在的条目。 */
     private static byte[] firstEntry(Map<String, byte[]> entries, String... names) {
         for (String name : names) {
             byte[] content = entries.get(name);

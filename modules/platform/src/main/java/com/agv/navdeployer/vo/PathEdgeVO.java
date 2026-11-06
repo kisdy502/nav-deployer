@@ -7,7 +7,6 @@ import lombok.Setter;
 
 import java.util.List;
 
-/** 路线边（含点位编码冗余，便于前端直接画图）。 */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,7 +27,6 @@ public class PathEdgeVO {
 
     private String edgeType;
 
-    /** [{"x":..,"y":..}]，解析后的控制点列表（直线为空）。 */
     private List<ControlPointVO> controlPoints;
 
     private Double maxSpeed;

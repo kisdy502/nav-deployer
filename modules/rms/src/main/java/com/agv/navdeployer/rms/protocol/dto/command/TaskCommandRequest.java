@@ -7,12 +7,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * RMS 任务指令请求（task/add、task/start 等的 payload）。
- * 已知字段强类型化；parameters 为 RMS 协议的动态扩展位
- * （{@code @JsonAnySetter} 收集未知字段），
- * navigate 的 destination{x,y,yaw}/map_name 从中解析。
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskCommandRequest(
         String taskId,
@@ -34,7 +28,6 @@ public record TaskCommandRequest(
         parameters.put(key, value);
     }
 
-    /** 有效 action_id：action_id → cmd_id → task_id 逐级回退（与 mock 一致）。 */
     public String effectiveActionId() {
         if (actionId != null && !actionId.isBlank()) {
             return actionId;
@@ -45,7 +38,6 @@ public record TaskCommandRequest(
         return taskId;
     }
 
-    /** navigate 目标坐标；缺失返回 null。 */
     public Destination destination() {
         Object raw = parameters.get("destination");
         if (!(raw instanceof Map<?, ?> map)) {
@@ -60,7 +52,6 @@ public record TaskCommandRequest(
         return new Destination(x, y, yaw == null ? 0.0 : yaw);
     }
 
-    /** RMS 下发的地图名（可空；仿真侧与 RMS 同为 ROS 坐标系，仅记录不切换）。 */
     public String mapName() {
         Object mapName = parameters.get("map_name");
         if (mapName instanceof String name && !name.isBlank()) {

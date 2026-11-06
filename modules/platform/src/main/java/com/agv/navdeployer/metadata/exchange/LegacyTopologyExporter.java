@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** V2 数据到旧调度拓扑的兼容投影，原始类型和曲线等完整信息保留在 map_info.json。 */
 final class LegacyTopologyExporter {
     private LegacyTopologyExporter() {
     }

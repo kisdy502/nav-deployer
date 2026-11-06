@@ -4,7 +4,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-/** 新建楼层。 */
 public record FloorCreateDTO(
         @NotNull Long mapId,
         @NotBlank @Size(max = 32) String floorCode,

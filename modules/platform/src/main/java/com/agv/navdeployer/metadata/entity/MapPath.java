@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 路线（paths）：from/to + 途经点位链（链在段表）+ 限速/避障。 */
 @TableName("map_path")
 @Getter
 @Setter
@@ -29,7 +28,6 @@ public class MapPath {
 
     private Long floorId;
 
-    /** 路线唯一标识（PATH_001）。 */
     private String pathCode;
 
     private String name;
@@ -40,7 +38,6 @@ public class MapPath {
 
     private Boolean isBidirectional;
 
-    /** 路线限速（空 = 使用楼层默认）。 */
     private Double maxSpeed;
 
     private Boolean enableObstacleAvoidance;

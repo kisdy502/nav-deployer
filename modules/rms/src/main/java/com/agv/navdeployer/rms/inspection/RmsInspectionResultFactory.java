@@ -4,7 +4,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 生成与真机一致的质检 result_report 结构（仿真数据）。 */
 public final class RmsInspectionResultFactory {
 
     private RmsInspectionResultFactory() {

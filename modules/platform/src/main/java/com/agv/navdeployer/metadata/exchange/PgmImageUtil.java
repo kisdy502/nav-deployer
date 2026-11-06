@@ -6,18 +6,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-/**
- * PGM(P5)/PNG 栅格图像工具：global.pgm / global.png 的生成与解析。
- *
- * <p>语义对齐 ROS map_server：占据(>65)→0 黑，空闲(<20)→254 白，未知(-1)→205 灰；
- * pgm 第 0 行是世界 y 最大一侧，data 第 0 行是 y 最小一侧，读写都做行翻转。
- */
 public final class PgmImageUtil {
 
     private PgmImageUtil() {
     }
 
-    /** 占据栅格 → P5 二进制 pgm。data：-1 未知 / 0 空闲 / 1~100 占据，行优先（第 0 行 y 最小）。 */
     public static byte[] buildPgm(int width, int height, int[] data) {
         byte[] pixels = new byte[width * height];
         for (int row = 0; row < height; row++) {
@@ -34,7 +27,6 @@ public final class PgmImageUtil {
         return out;
     }
 
-    /** 占据栅格 → 灰度 PNG 预览（与 pgm 同映射）。 */
     public static byte[] buildPng(int width, int height, int[] data) throws IOException {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_BYTE_GRAY);
         for (int y = 0; y < height; y++) {
@@ -49,7 +41,6 @@ public final class PgmImageUtil {
         return out.toByteArray();
     }
 
-    /** P5 pgm → 占据栅格（行翻转回 data 语义）。 */
     public static ParsedPgm parsePgm(byte[] bytes) throws IOException {
         if (bytes == null || bytes.length < 2 || bytes[0] != 'P' || bytes[1] != '5') {
             throw new IllegalArgumentException("pgm 不是 P5 格式");
@@ -76,7 +67,6 @@ public final class PgmImageUtil {
         return new ParsedPgm(width, height, data);
     }
 
-    /** 占据值 → pgm 灰度。 */
     public static int pgmValue(int occupancy) {
         if (occupancy == -1) {
             return 205;
@@ -90,7 +80,6 @@ public final class PgmImageUtil {
         return 255 - Math.round(occupancy * 255f / 100f);
     }
 
-    /** pgm 灰度 → 占据值。 */
     public static int occupancyFromPgm(int grey) {
         if (grey == 205) {
             return -1;
@@ -115,7 +104,6 @@ public final class PgmImageUtil {
         return Integer.parseInt(new String(bytes, start, idx[0] - start, StandardCharsets.US_ASCII));
     }
 
-    /** 解析结果：占据栅格（行优先，第 0 行 y 最小）。 */
     public record ParsedPgm(int width, int height, int[] data) {
     }
 }

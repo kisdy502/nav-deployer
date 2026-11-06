@@ -28,16 +28,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 
-/**
- * RMS 质检结果文件上传：收到云端 task/result_files_upload_start 指令后，
- * 生成质检报告 ZIP 并 HTTP PUT 到云端给的预签名 URL，
- * 完成后经 zenoh pub task-result-files-uploaded 通知云端。
- *
- * <p>云端源码参照 taskflow-management-service 的 TaskflowTaskResultZenohSubscriber：
- * ① result_report(completed + quality_inspection) 触发云端生成 S3 预签名 URL；
- * ② 云端 query task/result_files_upload_start {task_id, path_url} → 本类接收并上传；
- * ③ 本类 pub task-result-files-uploaded {task_id, result: "success"} → 云端标记 uploaded。
- */
 public class RmsInspectionUploader {
 
     private static final Logger log = LoggerFactory.getLogger(RmsInspectionUploader.class);
@@ -45,7 +35,6 @@ public class RmsInspectionUploader {
     private final ObjectMapper mapper;
     private final RmsProperties properties;
     private final RmsTaskRegistry taskRegistry;
-    /** 上传异步执行器：云端 query 等待窗口仅 ~5s，zip 生成+HTTP 上传必须放后台，收到指令立即应答 */
     private final java.util.concurrent.ExecutorService uploadWorker =
             java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "rms-inspection-upload");
@@ -61,11 +50,6 @@ public class RmsInspectionUploader {
         this.taskRegistry = taskRegistry;
     }
 
-    /**
-     * 处理云端 task/result_files_upload_start 指令。
-     * payload: {"task_id": "xxx", "path_url": "https://s3.../presigned"}
-     * 立即应答（云端 query 只等 ~5s），zip 生成+上传+通知全部异步执行。
-     */
     public BodyReply handleUploadStart(String rawPayload, ZenohChannel channel, String publishKeyBase) {
         String taskId;
         String pathUrl;
@@ -96,7 +80,6 @@ public class RmsInspectionUploader {
         return BodyReply.success("upload accepted", null);
     }
 
-    /** 仿真质检结果 ZIP：report.json + summary.txt + 随机 2~3 张本机真实图片（无图时回退占位图）。 */
     byte[] buildInspectionZip(String taskId) throws Exception {
         Map<String, Object> parameters = taskRegistry.find(taskId)
                 .map(task -> task.parameters())
@@ -143,7 +126,6 @@ public class RmsInspectionUploader {
 
     private static final String[] IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "bmp", "gif", "webp"};
 
-    /** 从配置目录（含子目录）随机取 2~3 张图片；目录不存在/无图/读取失败时返回空列表。 */
     private List<PickedImage> pickRandomImages() {
         String dir = properties.getBehavior().getInspectionImageDir();
         if (dir == null || dir.isBlank()) {
@@ -169,7 +151,6 @@ public class RmsInspectionUploader {
             return List.of();
         }
         java.util.Collections.shuffle(candidates);
-        // 随机 2~3 张，且不超过候选数
         int count = Math.min(2 + java.util.concurrent.ThreadLocalRandom.current().nextInt(2), candidates.size());
         List<PickedImage> picked = new ArrayList<>(count);
         for (Path path : candidates) {
@@ -222,14 +203,10 @@ public class RmsInspectionUploader {
         zip.closeEntry();
     }
 
-    /**
-     * HTTP PUT 二进制到预签名 URL（Content-Type 自适应重试见 {@link PresignedUrlPut}）。
-     */
     void uploadToUrl(String url, byte[] body) throws Exception {
         PresignedUrlPut.put(url, body);
     }
 
-    /** zenoh pub task-result-files-uploaded 通知云端。 */
     void publishUploadedNotification(ZenohChannel channel, String keyBase, String taskId, String fileName) {
         try {
             ObjectNode root = mapper.createObjectNode();
@@ -252,7 +229,6 @@ public class RmsInspectionUploader {
         }
     }
 
-    /** 上传失败的兜底通知：result=failed，让云端知道本轮上传没成，别等 task-result-files-uploaded 空转 */
     void publishUploadFailedNotification(ZenohChannel channel, String keyBase, String taskId, String reason) {
         try {
             ObjectNode root = mapper.createObjectNode();
@@ -262,7 +238,6 @@ public class RmsInspectionUploader {
             String key = keyBase + "/task-result-files-uploaded";
             String payload = mapper.writeValueAsString(root);
             channel.putOnce(key, payload);
-            // 一次性上报消息：与成功变体一致打高亮全文，可对账
             com.agv.navdeployer.rms.zenoh.RmsMessageLog.outboundPublish(key, payload);
             log.info("task-result-files-uploaded(failed) 已通知: task_id={} key={}", taskId, key);
         } catch (Exception exception) {

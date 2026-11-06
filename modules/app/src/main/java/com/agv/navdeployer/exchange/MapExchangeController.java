@@ -33,12 +33,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 调度系统地图交换（蓝心底盘 zip 格式，见 {@link ScheduleMapAdapter}）。
- *
- * <p>导出：把当前地图（栅格+点位+路线）打成调度可用的 zip，供上层调度拉取/上传；
- * 导入：接收调度下发的其他机器人地图 zip，栅格入库为草稿 + 点位/路线还原。
- */
 @Tag(name = "调度地图交换", description = "蓝心底盘 zip 格式导出/导入")
 @RestController
 @RequestMapping("/api/v1")
@@ -88,7 +82,6 @@ public class MapExchangeController {
             @RequestParam(value = "map_name", required = false) String mapName) throws Exception {
         ScheduleMapAdapter.ScheduleMapImport parsed = adapter.importZip(file.getBytes());
 
-        // 栅格入库（草稿，复用机器人地图同步的存储链路：gzip JSON → MinIO）
         String name = (mapName == null || mapName.isBlank())
                 ? "schedule_" + System.currentTimeMillis() : mapName.trim();
         LiveMapCache.OccupancyGrid grid = new LiveMapCache.OccupancyGrid(
@@ -96,7 +89,6 @@ public class MapExchangeController {
                 parsed.originX(), parsed.originY(), 0.0, parsed.data(), java.time.Instant.now());
         NavMapVO saved = navMapService.saveRobotGrid(name, name, grid);
 
-        // 点位还原（point_type 缺省 NORMAL；编码冲突时跳过该点）
         Map<String, Long> codeToId = new LinkedHashMap<>();
         int pointFail = 0;
         for (ScheduleMapAdapter.ImportedPoint point : parsed.points()) {
@@ -111,7 +103,6 @@ public class MapExchangeController {
             }
         }
 
-        // 路线还原：每条 Route 一条单边路线（调度拓扑是无路径概念的直连图）
         int pathOk = 0;
         int pathFail = 0;
         int pathSeq = 1;

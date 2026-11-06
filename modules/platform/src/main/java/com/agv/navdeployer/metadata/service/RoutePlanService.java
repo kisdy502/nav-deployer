@@ -23,26 +23,12 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 
-/**
- * V2 路径规划：Dijkstra 加权最短路径。
- *
- * <p>图模型：
- * <ul>
- *   <li>节点 = 点位（跨楼层全图）</li>
- *   <li>边 = 已部署路线段（同楼层），权重 = 段长度 / 段限速（时间代价）</li>
- *   <li>跨楼层边 = 楼层间连接（电梯/楼梯/坡道），权重 = 运输时间估计</li>
- *   <li>禁行区约束：路径段穿过禁行区 → 代价 = ∞（跳过）</li>
- *   <li>减速区：路径段穿过减速区 → 权重 × 减速系数</li>
- * </ul>
- */
 @Service
 public class RoutePlanService {
 
     private static final Logger log = LoggerFactory.getLogger(RoutePlanService.class);
 
-    /** 减速区代价系数（限速越低惩罚越大） */
     private static final double SLOW_ZONE_FACTOR = 2.0;
-    /** 楼层间连接默认运输时间（秒）：电梯 ~30s、楼梯 ~60s、坡道 ~20s */
     private static final Map<String, Double> CONN_BASE_TIME = Map.of(
             "elevator", 30.0, "stairs", 60.0, "ramp", 20.0);
 
@@ -64,7 +50,6 @@ public class RoutePlanService {
         this.connMapper = connMapper;
     }
 
-    /** 规划结果：路线序列 + 预计总时间 */
     public record RouteStep(
             long pathId,
             String pathCode,
@@ -89,7 +74,6 @@ public class RoutePlanService {
         }
     }
 
-    /** Dijkstra 图节点 */
     private record Node(long waypointId, double cost, List<RouteStep> steps) implements Comparable<Node> {
         @Override
         public int compareTo(Node other) {
@@ -97,7 +81,6 @@ public class RoutePlanService {
         }
     }
 
-    /** 图边 */
     private record GraphEdge(
             long neighborId,
             double cost,
@@ -107,12 +90,7 @@ public class RoutePlanService {
             String connType) {
     }
 
-    /**
-     * 规划从 fromWaypointId 到 toWaypointId 的最优路径。
-     * 支持跨楼层（通过楼层间连接）、禁行区避让、减速区惩罚。
-     */
     public RoutePlan plan(Long mapId, Long fromWaypointId, Long toWaypointId) {
-        // 加载全图数据
         Map<Long, MapWaypoint> waypoints = loadWaypoints(mapId);
         Map<Long, MapPath> paths = loadDeployedPaths(mapId);
         Map<Long, List<MapPathSegment>> segmentsByPath = loadSegments(paths.keySet());
@@ -121,10 +99,8 @@ public class RoutePlanService {
         List<MapInterFloorConn> conns = connMapper.selectList(Wrappers.lambdaQuery(MapInterFloorConn.class)
                 .eq(MapInterFloorConn::getMapId, mapId));
 
-        // 构建邻接图
         Map<Long, List<GraphEdge>> graph = buildGraph(waypoints, paths, segmentsByPath, zones, conns);
 
-        // Dijkstra
         Map<Long, Double> dist = new HashMap<>();
         Map<Long, List<RouteStep>> bestSteps = new HashMap<>();
         PriorityQueue<Node> pq = new PriorityQueue<>();
@@ -161,8 +137,6 @@ public class RoutePlanService {
         return RoutePlan.notFound();
     }
 
-    // ==================== 图构建 ====================
-
     private Map<Long, List<GraphEdge>> buildGraph(
             Map<Long, MapWaypoint> waypoints,
             Map<Long, MapPath> paths,
@@ -172,7 +146,6 @@ public class RoutePlanService {
 
         Map<Long, List<GraphEdge>> graph = new HashMap<>();
 
-        // 同楼层路线边
         for (var entry : segmentsByPath.entrySet()) {
             Long pathId = entry.getKey();
             MapPath path = paths.get(pathId);
@@ -180,7 +153,7 @@ public class RoutePlanService {
             for (MapPathSegment segment : segments) {
                 double cost = segmentCost(segment, waypoints, zones, path);
                 if (cost >= Double.MAX_VALUE) {
-                    continue; // 禁行区：跳过此边
+                    continue;
                 }
                 addEdge(graph, segment.getSourceWaypointId(), segment.getTargetWaypointId(),
                         cost, pathId, path.getPathCode(), false, null);
@@ -191,14 +164,12 @@ public class RoutePlanService {
             }
         }
 
-        // 跨楼层连接边（楼层间连接表）
         for (MapInterFloorConn conn : conns) {
             double cost = connCost(conn);
             List<com.agv.navdeployer.metadata.vo.ConnEndpointVO> endpoints = parseEndpoints(conn.getConnections());
             if (endpoints == null || endpoints.size() < 2) {
                 continue;
             }
-            // 连接的多个端点两两互连（电梯多层停靠）
             for (int i = 0; i < endpoints.size(); i++) {
                 for (int j = i + 1; j < endpoints.size(); j++) {
                     Long from = findWaypointIdByCode(waypoints, endpoints.get(i).waypointId());
@@ -213,7 +184,6 @@ public class RoutePlanService {
         return graph;
     }
 
-    /** 段代价：长度 / 限速 × 区域惩罚系数；穿过禁行区返回 ∞ */
     private double segmentCost(MapPathSegment segment,
                                Map<Long, MapWaypoint> waypoints,
                                List<MapZone> zones,
@@ -223,35 +193,30 @@ public class RoutePlanService {
         if (source == null || target == null) {
             return Double.MAX_VALUE;
         }
-        // 段长度：贝塞尔曲线用控制点近似弧长，直线用欧氏距离
         double length = segmentLength(segment, source, target);
-        // 限速：段级 > 路线级 > 楼层默认（取不到按 0.5 m/s）
         double speed = segment.getMaxSpeed() != null ? segment.getMaxSpeed()
                 : path.getMaxSpeed() != null ? path.getMaxSpeed() : 0.5;
         double cost = length / speed;
 
-        // 区域约束：检查段中点是否在区域内
         double midX = (source.getX() + target.getX()) / 2;
         double midY = (source.getY() + target.getY()) / 2;
         for (MapZone zone : zones) {
             if (pointInZone(midX, midY, zone, source.getFloorId())) {
                 if ("forbidden".equals(zone.getZoneType())) {
-                    return Double.MAX_VALUE; // 禁行区
+                    return Double.MAX_VALUE;
                 }
                 if ("slowDown".equals(zone.getZoneType())) {
-                    cost *= SLOW_ZONE_FACTOR; // 减速区惩罚
+                    cost *= SLOW_ZONE_FACTOR;
                 }
             }
         }
         return cost;
     }
 
-    /** 段长度估计：直线 = 欧氏距离；曲线 = 贝塞尔采样弧长 */
     private double segmentLength(MapPathSegment segment, MapWaypoint source, MapWaypoint target) {
         if (!"CURVE".equals(segment.getSegmentType()) || segment.getControlPoints() == null) {
             return Math.hypot(target.getX() - source.getX(), target.getY() - source.getY());
         }
-        // 贝塞尔采样弧长
         try {
             var cps = com.agv.navdeployer.metadata.MetadataJson.MAPPER.readValue(
                     segment.getControlPoints(), double[][].class);
@@ -270,7 +235,6 @@ public class RoutePlanService {
         }
     }
 
-    /** 贝塞尔曲线在参数 t 处的点（支持 1~2 个控制点） */
     private static double[] bezierPoint(double t, MapWaypoint p0, MapWaypoint p1, double[][] cps) {
         double mt = 1 - t;
         if (cps.length == 1) {
@@ -285,13 +249,10 @@ public class RoutePlanService {
                 mt * mt * mt * p0.getY() + 3 * mt * mt * t * c1[1] + 3 * mt * t * t * c2[1] + t * t * t * p1.getY()};
     }
 
-    /** 楼层间连接代价：基础运输时间 + 等待 */
     private double connCost(MapInterFloorConn conn) {
         double base = CONN_BASE_TIME.getOrDefault(conn.getConnType(), 30.0);
         return conn.getMaxSpeed() != null ? base : base;
     }
-
-    // ==================== 工具 ====================
 
     private void addEdge(Map<Long, List<GraphEdge>> graph, long from, long to,
                          double cost, Long pathId, String pathCode,

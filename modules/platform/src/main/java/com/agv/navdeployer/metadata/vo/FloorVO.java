@@ -2,7 +2,6 @@ package com.agv.navdeployer.metadata.vo;
 
 import com.agv.navdeployer.metadata.entity.MapFloor;
 
-/** 楼层视图。 */
 public record FloorVO(Long id,
                       Long mapId,
                       String floorCode,

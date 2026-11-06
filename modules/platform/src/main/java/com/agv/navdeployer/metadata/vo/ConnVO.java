@@ -5,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.util.List;
 
-/** 楼层间连接视图（connections 从存库 JSON 解析，元素为楼层/点位编码）。 */
 public record ConnVO(Long id,
                      Long mapId,
                      String connCode,

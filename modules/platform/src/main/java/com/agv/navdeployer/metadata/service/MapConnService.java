@@ -20,7 +20,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** 楼层间连接管理：elevator / stairs / ramp，端点为楼层编码 + 点位编码。 */
 @Service
 public class MapConnService {
 

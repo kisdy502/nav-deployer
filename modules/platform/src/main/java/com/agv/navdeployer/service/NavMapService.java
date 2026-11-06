@@ -37,9 +37,6 @@ import java.util.UUID;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * 地图管理：实时栅格快照建图（栅格 gzip 存 MinIO）、列表/详情、激活为当前部署地图。
- */
 @Service
 public class NavMapService {
 
@@ -72,7 +69,6 @@ public class NavMapService {
         this.mapsBucket = mapsBucket;
     }
 
-    /** 实时栅格（/map 最新一帧）。 */
     public MapGridVO liveGrid() {
         // 保活 /map 订阅（首次调用后最多 ~throttle+1s 才有数据，前端轮询自然覆盖）
         mapSubscriptionGuard.touch();
@@ -83,7 +79,6 @@ public class NavMapService {
         return toGridVO(grid);
     }
 
-    /** 从实时快照建图：栅格序列化（gzip）入 MinIO，元数据入库。 */
     @Transactional(rollbackFor = Exception.class)
     public NavMapVO createFromLive(String mapName) {
         mapSubscriptionGuard.touch();
@@ -121,10 +116,6 @@ public class NavMapService {
         return NavMapVO.from(map);
     }
 
-    /**
-     * 机器人侧地图同步入库（save_map 成功后由 MapModeTaskService 调用）。
-     * upsert 语义：同名地图覆盖栅格与机器人关联（source=ROBOT_SYNC），否则新建 DRAFT。
-     */
     @Transactional(rollbackFor = Exception.class)
     public NavMapVO saveRobotGrid(String mapName, String robotMapName, LiveMapCache.OccupancyGrid grid) {
         byte[] compressed;
@@ -185,7 +176,6 @@ public class NavMapService {
         return NavMapVO.from(findOrThrow(id));
     }
 
-    /** 已存地图的栅格数据（解压后的 JSON 字节，application/json）。 */
     public StoredGrid getGridData(Long id) {
         NavMap map = findOrThrow(id);
         try (GetObjectResponse response = minioClient.getObject(
@@ -206,7 +196,6 @@ public class NavMapService {
         return NavMapVO.from(map);
     }
 
-    /** 设置机器人侧地图名（切图时下发给 /agv/load_map 的名字，即 maps_dir 三件套文件名主干）。 */
     @Transactional(rollbackFor = Exception.class)
     public NavMapVO setRobotMapName(Long id, String robotMapName) {
         String name = robotMapName == null ? "" : robotMapName.trim();
@@ -221,7 +210,6 @@ public class NavMapService {
         return NavMapVO.from(map);
     }
 
-    /** 激活为当前部署地图（全局唯一 ACTIVE，其余归档）。 */
     @Transactional(rollbackFor = Exception.class)
     public NavMapVO activate(Long id) {
         NavMap map = findOrThrow(id);
@@ -241,7 +229,6 @@ public class NavMapService {
         return NavMapVO.from(map);
     }
 
-    /** 删除地图（ACTIVE 或仍有关联点位/路线时拒绝）。 */
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         NavMap map = findOrThrow(id);
@@ -258,7 +245,6 @@ public class NavMapService {
         afterCommitOrNow(() -> removeObjectQuietly(map.getObjectKey()));
     }
 
-    /** 当前激活的部署地图（无则抛业务异常）。 */
     public NavMap requireActiveMap() {
         NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
                 .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE)
@@ -298,7 +284,6 @@ public class NavMapService {
         }
     }
 
-    /** 每次保存前幂等建桶：桶可能被外部（如环境重置）删除，不缓存存在性。 */
     private synchronized void ensureBucket() throws Exception {
         if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(mapsBucket).build())) {
             minioClient.makeBucket(MakeBucketArgs.builder().bucket(mapsBucket).build());

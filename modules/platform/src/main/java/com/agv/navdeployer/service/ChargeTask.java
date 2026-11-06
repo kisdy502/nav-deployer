@@ -5,10 +5,6 @@ import com.agv.navdeployer.vo.ChargeTaskVO;
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * 充电任务运行时（domain，内存态；单机器人同时只有一个充电任务，由 ChargeService 维护）。
- * 状态迁移只经 ChargeService（start/cancel/worker 轮询），非终态字段仅 charge-worker 线程写。
- */
 final class ChargeTask {
 
     enum Status {
@@ -27,7 +23,6 @@ final class ChargeTask {
     private final double yaw;
     private final double targetBatteryPct;
     private final LocalDateTime createdAt = LocalDateTime.now();
-    /** 创建时刻（epoch ms），全流程看门狗基准 */
     private final long createdAtMs = System.currentTimeMillis();
 
     private final AtomicReference<Status> status = new AtomicReference<>(Status.MOVING);
@@ -35,15 +30,12 @@ final class ChargeTask {
     private volatile Long internalMoveTaskId;
     private volatile double batteryAtStart = Double.NaN;
     private volatile double batteryNow = Double.NaN;
-    /** set_charging(data=true) 已发出 / 已收到 success 确认的时刻（epoch ms，0=未发生） */
     private volatile long serviceSentAt;
     private volatile long serviceAckAt;
-    /** 导航到桩完成的时刻（epoch ms，0=未到桩）：停稳等待的起点 */
     private volatile long dockedAt;
     private volatile LocalDateTime updatedAt = createdAt;
     private volatile LocalDateTime finishedAt;
 
-    /** SSE 发布去重基线（仅 charge-worker 线程访问） */
     Status lastPublishedStatus;
     double lastPublishedBattery = Double.NaN;
     long lastPublishedAt;
@@ -79,8 +71,6 @@ final class ChargeTask {
         return status.get();
     }
 
-    /** 仅允许从非终态迁移；已终态时拒绝（防 cancel 与 worker 竞态双写）。
-     *  @return true=本次迁移生效 */
     boolean transitionTo(Status next) {
         Status current = status.get();
         while (!current.terminal()) {
@@ -168,7 +158,6 @@ final class ChargeTask {
         return finishedAt;
     }
 
-    /** 迁移到终态时补 finishedAt；任何状态变化都刷 updatedAt。 */
     void stamp(Status next) {
         this.updatedAt = LocalDateTime.now();
         if (next != null && next.terminal()) {

@@ -13,10 +13,6 @@ import io.zenoh.pubsub.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * 【A 模式网关】robot 单向发布：状态上报、legacy 心跳 put、任务 result_report。
- * 这里所有操作都是 putOnce——发出去不等回复；报文一律来自 {@link RobotStateView}。
- */
 public class RmsReportGateway implements RmsResultReporter.Sink {
 
     private static final Logger log = LoggerFactory.getLogger(RmsReportGateway.class);
@@ -39,23 +35,14 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
         this.reportProps = reportProps;
     }
 
-    /**
-     * 注册后更新 key（RMS 分配了新 robot_code 时调用）
-     */
     public void updateKeys(RmsReportKeys newKeys) {
         this.keys = newKeys;
     }
 
-    /**
-     * 会话建立后注入通道（重建时重调）。
-     */
     public void attach(ZenohChannel channel) {
         this.channel = channel;
     }
 
-    /**
-     * 状态上报（body 通道发信封格式，legacy 通道发平铺格式）。
-     */
     public void publishStatus() throws Exception {
         ZenohChannel current = channel;
         if (current == null || !current.isOpen()) {
@@ -67,9 +54,6 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
                 throw new IllegalStateException("body status publisher not initialized");
             }
 
-            // body 通道：{data: {...}, serial_num, timestamp}（对齐 RMS 真机格式）
-            // 周期性状态上报默认节流不打全文（会话层每 periodicLogIntervalMs 汇总一条 INFO）；
-            // verbose 开关打开时逐条打高亮全文（排查连不上/掉线/RMS 显示不对时用）
             String reportStatus = mapper.writeValueAsString(stateView.buildStatusEnvelope());
             if (reportProps.isVerboseLog()) {
                 RmsMessageLog.outboundPublish(keys.bodyStatusReport(), reportStatus);
@@ -81,7 +65,6 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
             if (publisher == null) {
                 throw new IllegalStateException("legacy status publisher not initialized");
             }
-            // legacy 通道：平铺格式（兼容旧版 RMS），同样仅 verbose 时打全文
             String reportOldStatus = mapper.writeValueAsString(stateView.snapshot());
             if (reportProps.isVerboseLog()) {
                 RmsMessageLog.outboundPublish(keys.legacyStatusReport(), reportOldStatus);
@@ -90,9 +73,6 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
         }
     }
 
-    /**
-     * legacy 心跳 put（与 B 模式的心跳 query 同节拍发出的伴生通道）。
-     */
     public void publishLegacyHeartbeat(String heartbeatJson) throws Exception {
         ZenohChannel current = channel;
         if (current == null || !current.isOpen()) {
@@ -108,9 +88,6 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
 
     }
 
-    /**
-     * 任务终态上报 result_report（RmsResultReporter 的下沉出口）。
-     */
     @Override
     public void publish(TaskResultEnvelope envelope, String taskId) throws Exception {
         ZenohChannel current = channel;

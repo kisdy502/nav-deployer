@@ -2,7 +2,6 @@ package com.agv.navdeployer.metadata.vo;
 
 import com.agv.navdeployer.metadata.entity.MapWaypoint;
 
-/** 点位视图。 */
 public record WaypointVO(Long id,
                          Long mapId,
                          Long floorId,

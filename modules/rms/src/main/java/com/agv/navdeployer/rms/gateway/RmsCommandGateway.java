@@ -20,11 +20,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Optional;
 
-/**
- * 【C 模式网关】RMS 查询 → 本机 queryable 应答。
- * attach 时声明全部指令端点；回调运行在 zenoh IO 线程，只做解析与同步回复，
- * 任务执行全部异步（RmsTaskService worker），保证 queryable 快速返回。
- */
 public class RmsCommandGateway {
 
     private static final Logger log = LoggerFactory.getLogger(RmsCommandGateway.class);
@@ -67,17 +62,10 @@ public class RmsCommandGateway {
         this.periodicLogIntervalMs = periodicLogIntervalMs;
     }
 
-    /**
-     * 注册后更新 key（RMS 分配了新 robot_code 时调用）
-     */
     public void updateKeys(RmsCommandKeys newKeys) {
         this.keys = newKeys;
     }
 
-    /**
-     * 会话建立后声明全部指令端点（exact + 通配；重建时重调）。
-     * 逐条声明日志为 DEBUG（重连时 ~40 条会刷屏），完成后汇总一条 INFO。
-     */
     public void attach(ZenohChannel channel) throws Exception {
         this.currentChannel = channel;
         int declared = 0;
@@ -92,12 +80,6 @@ public class RmsCommandGateway {
         log.info("RMS command endpoints ready: {} queryables declared (exact + wildcard)", declared);
     }
 
-    /**
-     * 周期轮询类段：RMS 定时重复查询（心跳/状态/配置等）。不刷屏但也不能完全静默——
-     * 每 periodicLogIntervalMs（默认 30s）节流打 1 条请求 + 1 条回包，
-     * 排查「RMS 看不到任务进度/状态」时保留链路痕迹；一次性指令（task/add、task/start、
-     * 建图、切图、重定位、上传等）始终全量打印完整报文。
-     */
     private static final java.util.Set<String> PERIODIC_SEGMENTS = java.util.Set.of(
             BodySegment.STATUS_QUERY.segment(),
             BodySegment.POSE_QUERY.segment(),
@@ -107,14 +89,8 @@ public class RmsCommandGateway {
             BodySegment.TASK_STATUS.segment(),
             BodySegment.TASK_TEMPLATE_QUERY.segment());
 
-    /** 周期轮询段的日志节流间隔（毫秒），由装配方经 rms.report.periodic-log-interval-ms 注入。 */
     private final long periodicLogIntervalMs;
 
-    /**
-     * 耗时指令（切图、重定位、地图传输）等待业务结果后回包，
-     * 在独立线程执行并延迟回包，避免长时间阻塞 zenoh IO 线程（其他 queryable 仍在服务）。
-     * 若 RMS 侧 query 超时先放弃，迟到的回包会被 zenoh 丢弃（reply 抛错仅记日志），不影响链路。
-     */
     private static final java.util.Set<String> CLOSED_LOOP_SEGMENTS = java.util.Set.of(
             BodySegment.MAPPING_CHANGE.segment(),
             BodySegment.MAPPING_GET.segment(),
@@ -128,9 +104,6 @@ public class RmsCommandGateway {
                 return thread;
             });
 
-    /**
-     * 统一入口（exact 与通配 queryable 都走这里）。reply 为 BodyReply 或 teach 等自定义信封 ObjectNode。
-     */
     void dispatch(Query query, String declaredSegment) {
         String rawPayload = "{}";
         String actualSegment;
@@ -143,11 +116,9 @@ public class RmsCommandGateway {
             if (BodySegment.MAPPING_DOWNLOAD.segment().equals(actualSegment)) {
                 RmsMessageLog.inboundQuery(String.valueOf(query.getKeyExpr()), "[map URL redacted]");
             } else if (PERIODIC_SEGMENTS.contains(actualSegment)) {
-                // 周期轮询：节流打印（默认 30s 一条），保留链路痕迹不刷屏
                 RmsMessageLog.inboundQueryThrottled(
                         String.valueOf(query.getKeyExpr()), rawPayload, periodicLogIntervalMs);
             } else {
-                // 一次性指令：全量打印完整报文，每条可对账
                 RmsMessageLog.inboundQuery(String.valueOf(query.getKeyExpr()), rawPayload);
             }
         } catch (Exception exception) {
@@ -182,10 +153,6 @@ public class RmsCommandGateway {
         replyAndClose(query, actualSegment, reply);
     }
 
-    /**
-     * 回包并关闭 query；一次性指令全量打日志，周期段节流打日志。
-     * 回包失败必须 ERROR：RMS 侧只会看到 query 超时，上位机日志是定位问题的唯一线索。
-     */
     private void replyAndClose(Query query, String segment, Object reply) {
         try {
             String replyJson = mapper.writeValueAsString(reply);
@@ -209,13 +176,11 @@ public class RmsCommandGateway {
             try {
                 query.close();
             } catch (Exception ignored) {
-                // 已关闭（含 RMS 提前超时放弃的迟到回包）
             }
         }
     }
 
     private Object handle(String segment, String rawPayload) {
-        // task/{id}/pause|resume|stop 通配形态：从段里取 task_id
         String perTaskId = RmsCommandKeys.extractTaskIdFromSegment(segment);
         if (perTaskId != null) {
             String action = segment.split("/")[2];
@@ -230,7 +195,6 @@ public class RmsCommandGateway {
         if (!bodySegment.supported()) {
             return BodyReply.failure(501, "segment not supported by nav-deployer: " + segment);
         }
-        // 地图/模式段走独立的 payload 结构，先于任务 DTO 解析
         BodyReply mapReply = dispatchMap(bodySegment, rawPayload);
         if (mapReply != null) {
             return mapReply;
@@ -257,9 +221,6 @@ public class RmsCommandGateway {
         };
     }
 
-    /**
-     * 自定义信封（teach 等）的 status/msg 提取，统一日志格式。
-     */
     private static String statusOf(Object reply) {
         if (reply instanceof BodyReply bodyReply) {
             return String.valueOf(bodyReply.status());
@@ -280,9 +241,6 @@ public class RmsCommandGateway {
         return "";
     }
 
-    /**
-     * 地图/模式段分发；非地图段返回 null 走原有任务链路。
-     */
     private BodyReply dispatchMap(BodySegment bodySegment, String rawPayload) {
         return switch (bodySegment) {
             case START_MAPPING -> mapService.startMapping(parseMapNameRequest(rawPayload));

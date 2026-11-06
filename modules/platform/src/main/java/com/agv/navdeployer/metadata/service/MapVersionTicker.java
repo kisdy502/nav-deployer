@@ -4,13 +4,6 @@ import com.agv.navdeployer.metadata.entity.MapMeta;
 import com.agv.navdeployer.metadata.mapper.MapMetaMapper;
 import org.springframework.stereotype.Component;
 
-/**
- * 地图版本自动递增：任何元数据变更（楼层/点位/区域/货架/路线/连接的增删改）都调用
- * {@link #touch}，版本号 +1（v0.0.9 → v0.1.0，进位规则：patch 超 9 归零进 minor，
- * minor 超 9 归零进 major），并刷新最后修改人与时间。
- *
- * <p>独立成组件避免 MapMetaService 与各子服务互相依赖形成环。
- */
 @Component
 public class MapVersionTicker {
 
@@ -20,7 +13,6 @@ public class MapVersionTicker {
         this.mapMetaMapper = mapMetaMapper;
     }
 
-    /** 元数据变更后调用；modifiedBy 为空时保留原值。 */
     public void touch(Long mapId, String modifiedBy) {
         if (mapId == null) {
             return;
@@ -37,7 +29,6 @@ public class MapVersionTicker {
         mapMetaMapper.updateById(map);
     }
 
-    /** v0.0.1 → v0.0.2 → … → v0.0.9 → v0.1.0；minor 超 9 同样进位到 major。 */
     public static String nextVersion(String current) {
         int major = 0;
         int minor = 0;

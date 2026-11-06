@@ -11,14 +11,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 预签名 URL HTTP PUT（质检结果 zip / teach 采集 zip 共用）。
- *
- * <p>云端预签名把 content-type 计入了签名（X-Amz-SignedHeaders=content-type;host），
- * PUT 的 Content-Type 必须与云端签名时的值完全一致，否则 MinIO 返回 403 SignatureDoesNotMatch。
- * 指令未告知签名用的 content-type，按常见约定依次尝试；上次成功的值优先（不同云端版本签名约定不同，
- * 记住后免于每次重试两个 403），仅在 403 SignatureDoesNotMatch 时换下一个候选重试（PUT 幂等，重复上传无副作用）。
- */
 public final class PresignedUrlPut {
 
     private static final Logger log = LoggerFactory.getLogger(PresignedUrlPut.class);
@@ -31,7 +23,6 @@ public final class PresignedUrlPut {
     private static final List<String> CONTENT_TYPES = List.of(
             "video/mp4", "application/zip", "application/octet-stream", "binary/octet-stream");
 
-    /** 上次成功的 content-type（云端版本固定后签名值不变，优先复用避免 403 重试） */
     private static volatile String lastSuccessfulContentType;
 
     private PresignedUrlPut() {

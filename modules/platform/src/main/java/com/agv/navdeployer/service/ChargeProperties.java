@@ -3,43 +3,20 @@ package com.agv.navdeployer.service;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/**
- * 充电任务配置（prefix: charge）。
- * 服务名与语义见机器人侧《电量与充电对接》(docs/battery_api.md)：
- * /agv/set_charging（std_srvs/srv/SetBool）—— data=true 开始充电，data=false 停止充电；
- * 充电真值以 /agv/status 的 charging / charge_connected / battery_data_valid 遥测为准。
- */
 @Component
 @ConfigurationProperties(prefix = "charge")
 public class ChargeProperties {
 
-    /** 机器人侧开始/停止充电服务（std_srvs/srv/SetBool） */
     private String service = "/agv/set_charging";
-    /** set_charging 服务调用超时（毫秒） */
     private long serviceTimeoutMs = 5000;
-    /** 目标电量百分比（0, 100]：仅记录展示——对接成功即完成，充到多少由上层调度跟踪 */
     private double targetBatteryPct = 100.0;
-    /** set_charging 成功后等待遥测确认 charging=true 的超时（毫秒） */
     private long confirmTimeoutMs = 20000;
-    /** 到桩后最小停稳等待（毫秒）：机器人侧拒绝运动中的充电请求，到位即调会被拒 */
     private long dockSettleMinMs = 2000;
-    /** 停稳等待上限（毫秒）：odom 异常/不可用时的兜底，超过强制尝试 */
     private long dockSettleMaxMs = 15000;
-    /**
-     * 到桩校验半径（米）：开始充电前校验机器人与充电桩目标的平面距离必须 ≤ 该值。
-     * 背景：路线导航的终点是「离充电桩最近的 waypoint」（吸附，可能距桩数米），
-     * 且仿真机器人 set_charging 不校验位置——不校验就会出现"走到半路就开始充电"。
-     * 超出半径：先自动补一段精确接近段；补完仍超出则任务报错拒绝充电。
-     * 救援充电（模拟充电器，无需在桩上）不受此限制。
-     */
     private double dockArrivalRadius = 0.5;
-    /** /odom 静止判定线速度阈值（m/s，|vx|/|vy| 均须低于） */
     private double odomQuietLinearMs = 0.03;
-    /** /odom 静止判定角速度阈值（rad/s） */
     private double odomQuietAngularRad = 0.05;
-    /** 状态轮询周期（毫秒） */
     private long pollIntervalMs = 1000;
-    /** 充电全流程看门狗（导航+充电总时长上限，毫秒），默认 4h */
     private long maxDurationMs = 14400000L;
 
     public String getService() {

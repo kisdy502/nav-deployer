@@ -35,32 +35,19 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
-/**
- * RMS 日志收集：云端 query log/collect（受理应答）→ 本机快照打包日志 → PUT 预签名 URL
- * → pub log/report 上报结果。协议对齐 robot-management 的
- * RobotLogCollectionServiceImpl（指令/受理校验）与 RobotLogResultSubscriber（结果校验）。
- *
- * <p>受理在 queryable 线程内同步快答（云端 query 有等待窗口，绝不阻塞），
- * 快照+压缩+上传在单线程 daemon 执行器中异步完成。
- */
 public class RmsLogCollector {
 
     private static final Logger log = LoggerFactory.getLogger(RmsLogCollector.class);
 
-    /** 默认日志文件（与 logback APP_LOG_FILE 默认一致；LOG_FILE 环境变量优先） */
     private static final String DEFAULT_LOG_FILE = "logs/nav-deployer.log";
-    /** 打包进 zip 的最大滚动文件个数（当前文件之外） */
     private static final int MAX_ROLLED_FILES = 4;
-    /** zip 累计原始大小上限，防止日志暴涨撑爆内存 */
     private static final long MAX_TOTAL_BYTES = 64L * 1024 * 1024;
-    /** 受理前的最小剩余磁盘空间 */
     private static final long MIN_FREE_DISK_BYTES = 200L * 1024 * 1024;
     private static final long HTTP_TIMEOUT_SEC = 60;
 
     private final ObjectMapper mapper;
     private final RmsProperties properties;
     private final HttpClient httpClient;
-    /** 单飞：同一时刻只允许一个进行中的收集（云端 COLLECTION_BUSY 约定） */
     private final AtomicBoolean inFlight = new AtomicBoolean(false);
     private final ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "rms-log-collect");
@@ -76,7 +63,6 @@ public class RmsLogCollector {
                 .build();
     }
 
-    /** 处理云端 log/collect 指令：同步受理应答，异步执行快照/上传/上报。 */
     public BodyReply handleCollect(String rawPayload, ZenohChannel channel, String keyBase) {
         Command command;
         try {
@@ -116,8 +102,6 @@ public class RmsLogCollector {
                 "accepted", Boolean.TRUE));
     }
 
-    // ==================== 异步执行 ====================
-
     private void execute(Command command, ZenohChannel channel, String keyBase) {
         try {
             byte[] zip = snapshotLogs(command);
@@ -137,7 +121,6 @@ public class RmsLogCollector {
         }
     }
 
-    /** 快照打包：当前日志 + 最近滚动文件 + application.yaml + 运行信息。 */
     private byte[] snapshotLogs(Command command) throws CollectException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(buffer, StandardCharsets.UTF_8)) {
@@ -195,8 +178,6 @@ public class RmsLogCollector {
         }
     }
 
-    // ==================== 结果上报 ====================
-
     private void publishSuccess(Command command, long fileSize, String sha256,
                                  ZenohChannel channel, String keyBase) {
         try {
@@ -240,8 +221,6 @@ public class RmsLogCollector {
         RmsMessageLog.outboundPublish(key, payload);
         channel.putOnce(key, payload);
     }
-
-    // ==================== 辅助 ====================
 
     private record Command(String collectionId, String serialNum, String fileName,
                            String url, String contentType, long expiresAt) {
@@ -294,7 +273,6 @@ public class RmsLogCollector {
         return Path.of(configured == null || configured.isBlank() ? DEFAULT_LOG_FILE : configured.trim());
     }
 
-    /** 当前日志 + 最近滚动文件（读取字节即快照，logback 继续写不影响已读内容）。 */
     private List<Path> snapshotCandidates() {
         Path main = resolveLogFile();
         List<Path> candidates = new ArrayList<>();
@@ -359,7 +337,6 @@ public class RmsLogCollector {
                 ? null : value.asText().trim();
     }
 
-    /** 业务失败：stage ∈ collect/compress/upload，error_code 对齐云端白名单。 */
     private static final class CollectException extends Exception {
         private final String stage;
         private final String errorCode;

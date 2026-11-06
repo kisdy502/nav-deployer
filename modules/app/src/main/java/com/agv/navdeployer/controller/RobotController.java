@@ -64,8 +64,6 @@ public class RobotController {
         this.mapAlignmentGuard = mapAlignmentGuard;
     }
 
-    // ==================== 运营状态（停用/恢复） ====================
-
     public record DecommissionDTO(String reason) {
     }
 
@@ -129,7 +127,6 @@ public class RobotController {
         }
     }
 
-    /** 机械臂调试指令体（契约见《仿真机器人功能开发说明.md》F1.5）。 */
     record ArmMoveDTO(String arm, double[] joints,
                       @com.fasterxml.jackson.annotation.JsonAlias("durationSec") Double durationSec) {
     }
@@ -217,7 +214,6 @@ public class RobotController {
         }
         try {
             SetControlResult result = dispatcher.setControl(dto.action()).join();
-            // 联动停用标志：stop → 停用（RMS 拒接新任务）；start/reset → 恢复
             if ("stop".equals(dto.action())) {
                 operationalService.decommission("emergency_stop");
             } else {

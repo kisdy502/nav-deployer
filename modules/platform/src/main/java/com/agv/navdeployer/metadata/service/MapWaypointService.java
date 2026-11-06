@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Set;/** 点位管理：类型扩展（charge/pickup/dropoff/storage/elevator/stairs/ramp/normal）。 */
+import java.util.Set;
 @Service
 public class MapWaypointService {
 
@@ -78,11 +78,9 @@ public class MapWaypointService {
         return WaypointVO.from(waypoint);
     }
 
-    /** 点位编码格式：字母/数字/下划线 */
     private static final java.util.regex.Pattern CODE_PATTERN =
             java.util.regex.Pattern.compile("^[A-Za-z0-9_]+$");
 
-    /** 校验点位编码格式 + 图内唯一。 */
     private void requireValidCode(Long mapId, String code) {
         if (!CODE_PATTERN.matcher(code).matches()) {
             throw new IllegalArgumentException("点位编码只能包含字母、数字、下划线: " + code);
@@ -94,7 +92,6 @@ public class MapWaypointService {
         }
     }
 
-    /** 更新点位：code 可改名（级联更新楼层连接引用），name 始终跟随 code 保持一致。 */
     @Transactional(rollbackFor = Exception.class)
     public WaypointVO update(Long id, WaypointUpdateDTO dto) {
         MapWaypoint waypoint = requireWaypoint(id);
@@ -130,7 +127,6 @@ public class MapWaypointService {
         return WaypointVO.from(waypoint);
     }
 
-    /** 点位编码改名后，级联更新楼层间连接 JSON 中的编码引用。 */
     private void cascadeUpdateConnections(Long mapId, String oldCode, String newCode) {
         List<MapInterFloorConn> conns = connMapper.selectList(
                 Wrappers.lambdaQuery(MapInterFloorConn.class)
@@ -149,7 +145,6 @@ public class MapWaypointService {
         }
     }
 
-    /** 删除点位：被路线（起终点/段）或楼层间连接引用时拒绝。 */
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         MapWaypoint waypoint = requireWaypoint(id);

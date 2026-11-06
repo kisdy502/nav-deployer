@@ -13,10 +13,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/**
- * RMS 任务运维（任务管理页）：执行历史、当前任务、人工复位。
- * 复位 = 把卡在中间态的任务强制收口（取消内部移动/充电 + 上报 RMS + 释放 busy 闸门）。
- */
 @Tag(name = "RMS 任务运维", description = "任务执行记录 / 当前状态 / 卡死复位（复位后 RMS 可继续下发新任务）")
 @RestController
 @RequestMapping("/api/v1/rms/tasks")

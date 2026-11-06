@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/** 楼层管理：楼层增删改查；删除时仍有点位/路线则拒绝（区域/货架随库级联删除）。 */
 @Service
 public class MapFloorService {
 
@@ -115,7 +114,6 @@ public class MapFloorService {
         return floor;
     }
 
-    /** 校验楼层存在且属于指定地图。 */
     public MapFloor requireFloorOfMap(Long floorId, Long mapId) {
         MapFloor floor = requireFloor(floorId);
         if (!floor.getMapId().equals(mapId)) {

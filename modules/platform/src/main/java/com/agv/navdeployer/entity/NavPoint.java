@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 地图上的部署点位（map 系坐标，yaw 弧度）。 */
 @TableName("nav_point")
 @Getter
 @Setter

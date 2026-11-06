@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 楼层（map-info.json 的 floors 元素）。 */
 @TableName("map_floor")
 @Getter
 @Setter
@@ -23,15 +22,12 @@ public class MapFloor {
 
     private Long mapId;
 
-    /** 楼层唯一标识（F1 / F2）。 */
     private String floorCode;
 
     private String name;
 
-    /** 楼层基准高度（Z，米）。 */
     private Double elevation;
 
-    /** 楼层默认最大速度（m/s）。 */
     private Double defaultMaxSpeed;
 
     private Integer sortOrder;

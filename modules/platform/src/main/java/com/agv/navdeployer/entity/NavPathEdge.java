@@ -7,7 +7,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/** 路线的一段（边）：source→target，直线或贝塞尔曲线，可倒车/限速。 */
 @TableName("nav_path_edge")
 @Getter
 @Setter
@@ -22,7 +21,6 @@ public class NavPathEdge {
 
     private Long pathId;
 
-    /** 段序号，从 1 开始连续递增。 */
     private Integer seq;
 
     private Long sourcePointId;
@@ -31,7 +29,6 @@ public class NavPathEdge {
 
     private String edgeType;
 
-    /** JSON 数组 [{"x":..,"y":..}]，曲线时 1~2 个贝塞尔控制点。 */
     private String controlPoints;
 
     private Double maxSpeed;

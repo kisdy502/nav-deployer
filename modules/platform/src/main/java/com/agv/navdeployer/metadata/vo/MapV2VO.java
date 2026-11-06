@@ -4,7 +4,6 @@ import com.agv.navdeployer.metadata.entity.MapMeta;
 
 import java.time.LocalDateTime;
 
-/** v2 地图视图。 */
 public record MapV2VO(Long id,
                       String mapName,
                       String coordinateSystem,

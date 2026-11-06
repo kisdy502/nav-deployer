@@ -4,7 +4,6 @@ import com.agv.navdeployer.metadata.entity.MapShelf;
 
 import java.util.List;
 
-/** 货架视图（整树：footprint + 层 + 格位）。 */
 public record ShelfVO(Long id,
                       Long mapId,
                       Long floorId,

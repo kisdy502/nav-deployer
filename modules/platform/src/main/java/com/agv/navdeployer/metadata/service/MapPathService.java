@@ -21,11 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/**
- * 路线管理（v2）：有序途经点位链 + 段表。
- * 段表合并旧 nav_path_edge 的曲线能力（STRAIGHT/CURVE + 1~2 个贝塞尔控制点 +
- * backUp/reverse/段级限速）；segments 缺省时按相邻点位自动生成直线段。
- */
 @Service
 public class MapPathService {
 
@@ -97,7 +92,6 @@ public class MapPathService {
         }
         path.setUpdatedAt(null);
         if (dto.waypointIds() != null && !dto.waypointIds().isEmpty()) {
-            // 点位链变化：重算起终点并整体替换段
             segmentMapper.delete(Wrappers.lambdaQuery(MapPathSegment.class)
                     .eq(MapPathSegment::getPathId, id));
             applyAndInsertSegments(path, dto);
@@ -148,13 +142,11 @@ public class MapPathService {
                 .stream().map(SegmentVO::from).toList();
     }
 
-    /** 校验点位链与段，设置起终点并落库（path 需已插入或有 id）。 */
     private void applyAndInsertSegments(MapPath path, PathSaveDTO dto) {
         if (dto.waypointIds() == null || dto.waypointIds().size() < 2) {
             throw new IllegalArgumentException("路线至少需要 2 个途经点位");
         }
         List<Long> chain = dto.waypointIds().stream().map(Long::valueOf).toList();
-        // 所有点位必须存在、属于同一地图且位于路线所在楼层
         java.util.LinkedHashMap<Long, MapWaypoint> resolved = new java.util.LinkedHashMap<>();
         for (Long waypointId : chain) {
             MapWaypoint waypoint = waypointMapper.selectById(waypointId);
@@ -184,7 +176,6 @@ public class MapPathService {
 
         List<PathSegmentDTO> segmentDtos = dto.segments();
         if (segmentDtos == null || segmentDtos.isEmpty()) {
-            // 缺省：相邻点位自动生成直线段
             segmentDtos = new ArrayList<>(chain.size() - 1);
             for (int i = 0; i + 1 < chain.size(); i++) {
                 segmentDtos.add(new PathSegmentDTO(chain.get(i), chain.get(i + 1),

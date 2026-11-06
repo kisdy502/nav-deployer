@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 
-/** 货架层（layers 元素）。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record LayerData(int layerIndex,
                         double elevation,

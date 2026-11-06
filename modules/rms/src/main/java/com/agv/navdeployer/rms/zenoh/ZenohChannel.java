@@ -31,15 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-/**
- * zenoh 通道：Session 生命周期 + publisher/queryable 声明 + query 收发。
- * 会话由 {@code RmsRobotSession} 负责 rebuild（重连后重走声明与注册），
- * 本类只做资源管理与操作封装（对齐 RosbridgeClient 的角色划分）。
- *
- * <p>连接配置采用 zenoh 标准做法：classpath 下的 {@code config-json5.json}
- * （与 zenohd 同构的 JSON5），{@code rms.zenoh.config-file} 可指向外部文件覆盖
- * （部署换端点不用重打包）。yaml 里不再出现任何 zenoh 连接项。
- */
 public final class ZenohChannel implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ZenohChannel.class);
@@ -54,9 +45,6 @@ public final class ZenohChannel implements AutoCloseable {
         this.configJson5 = loadConfigJson5(props);
     }
 
-    /**
-     * 加载 zenoh 连接配置：外部文件（rms.zenoh.config-file）优先，否则 classpath config-json5.json。
-     */
     public static String loadConfigJson5(RmsProperties.Zenoh props) {
         String external = props.getConfigFile();
         if (external != null && !external.isBlank()) {
@@ -107,7 +95,6 @@ public final class ZenohChannel implements AutoCloseable {
             try {
                 resources.get(i).close();
             } catch (Exception exception) {
-                // 单个 publisher/queryable 关闭失败不能阻止底层 Session 继续关闭。
                 log.warn("failed to close rms zenoh child resource: {}", exception.getMessage());
             }
         }
@@ -124,9 +111,6 @@ public final class ZenohChannel implements AutoCloseable {
         log.debug("rms zenoh session closed, child_resources={}", childResourceCount);
     }
 
-    /**
-     * 声明 publisher（资源纳入生命周期管理）。
-     */
     public synchronized Publisher declarePublisher(String key) throws Exception {
         requireOpen();
         KeyExpr expr = KeyExpr.autocanonize(key);
@@ -134,7 +118,6 @@ public final class ZenohChannel implements AutoCloseable {
             resources.add(expr);
             Publisher publisher = session.declarePublisher(expr);
             resources.add(publisher);
-            // DEBUG：会话重连时逐条 INFO 会与 queryable 声明一起刷屏（~40 条/次）
             log.debug("declared rms publisher key={}", key);
             return publisher;
         } catch (Exception e) {
@@ -144,9 +127,6 @@ public final class ZenohChannel implements AutoCloseable {
 
     }
 
-    /**
-     * put 一条文本消息（每次声明临时 publisher，适合低频事件如 result_report）。
-     */
     public void putOnce(String key, String payload) throws Exception {
         requireOpen();
         try (KeyExpr expr = KeyExpr.autocanonize(key);
@@ -155,9 +135,6 @@ public final class ZenohChannel implements AutoCloseable {
         }
     }
 
-    /**
-     * 声明 queryable（资源纳入生命周期管理）。
-     */
     public synchronized void declareQueryable(String key, Consumer<Query> handler) throws Exception {
         requireOpen();
         KeyExpr expr = KeyExpr.autocanonize(key);
@@ -165,13 +142,9 @@ public final class ZenohChannel implements AutoCloseable {
         QueryableOptions options = new QueryableOptions(true);
         CallbackQueryable queryable = session.declareQueryable(expr, handler::accept, options);
         resources.add(queryable);
-        // DEBUG：重连时 ~38 个 queryable 逐条 INFO 会刷屏，汇总日志由调用方（attach）打
         log.debug("declared rms queryable key={}", key);
     }
 
-    /**
-     * query-reply：发送 payload，取第一条成功回复文本。
-     */
     public Optional<String> query(String key, String payload, long timeoutMs) throws Exception {
         requireOpen();
         GetOptions options = new GetOptions();
@@ -196,9 +169,6 @@ public final class ZenohChannel implements AutoCloseable {
         return Optional.empty();
     }
 
-    /**
-     * query 回复（JSON 编码）。
-     */
     public static void replyJson(Query query, String json) {
         try {
             ReplyOptions options = new ReplyOptions();
@@ -209,14 +179,10 @@ public final class ZenohChannel implements AutoCloseable {
         }
     }
 
-    /**
-     * query 错误回复。
-     */
     public static void replyError(Query query, String message) {
         try {
             query.replyErr(message);
         } catch (Exception ignored) {
-            // 连接已断，忽略
         }
     }
 

@@ -22,7 +22,6 @@ public class NavMapVO {
 
     private String source;
 
-    /** 机器人侧地图名（maps_dir 三件套文件名主干；空则切图时回退用 mapName）。 */
     private String robotMapName;
 
     private Double resolution;

@@ -22,15 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * rosbridge WebSocket 客户端，覆盖本项目用到的 op：
- * subscribe（含 fragment_size / throttle）/ advertise / publish 透传 / call_service / action。
- *
- * - 自动重连：断开后按配置延迟重连，重连成功后自动恢复全部订阅与 advertise；
- * - 分片重组：大消息（如 /map）按 rosbridge fragment 协议还原；
- * - 多 handler：消息按注册顺序分发给所有 handler（遥测采集、地图缓存、指令分发）；
- * - 回调运行在 WS IO 线程，handler 实现方自行保证快速返回。
- */
 public final class RosbridgeClient {
 
     private static final Logger log = LoggerFactory.getLogger(RosbridgeClient.class);
@@ -67,14 +58,12 @@ public final class RosbridgeClient {
         }
     }
 
-    /** 追加一个消息 handler（线程安全，可在连接建立后动态添加）。 */
     public void addHandler(RosbridgeHandler handler) {
         if (handler != null) {
             handlers.add(handler);
         }
     }
 
-    /** 开始连接并启动自动重连。 */
     public void connect() {
         if (!running.compareAndSet(false, true)) {
             return;
@@ -82,33 +71,18 @@ public final class RosbridgeClient {
         open();
     }
 
-    /** 订阅话题（重连后自动恢复）。throttleMs &lt;= 0 表示不限流。 */
     public void subscribe(String topic, int throttleMs) {
         subscribe(topic, null, throttleMs, 0);
     }
 
-    /** 订阅话题，可指定 fragment_size（订阅 /map 这类大消息时必填，例如 500000）。 */
     public void subscribe(String topic, int throttleMs, int fragmentSize) {
         subscribe(topic, null, throttleMs, fragmentSize);
     }
 
-    /**
-     * 订阅话题，带显式消息类型。客户端连接后立即订阅时，若机器人侧话题尚未
-     * advertise（桥接节点还在阻塞初始化），rosbridge 的类型推断会失败
-     * （"Cannot infer topic type"）且永不重试——上位机从此收不到该话题，
-     * /agv/status 失明直接导致模式闸门全部误判。带显式类型时 rosbridge
-     * 会立即建订阅，发布者出现后数据自动流入，从根上消除启动竞态。
-     */
     public void subscribe(String topic, String type, int throttleMs, int fragmentSize) {
         subscribe(topic, type, throttleMs, fragmentSize, false);
     }
 
-    /**
-     * 订阅话题（可选 latched 接收）。transientLocal=true 时向 rosbridge 声明
-     * durability=transient_local——latched 话题（如 /tf_static，只发一次）必须如此，
-     * 否则 volatile 订阅收不到历史保留消息，机器人自描述的雷达安装变换就丢了
-     * （只能退回 yaml 硬编码回退，换机器人就得同步改上位机配置的根因）。
-     */
     public void subscribe(String topic, String type, int throttleMs, int fragmentSize, boolean transientLocal) {
         Subscription subscription = new Subscription(topic, type, throttleMs, fragmentSize, transientLocal);
         subscriptions.put(topic, subscription);
@@ -117,7 +91,6 @@ public final class RosbridgeClient {
         }
     }
 
-    /** 声明发布话题（重连后自动恢复），之后方可 publish 该话题。 */
     public void advertise(String topic, String type) {
         advertisements.put(topic, new Advertisement(topic, type));
         if (isConnected()) {
@@ -125,7 +98,6 @@ public final class RosbridgeClient {
         }
     }
 
-    /** 退订话题（从订阅表移除，重连后不再恢复），与 subscribe 对应。 */
     public void unsubscribe(String topic) {
         subscriptions.remove(topic);
         InnerClient client = active.get();
@@ -137,7 +109,6 @@ public final class RosbridgeClient {
         }
     }
 
-    /** 发送一条任意 rosbridge op 消息（publish / call_service / send_action_goal 等）。未连接时先缓冲。 */
     public void send(JsonNode operation) {
         InnerClient client = active.get();
         if (client == null || !client.isOpen()) {
@@ -149,7 +120,6 @@ public final class RosbridgeClient {
         client.send(operation.toString());
     }
 
-    /** 停止重连并关闭连接。 */
     public void close() {
         running.set(false);
         reconnectScheduler.shutdownNow();
@@ -184,7 +154,6 @@ public final class RosbridgeClient {
 
     private void onInnerOpen() {
         log.info("rosbridge connected: {}", url);
-        // 重连后按原始配置恢复所有 advertise 与订阅
         new ArrayList<>(advertisements.values()).forEach(this::sendAdvertise);
         new ArrayList<>(subscriptions.values()).forEach(this::sendSubscribe);
         flushPendingOps();

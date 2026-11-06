@@ -39,13 +39,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-/**
- * 移动任务：创建即下发 /agv/follow_edge（TO_POINT / GOAL 单段，FOLLOW_PATH 逐段串行），
- * 以 goal id 关联 feedback / result 做状态机闭环；看门狗超时自动取消并强制终结。
- *
- * 回调（WS IO 线程）只投递到单线程 worker 串行处理，天然避免任务状态竞争；
- * 创建路径不套大事务：insert 即提交，防止 result 回调先于事务可见。
- */
 @Service
 public class MoveTaskService {
 
@@ -62,24 +55,20 @@ public class MoveTaskService {
     private final SimAgvTelemetry telemetry;
     private final SimAgvProperties props;
     private final SimAgvSsePublisher ssePublisher;
-    /** 机械臂归位联锁（可空：测试/独立装配时无此 Bean 则跳过闸门） */
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    /** V2 多楼层路线（map_path + map_path_segment），优先于 V1 */
     private final com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper;
     private final com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper;
     private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
-    /** 机器人运营状态（急停/停用拦截） */
     private final RobotOperationalService operationalService;
-    /** 地图一致性闸门（可空：测试/独立装配时无此 Bean 则跳过；机器人地图 vs 导航基准图） */
     private final MapAlignmentGuard mapAlignmentGuard;
 
+    // 单线程 worker 串行化任务启动；任务先落库再下发，防 result 回调早于事务可见
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "move-task-worker");
                 thread.setDaemon(true);
                 return thread;
             });
-    /** 在途任务运行时（taskId → runtime），worker 线程与创建线程并发访问。 */
     private final Map<Long, TaskRuntime> activeRuntimes = new ConcurrentHashMap<>();
 
     public MoveTaskService(MoveTaskMapper moveTaskMapper,
@@ -114,7 +103,6 @@ public class MoveTaskService {
         this.mapAlignmentGuard = mapAlignmentGuard;
     }
 
-    /** 服务重启时把遗留的非终态任务标记为失败（goal 关联已丢失，无法再收到 result）。 */
     @EventListener(ApplicationReadyEvent.class)
     public void recoverStaleTasks() {
         LambdaUpdateWrapper<MoveTask> wrapper = Wrappers.lambdaUpdate(MoveTask.class)
@@ -129,19 +117,11 @@ public class MoveTaskService {
         }
     }
 
-    /** 创建并下发移动任务（前端手动入口，source=manual）。 */
     public MoveTaskVO create(MoveTaskCreateDTO dto) {
         return create(dto, "manual");
     }
 
-    /**
-     * 创建并下发移动任务（带来源标识）。
-     *
-     * @param source manual=前端手动；rms:{task_id}=RMS 任务派发；charge:{chargeTaskId}=充电内部导航。
-     *               任务页据此区分手动/调度，并把同一 RMS 任务的多阶段执行（导航→充电）关联展示。
-     */
     public MoveTaskVO create(MoveTaskCreateDTO dto, String source) {
-        // 停用（急停/维修中）拦截：不下发，直接报错给用户
         if (operationalService.isDecommissioned()) {
             throw new IllegalStateException(
                     "机器人已停用（" + operationalService.getReason() + "），无法下发移动任务，请先点击「启动」恢复");
@@ -156,19 +136,15 @@ public class MoveTaskService {
         if (status == null || !status.poseInitialized()) {
             throw new IllegalStateException("机器人定位未收敛（pose_initialized=false），禁止下发导航指令");
         }
-        // 模式闸门：切图（RELOCALIZING）/建图（MAPPING）期间机器人会拒绝导航，这里提前拦下并给出原因
         if (telemetry.isStatusFresh(props.getStatusFreshMs()) && status.mode() != null
                 && !"NAVIGATION".equals(status.mode())) {
             throw new IllegalStateException("机器人 mode=" + status.mode()
                     + "（切图/建图中），禁止下发导航指令，请等待回到 NAVIGATION");
         }
-        // 机械臂归位联锁：臂展开/动作中时移动作业可能撞击人员/设施（真机安全语义）
         if (armStateMonitor != null && !armStateMonitor.movementAllowed()) {
             throw new IllegalStateException("机械臂未归位（arm_state=" + armStateMonitor.state()
                     + "），禁止移动作业，请先收臂归位");
         }
-        // 地图一致性闸门：机器人加载的地图必须与上位机导航基准一致
-        // （同名点位在两张图上坐标对不上 → 导航到错误物理位置乱撞）
         if (mapAlignmentGuard != null) {
             mapAlignmentGuard.requireAligned();
         }
@@ -215,7 +191,6 @@ public class MoveTaskService {
                 endPointSingle = dto.endPoint() == null || dto.endPoint();
             }
             case MoveTask.TYPE_FREE -> {
-                // 自由到点：机器人自主规划路径（edge_type=FREE，走 Nav2 planner 而非边控制器）
                 if (dto.x() == null || dto.y() == null) {
                     throw new IllegalArgumentException("FREE 任务必须携带 x / y");
                 }
@@ -232,7 +207,6 @@ public class MoveTaskService {
                 if (dto.pathId() == null) {
                     throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id");
                 }
-                // 存在性 + 部署校验：V2 优先（map_path），V1 兜底（nav_path）
                 com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(dto.pathId());
                 if (v2Path != null) {
                     if (!com.agv.navdeployer.metadata.entity.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
@@ -292,7 +266,6 @@ public class MoveTaskService {
         return MoveTaskVO.from(task);
     }
 
-    /** 取消在途任务：先 cancel_action_goal，终态由 result 确认；超时未确认则强制终结。 */
     public MoveTaskVO cancel(Long id) {
         TaskRuntime runtime = activeRuntimes.get(id);
         if (runtime == null) {
@@ -305,7 +278,6 @@ public class MoveTaskService {
         return MoveTaskVO.from(runtime.task);
     }
 
-    /** 当前在途任务（无则 data=null）。 */
     public MoveTaskVO active() {
         if (!activeRuntimes.isEmpty()) {
             TaskRuntime runtime = activeRuntimes.values().iterator().next();
@@ -331,8 +303,6 @@ public class MoveTaskService {
     public MoveTaskVO get(Long id) {
         return MoveTaskVO.from(findOrThrow(id));
     }
-
-    // ==================== 内部执行逻辑（worker 线程） ====================
 
     private void dispatchSegment(TaskRuntime runtime, int seq) {
         MoveTask task = runtime.task;
@@ -411,7 +381,6 @@ public class MoveTaskService {
         MoveTask task = runtime.task;
         String terminal = terminalStatus(goalStatus, runtime.cancelRequested, runtime.timeoutRequested);
         if (MoveTask.STATUS_SUCCEEDED.equals(terminal) && seq < runtime.segments.size()) {
-            // FOLLOW_PATH：本段成功，继续下一段（end_point 只在最后一段生效）
             dispatchSegment(runtime, seq + 1);
             publishTaskEvent(task);
             return;
@@ -467,13 +436,11 @@ public class MoveTaskService {
     }
 
     private List<SegmentPlan> buildPathPlan(Long pathId, Double maxSpeedOverride) {
-        // 优先尝试 V2 多楼层路线（map_path + map_path_segment，含曲线贝塞尔）
         List<SegmentPlan> v2Plan = buildV2PathPlan(pathId, maxSpeedOverride);
         if (!v2Plan.isEmpty()) {
             log.info("FOLLOW_PATH 使用 V2 路线: pathId={}, segments={}", pathId, v2Plan.size());
             return v2Plan;
         }
-        // 回落 V1（nav_path + nav_path_edge）
         List<PathEdgeVO> edges = navPathService.loadEdgeVOs(pathId);
         if (edges.isEmpty()) {
             return List.of();
@@ -507,11 +474,6 @@ public class MoveTaskService {
         return plans;
     }
 
-    /**
-     * V2 路线执行计划（map_path_segment → SegmentPlan）：
-     * 段链 = 途经点位序列，段属性（曲线/限速/倒车等）完整映射；
-     * CURVE 段的 control_points（JSON [[x,y],...]）解析为贝塞尔切点下发机器人。
-     */
     private List<SegmentPlan> buildV2PathPlan(Long pathId, Double maxSpeedOverride) {
         com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(pathId);
         if (v2Path == null) {
@@ -524,7 +486,6 @@ public class MoveTaskService {
         if (segments.isEmpty()) {
             return List.of();
         }
-        // 批量加载途经点位
         List<Long> waypointIds = new ArrayList<>();
         for (var segment : segments) {
             waypointIds.add(segment.getSourceWaypointId());
@@ -545,7 +506,6 @@ public class MoveTaskService {
                 throw new IllegalStateException("V2 路线段引用的点位不存在，数据不一致: pathId=" + pathId);
             }
             Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride : segment.getMaxSpeed();
-            // 控制点解析（JSON [[x,y],...] → ControlPoint 列表）
             List<ControlPoint> controlPoints = parseV2ControlPoints(segment.getControlPoints());
             plans.add(new SegmentPlan(source.getWaypointCode(), target.getWaypointCode(),
                     target.getX(), target.getY(), target.getYaw(),
@@ -558,7 +518,6 @@ public class MoveTaskService {
         return plans;
     }
 
-    /** V2 控制点 JSON 解析：[[x1,y1],[x2,y2]] → List<ControlPoint>；空/异常回退空列表。 */
     private static List<ControlPoint> parseV2ControlPoints(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
@@ -578,10 +537,6 @@ public class MoveTaskService {
         }
     }
 
-    /**
-     * FOLLOW_PATH 起点纠偏（可单测）：机器人距首段源点超过阈值时，在最前插入一段"驶向起点"，
-     * 到点朝向取首段行进方向；否则沿线控制器会从当前位置倒退蹭线（表现为在一段上来回移动）。
-     */
     static List<SegmentPlan> withStartHopIfNeeded(List<SegmentPlan> segments,
                                                   Double robotX, Double robotY, double radiusMeters) {
         if (robotX == null || robotY == null || segments.isEmpty()) {
@@ -605,11 +560,7 @@ public class MoveTaskService {
         return withHop;
     }
 
-    /**
-     * 路线反向执行计划（可单测）：段序倒排，目标取原源点位姿，控制点倒序
-     * （贝塞尔 B,C2,C1,A 与 A,C1,C2,B 为同一几何曲线），reverse 置 false——已自行倒转，
-     * 不再让固件重复反转控制点。
-     */
+    // 倒序等价变换：贝塞尔控制点须同步反转；reverse 置 false 防机器人侧对已反转段二次反转
     static List<SegmentPlan> reversePathPlan(List<SegmentPlan> segments) {
         List<SegmentPlan> out = new ArrayList<>(segments.size());
         for (int i = segments.size() - 1; i >= 0; i--) {
@@ -627,10 +578,6 @@ public class MoveTaskService {
         return out;
     }
 
-    /**
-     * 就近端点判定（可单测）：机器人距路线终点比起点更近时返回 true（反向执行整条路线）。
-     * 调试验证语义：从任一端起步、全段走完，站在终点就往回走，支持往复验证。
-     */
     static boolean shouldReverseForNearestEnd(List<SegmentPlan> segments, Double robotX, Double robotY) {
         if (robotX == null || robotY == null || segments.isEmpty()) {
             return false;
@@ -660,7 +607,6 @@ public class MoveTaskService {
         return task;
     }
 
-    /** goal 终态映射（独立成方法便于单测）：4 成功 / 5 取消（超时优先记 TIMEOUT）/ 6 或其他失败。 */
     static String terminalStatus(int goalStatus, boolean cancelRequested, boolean timeoutRequested) {
         return switch (goalStatus) {
             case 4 -> MoveTask.STATUS_SUCCEEDED;
@@ -681,7 +627,6 @@ public class MoveTaskService {
         return StringUtils.hasText(message) ? prefix + ": " + message : prefix;
     }
 
-    /** 一段执行计划：目标点位坐标 + 边参数；sx/sy/syaw 为源点位姿（无源点时 NaN，供起点纠偏与反向执行）。 */
     record SegmentPlan(
             String sourceCode,
             String targetCode,
@@ -699,11 +644,9 @@ public class MoveTaskService {
     ) {
     }
 
-    /** 在途任务运行时。 */
     private static final class TaskRuntime {
         final MoveTask task;
         final List<SegmentPlan> segments;
-        /** 单段任务的 end_point（默认 true）；FOLLOW_PATH 恒为最后一段 true。 */
         final boolean endPointSingle;
         volatile int currentSeq;
         volatile String currentGoalId = "";

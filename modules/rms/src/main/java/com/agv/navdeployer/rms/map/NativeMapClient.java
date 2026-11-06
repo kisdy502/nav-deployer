@@ -5,7 +5,6 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.util.regex.Pattern;
 
-/** HTTP transport to the Lightning map directory on the robot paired with this host. */
 public final class NativeMapClient {
     private static final Pattern MAP_NAME = Pattern.compile("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}");
     private static final int MAX_BYTES = 128 * 1024 * 1024;

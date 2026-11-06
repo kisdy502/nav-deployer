@@ -143,10 +143,6 @@ public class UserService {
         }
     }
 
-    /**
-     * externalEndpoint 必须是浏览器可达的地址（由 Controller 依据请求 Host 推导），
-     * 预签名与 host 绑定，签名后不可再改写。显式指定 region，签名纯本地计算。
-     */
     @Transactional(readOnly = true)
     public AvatarUrlVO getAvatarUrl(Long id, String externalEndpoint) {
         User user = findOrThrow(id);

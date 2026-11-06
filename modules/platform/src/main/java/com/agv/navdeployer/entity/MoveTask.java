@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 移动任务：TO_POINT / GOAL / FOLLOW_PATH，以 command_id 与 follow_edge result 对账。 */
 @TableName("move_task")
 @Getter
 @Setter
@@ -21,7 +20,6 @@ public class MoveTask {
     public static final String TYPE_TO_POINT = "TO_POINT";
     public static final String TYPE_GOAL = "GOAL";
     public static final String TYPE_FOLLOW_PATH = "FOLLOW_PATH";
-    /** 自由到点：不走边控制器，机器人自主规划路径到目标位姿（edge_type=FREE） */
     public static final String TYPE_FREE = "FREE";
 
     public static final String STATUS_CREATED = "CREATED";
@@ -35,7 +33,6 @@ public class MoveTask {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    /** follow_edge 的 command_id（uuid），全局唯一。 */
     private String taskNo;
 
     private String taskType;
@@ -62,17 +59,10 @@ public class MoveTask {
 
     private String errorMessage;
 
-    /** rosbridge send_action_goal 的 id（当前段）。 */
     private String goalId;
 
-    /**
-     * 来源标识：manual=前端手动创建；rms:{task_id}=RMS 下发任务派发；
-     * charge:{chargeTaskId}=充电任务的内部导航（去桩路线/接近段）。
-     * 任务页据此区分手动/调度，并把同一 RMS 任务的多阶段执行关联展示。
-     */
     private String source;
 
-    /** FOLLOW_PATH 进度：当前段 / 总段数（从 1 开始）。 */
     private Integer segmentSeq;
 
     private Integer segmentTotal;

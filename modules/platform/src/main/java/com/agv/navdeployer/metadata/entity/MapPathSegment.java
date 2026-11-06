@@ -11,10 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/**
- * 路线段：相邻两个途经点位之间的段。
- * 合并旧 nav_path_edge 的曲线能力：STRAIGHT / CURVE + 贝塞尔控制点。
- */
 @TableName("map_path_segment")
 @Getter
 @Setter
@@ -29,20 +25,16 @@ public class MapPathSegment {
 
     private Long pathId;
 
-    /** 段序号，从 1 开始。 */
     private Integer seq;
 
     private Long sourceWaypointId;
 
     private Long targetWaypointId;
 
-    /** STRAIGHT / CURVE。 */
     private String segmentType;
 
-    /** CURVE 时 JSON [{x,y},...]，1~2 个贝塞尔控制点。 */
     private String controlPoints;
 
-    /** 段级限速（空 = 用路线限速/楼层默认）。 */
     private Double maxSpeed;
 
     private Boolean backUp;

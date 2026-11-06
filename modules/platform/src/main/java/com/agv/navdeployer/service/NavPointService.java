@@ -19,9 +19,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 
-/**
- * 点位部署：CRUD + 把机器人当前位姿标记为点位（无页面时的实操建点方式）。
- */
 @Service
 public class NavPointService {
 
@@ -56,7 +53,6 @@ public class NavPointService {
         return NavPointVO.from(point);
     }
 
-    /** 读 /tf→map 实时位姿建点。 */
     @Transactional(rollbackFor = Exception.class)
     public NavPointVO createFromCurrentPose(NavPointFromPoseDTO dto) {
         requireMap(dto.mapId());
@@ -118,7 +114,6 @@ public class NavPointService {
         return NavPointVO.from(point);
     }
 
-    /** 删除点位（被路线边引用时拒绝）。 */
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         NavPoint point = findOrThrow(id);

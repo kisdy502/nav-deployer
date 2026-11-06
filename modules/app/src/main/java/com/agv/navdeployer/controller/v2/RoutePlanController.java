@@ -9,10 +9,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * V2 路径规划：Dijkstra 加权最短路径。
- * 支持：距离/时间最优、禁行区避让、减速区惩罚、跨楼层（电梯/楼梯/坡道）。
- */
 @Tag(name = "路径规划 v2", description = "基于已部署路线图的 Dijkstra 加权最短路径（时间代价最优）")
 @RestController
 @RequestMapping("/api/v2/route")

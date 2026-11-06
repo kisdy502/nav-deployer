@@ -24,10 +24,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * 配置可视化（只读）：RMS 开关/zenoh 连接、话题订阅、rosbridge 地址、充电参数等。
- * 面向运维——不改代码就能看本机实际生效的配置。
- */
 @Tag(name = "系统配置", description = "当前生效配置总览（只读）：RMS/zenoh、机器人连接、话题、充电参数")
 @RestController
 @RequestMapping("/api/v1/system")
@@ -191,8 +187,6 @@ public class SystemConfigController {
             charge.put("max_duration_ms", chargeProps.getMaxDurationMs());
         return charge;
     }
-
-    // ==================== zenoh json5 宽松解析 ====================
 
     private String readZenohConfig(String configFile) {
         try {

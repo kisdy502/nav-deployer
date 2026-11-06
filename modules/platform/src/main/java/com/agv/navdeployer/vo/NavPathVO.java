@@ -25,7 +25,6 @@ public class NavPathVO {
 
     private String status;
 
-    /** 有序边列表（列表接口不下发，详情接口下发）。 */
     private List<PathEdgeVO> edges;
 
     private LocalDateTime createdAt;

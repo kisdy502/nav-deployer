@@ -26,13 +26,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * RMS 对接装配：rms.enabled=false 时只建 Bean（registry/reporter 供内部查询），
- * 不建立 zenoh 会话。启用后由 {@link RmsRobotSession#ensureSession()} 常态维持。
- *
- * <p>三个网关按通信方向各管一摊：A=robot 发布（Report）、B=robot 查询（Service）、
- * C=RMS 查询应答（Command），Session 只做生命周期编排。
- */
 @Configuration
 @EnableConfigurationProperties(RmsProperties.class)
 public class RmsConfig {
@@ -60,11 +53,6 @@ public class RmsConfig {
                 robot.getRobotType(), robot.getRobotCode());
     }
 
-    /**
-     * 任务模板存储（真机机制：模板经 task_template/add 下发落盘，任务引用未下发的
-     * 模板时拒绝「类型 x 的任务模板 x 不存在」）。目录为机器人侧自行约定，
-     * 默认 data/rms-templates（rms.behavior.template-dir 可改）。
-     */
     @Bean
     public com.agv.navdeployer.rms.task.RmsTemplateStore rmsTemplateStore(RmsProperties props) {
         String dir = props.getBehavior().getTemplateDir();
@@ -181,11 +169,6 @@ public class RmsConfig {
         };
     }
 
-    /**
-     * 启动对账：上一进程留下的非终态 rms_task 记录已无运行时承载（重启即死），
-     * 收口为 failed 防止任务管理页出现永久 RUNNING 的幽灵记录。
-     * 对账失败只告警，不阻断启动（历史表是辅助记录）。
-     */
     @Bean
     public ApplicationRunner rmsTaskHistoryReconciliation(
             com.agv.navdeployer.mapper.RmsTaskRecordMapper mapper) {

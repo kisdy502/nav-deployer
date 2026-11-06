@@ -5,9 +5,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * 注册请求（对齐 qcrobotmock 的 buildRegisterPayload；空字段序列化时省略）。
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record RegisterRequest(
         String robotCode,

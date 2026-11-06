@@ -11,15 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/**
- * 地图一致性闸门：机器人当前加载的地图（/agv/status 遥测 map_name）必须与
- * 上位机导航基准图一致，否则同名点位坐标对不上，任务会导航到错误物理位置（乱走乱撞）。
- *
- * <p>导航基准图优先级：v2 PUBLISHED 地图（RMS 任务 / 充电 / 智能导航的规划基准，
- * SmartNavigationService 只在 PUBLISHED 地图上规划路线）→ v1 ACTIVE 地图（TO_POINT 基准）。
- * 基准图未关联 robot_map_name（无法比对）或机器人未上报地图名（遥测缺失/过期）时放行——
- * 只拦截「确认不一致」，不拦「无法确认」（避免误伤不上报 map_name 的旧机器人）。
- */
 @Component
 public class MapAlignmentGuard {
 
@@ -40,7 +31,6 @@ public class MapAlignmentGuard {
         this.navMapMapper = navMapMapper;
     }
 
-    /** 对齐状态（/robot/operational 与前端警示用）。 */
     public record Alignment(String state, String robotMapName, String refMapName,
                             String refSource, String message) {
         public static final String ALIGNED = "ALIGNED";
@@ -57,7 +47,6 @@ public class MapAlignmentGuard {
             return new Alignment(Alignment.UNKNOWN, null, null, null,
                     "机器人未上报当前地图名（或遥测过期），无法校验地图一致性");
         }
-        // v2 PUBLISHED：RMS / 充电 / 智能导航的规划基准
         MapMeta published = v2MapMapper.selectOne(Wrappers.lambdaQuery(MapMeta.class)
                 .eq(MapMeta::getStatus, MapMeta.STATUS_PUBLISHED).last("LIMIT 1"));
         if (published != null && !isBlank(published.getRobotMapName())) {
@@ -69,7 +58,6 @@ public class MapAlignmentGuard {
             return mismatch(robotMap, ref,
                     "v2 已发布地图「" + published.getMapName() + "」(PUBLISHED)");
         }
-        // 回退 v1 ACTIVE：TO_POINT 基准（周期对账通常已自动对齐）
         NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
                 .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE).last("LIMIT 1"));
         if (active != null && !isBlank(active.getRobotMapName())) {
@@ -85,10 +73,6 @@ public class MapAlignmentGuard {
                         + "请在地图管理中维护地图与机器人地图名的对应关系");
     }
 
-    /**
-     * 任务下发闸门：确认不一致时抛 {@link IllegalStateException}（消息随任务错误透传）。
-     * 无法确认（UNKNOWN）时放行。
-     */
     public void requireAligned() {
         Alignment alignment = current();
         if (Alignment.MISMATCH.equals(alignment.state())) {

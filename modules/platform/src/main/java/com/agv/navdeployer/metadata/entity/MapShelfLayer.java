@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 货架层（layers）：层索引 + 相对高度 + 存取边。 */
 @TableName("map_shelf_layer")
 @Getter
 @Setter
@@ -23,13 +22,10 @@ public class MapShelfLayer {
 
     private Long shelfId;
 
-    /** 层索引，从 0 开始（底层 0）。 */
     private Integer layerIndex;
 
-    /** 相对楼层基准面的高度偏移（米）。 */
     private Double elevation;
 
-    /** 存取边索引（指向 footprint.edges 的 edgeIndex）。 */
     private Integer accessEdge;
 
     private Integer numSlots;

@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Set;
 
-/** 区域约束管理：forbidden 禁行 / slowDown 减速 / ramp 坡道（坡道必须带坡道信息）。 */
 @Service
 public class MapZoneService {
 
@@ -130,7 +129,6 @@ public class MapZoneService {
         return zone;
     }
 
-    /** ramp 类型必须带坡道信息；非 ramp 类型忽略传入的坡道信息。 */
     private RampInfoDTO requireRampInfo(String type, RampInfoDTO rampInfo) {
         if (MapZone.TYPE_RAMP.equals(type)) {
             if (rampInfo == null) {
@@ -141,7 +139,6 @@ public class MapZoneService {
         return null;
     }
 
-    /** 禁行区限速固定 0；减速/坡道区未传时默认 0.3。 */
     private Double resolveMaxSpeed(String type, Double maxSpeed) {
         if (MapZone.TYPE_FORBIDDEN.equals(type)) {
             return 0.0;
@@ -165,7 +162,6 @@ public class MapZoneService {
             throw new IllegalArgumentException("区域类型不能为空");
         }
         String normalized = type.trim();
-        // 宽容输入：slow_down / slowdown / slowDown 视为同一类型
         if ("slow_down".equalsIgnoreCase(normalized) || "slowdown".equalsIgnoreCase(normalized)) {
             return MapZone.TYPE_SLOW_DOWN;
         }

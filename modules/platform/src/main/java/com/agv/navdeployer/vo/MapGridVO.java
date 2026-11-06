@@ -7,7 +7,6 @@ import lombok.Setter;
 
 import java.time.Instant;
 
-/** 实时/已存栅格的统一视图（/map 的 msg 结构展平，前端按行优先、y 翻转渲染）。 */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,7 +27,6 @@ public class MapGridVO {
 
     private Double originYaw;
 
-    /** -1 未知 / 0 空闲 / 1~100 占据，行优先，第 0 行在世界坐标最下方。 */
     private int[] data;
 
     private Instant receivedAt;

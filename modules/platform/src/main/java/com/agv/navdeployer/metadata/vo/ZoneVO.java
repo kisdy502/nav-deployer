@@ -7,7 +7,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 
 import java.util.List;
 
-/** 区域约束视图（vertices/rampInfo 从存库 JSON 解析）。 */
 public record ZoneVO(Long id,
                      Long mapId,
                      Long floorId,

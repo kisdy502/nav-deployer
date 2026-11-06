@@ -19,13 +19,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/**
- * RMS 任务指令处理（防烂铁律③：只编排，不执行——移动全部委托 MoveTaskService）。
- *
- * <p>生命周期：idle →(start) running →(完成/失败) completed/failed → result_report；
- * pause = 取消内部移动并置 paused；resume = 按任务目标快照重新下发移动（降级语义，
- * 见 docs/rms-integration.md §3.3）；stop = 取消并置 canceled。
- */
 @Component
 public class RmsTaskService {
 
@@ -37,22 +30,15 @@ public class RmsTaskService {
     private final RobotStateView stateView;
     private final MoveTaskService moveTaskService;
     private final RmsProperties props;
-    /** 机械臂归位联锁（可空：独立装配无此 Bean 时跳过受理闸门，MoveTaskService 闸门仍兜底） */
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    /** 机械臂指令通道与遥测（质检三阶段序列用；可空=无臂环境退化为纯停留模拟） */
     private final com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher;
     private final com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
-    /** 智能导航（路线优先，回落直线；navigate / return_home 用） */
     private final com.agv.navdeployer.service.SmartNavigationService smartNavigation;
-    /** 充电任务编排（charge / replace_battery 用；与前端「去充电」共用底层链路） */
     private final com.agv.navdeployer.service.ChargeService chargeService;
-    /** 机器人运营状态（停用/恢复）：停用时拒绝新任务 */
     private final com.agv.navdeployer.service.RobotOperationalService operationalService;
-    /** 地图一致性闸门（可空：独立装配无此 Bean 时跳过；机器人地图 vs 导航基准图，不一致时错误透传 RMS） */
     private final com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard;
 
-    /** 执行与轮询线程：与 RMS query 回调线程隔离，保证 queryable 快速回复 */
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "rms-task-worker");
@@ -60,7 +46,6 @@ public class RmsTaskService {
                 return thread;
             });
 
-    /** task_template/add 下发的模板存储（真机机制：落盘 + 任务引用校验）。 */
     private final RmsTemplateStore templateStore;
 
     public RmsTaskService(RmsTaskRegistry registry,
@@ -93,7 +78,6 @@ public class RmsTaskService {
         this.templateStore = templateStore;
     }
 
-    /** 地图一致性前置闸门：机器人地图 ≠ 导航基准图时拒绝并透传原因（同名点位坐标错位会乱撞）。 */
     private BodyReply mapGate() {
         if (mapAlignmentGuard == null) {
             return null;
@@ -107,21 +91,6 @@ public class RmsTaskService {
         }
     }
 
-    /**
-     * 模板存在性校验（对齐真机验证机制，真机实测报文）：
-     * 任务引用未下发的模板时<b>受理成功、异步失败</b>——经 result_report 上报
-     * {@code action_status=4}（通用 failed）与 "template not found" 消息。
-     * 仿真侧消息更详细（中文 + 模板类型 + 标识）：
-     * 「任务模板不存在：类型 charge 的任务模板 back-charge（id=…）未下发…」。
-     * 模板标识优先 template_code，缺省回退任务类型名。仿真限制：无法解析真机行为树
-     * 模板的内部编排（充电点/质检动作在模板里），因此只做存在性校验。
-     *
-     * <p>校验范围（移动与业务解耦）：仅 task_type=action 的业务阶段校验
-     * （charge / replace_battery / quality_inspection）。调度负责规划与移动——
-     * navigate 阶段无论携带什么任务流模板都不校验、纯移动执行（新架构移动指令不带
-     * 模板；旧架构兼容带模板的移动报文同样放行）；业务层在移动完成后下发的
-     * start-activity（action）才携带模板并校验。
-     */
     private boolean templateMissing(RmsTask task) {
         if (!task.isAction()) {
             return false;
@@ -146,7 +115,6 @@ public class RmsTaskService {
                 + " 未下发，请先通过 task_template/add 下发模板";
     }
 
-    /** 移动类任务（navigate/charge/replace_battery/return_home）的机械臂归位闸门：行为树 action 任务不拦。 */
     private BodyReply armGate(RmsTask task) {
         if (armStateMonitor == null || task.isArmGateExempt()) {
             return null;
@@ -159,8 +127,6 @@ public class RmsTaskService {
         log.warn("rms task {} rejected by arm gate: {}", task.taskId(), msg);
         return BodyReply.failure(409, msg);
     }
-
-    // ==================== queryable 入口（同步快速返回） ====================
 
     public BodyReply statusQuery() {
         return BodyReply.success("success", stateView.bodyStatusData());
@@ -179,12 +145,6 @@ public class RmsTaskService {
         return BodyReply.success("success", allTemplates());
     }
 
-    /**
-     * task_template/add：下发并存储模板（template_code 唯一键，同 code 覆盖）。
-     * 真机机制：模板内容（行为树 XML 等）由上层下发，机器人侧落盘存档；
-     * 之后任务引用该模板才能执行（见 startTask 的模板存在性校验）。
-     * 内容字段从 parameters 兼容多个常见键名（template_content/content/template/xml）。
-     */
     public BodyReply addTemplate(TaskCommandRequest request) {
         String code = request.templateCode() != null ? request.templateCode()
                 : request.parameterText("template_code");
@@ -207,7 +167,6 @@ public class RmsTaskService {
         return BodyReply.success("template add success", Map.of("template_code", code));
     }
 
-    /** task_template/delete：按 template_code 或 template_id 删除（信息从 Base Key 传递）。 */
     public BodyReply deleteTemplate(String templateCode) {
         if (templateCode == null || templateCode.isBlank()) {
             return BodyReply.failure(400, "template_code must not be blank");
@@ -218,7 +177,6 @@ public class RmsTaskService {
                 Map.of("template_code", templateCode));
     }
 
-    /** 覆盖后的模板查询：已下发（落盘）模板 + 内置模板。 */
     private List<Map<String, String>> allTemplates() {
         List<Map<String, String>> all = new java.util.ArrayList<>(builtinTemplates());
         templateStore.list().forEach(template -> all.add(new java.util.LinkedHashMap<>(Map.of(
@@ -262,7 +220,6 @@ public class RmsTaskService {
         }
         RmsTask existing = registry.find(request.taskId()).orElse(null);
         if (existing != null && !existing.status().terminal()) {
-            // 同 ID 在途时拒绝覆盖：旧实例的执行仍在跑，静默替换会留下孤儿 move task
             return BodyReply.failure(409, "task_id in flight (status="
                     + existing.status().wireName() + "), stop first");
         }
@@ -276,7 +233,6 @@ public class RmsTaskService {
         if (request.taskId() == null || request.taskId().isBlank()) {
             return BodyReply.failure(400, "task_id must not be blank");
         }
-        // 停用校验：维修中/退役的机器人拒绝新任务
         if (operationalService.isDecommissioned()) {
             log.warn("rms task {} rejected: robot decommissioned ({})", request.taskId(), operationalService.getReason());
             return BodyReply.failure(503,
@@ -284,8 +240,6 @@ public class RmsTaskService {
         }
         RmsTask task = registry.find(request.taskId()).orElse(null);
         if (task == null || task.status().terminal()) {
-            // RMS 多阶段作业复用 task_id（质检作业 = 先导航后质检，两阶段同 ID）：
-            // 旧实例已终态时按新阶段的模板/参数重建任务；首次直达 start（免 add）同路径
             if (task != null) {
                 log.info("rms task {} reused for next stage: old={} new template={} type={}",
                         task.taskId(), task.status().wireName(),
@@ -309,10 +263,6 @@ public class RmsTaskService {
         if (armRejected != null) {
             return armRejected;
         }
-        // 真机模板校验（实测报文对齐，双通道）：任务引用未下发的模板时——
-        // 1) task/start 同步回包失败：status=2 + template not found 消息（真机原样）；
-        // 2) 任务收口为 failed 并异步 result_report：action_status=4 + 中文详细消息。
-        // 真机两条都会发（result_report 甚至先于 start 回包到达），上位机同构。
         if (templateMissing(task)) {
             log.warn("rms task {} failed: template not downloaded (type={}, code={})",
                     task.taskId(), task.taskTemplateType(), task.templateCode());
@@ -322,7 +272,6 @@ public class RmsTaskService {
         logRmsCommand("task/start", task);
         registry.transition(task.taskId(), RmsTaskStatus.RUNNING);
         final String startedTaskId = task.taskId();
-        // 执行异步化：queryable 回调立即返回 running，结果经 result_report 回流
         worker.execute(() -> execute(startedTaskId));
         return BodyReply.success("started", task.toInfoReport());
     }
@@ -380,15 +329,11 @@ public class RmsTaskService {
         return BodyReply.success("stopped", task.toInfoReport());
     }
 
-    // ==================== 运维查询/复位（任务管理页 REST 用） ====================
-
-    /** 唯一在途任务（RUNNING/PAUSED），无则 null。 */
     public RmsTaskVO activeTaskView() {
         RmsTask active = registry.activeTask();
         return active == null ? null : RmsTaskVO.from(active);
     }
 
-    /** 执行历史（DB 记录，新→旧；含本会话与跨重启）。 */
     public List<RmsTaskVO> listTasks(int limit) {
         return registry.history(limit).stream()
                 .map(record -> new RmsTaskVO(
@@ -402,10 +347,6 @@ public class RmsTaskService {
                 .toList();
     }
 
-    /**
-     * 人工复位：把所有非终态任务强制收口为 canceled（取消内部移动/充电、上报 RMS），
-     * 释放 busy 闸门让上层可继续下发新任务。适用：任务卡中间态、状态错乱自愈。
-     */
     public synchronized List<RmsTaskVO> resetInFlight(String reason) {
         List<RmsTask> inFlight = registry.all().stream()
                 .filter(task -> !task.status().terminal())
@@ -458,8 +399,6 @@ public class RmsTaskService {
         return BodyReply.success("task deleted", task.toInfoReport());
     }
 
-    // ==================== 异步执行（worker 线程） ====================
-
     private void execute(String taskId) {
         RmsTask task = registry.find(taskId).orElse(null);
         if (task == null || task.status() != RmsTaskStatus.RUNNING) {
@@ -469,22 +408,14 @@ public class RmsTaskService {
             simulateInspection(task);
             return;
         }
-        // 行为树 action 任务（fetch_cable 取放线束等）：协议不携带 destination，
-        // 占位仿真执行（固定延时后 COMPLETED，仅上报简单状态信封，无 result_report）
         if (task.isArmGateExempt()) {
             simulateAction(task);
             return;
         }
-        // 导航语义优先于充电模板判定：充电任务流指定起点（nav_start_point）时，
-        // 适配器先下发的导航任务 task_type=navigate，但可能仍携带任务流的 charge
-        // 模板类型——此时只导航，完成正常上报 COMPLETED（result_report），不触发充电；
-        // 充电由上层后续 start-activity 的充电任务执行（原地充电，见 executeCharge）
         if (task.isNavigation()) {
             dispatchMove(task);
             return;
         }
-        // 真机模板校验机制（实测报文对齐）：任务引用未下发的模板时受理成功、异步失败，
-        // result_report 上报 action_status=4（通用 failed，真机口径）+ 自定义中文消息
         if (task.isTemplate("charge") || task.isTemplate("replace_battery")) {
             if (templateMissing(task)) {
                 log.warn("rms task {} failed: template not downloaded (type={}, code={})",
@@ -492,16 +423,12 @@ public class RmsTaskService {
                 fail(task, RmsTaskStatus.FAILED, templateMissingMessage(task));
                 return;
             }
-            // charge / replace_battery：走充电任务编排（带目标自主导航到桩充电；
-            // 无目标原地充电——导航阶段已就位），与前端「去充电」共用 ChargeService 底层链路
             executeCharge(task);
             return;
         }
-        // return_home 等其余移动语义
         dispatchMove(task);
     }
 
-    /** navigate / return_home 统一移动派发（内部 move task + 完成轮询）。 */
     private void dispatchMove(RmsTask task) {
         String taskId = task.taskId();
         TaskCommandRequest.Destination destination = resolveDestination(task);
@@ -522,20 +449,10 @@ public class RmsTaskService {
                     destination.x(), destination.y(), destination.yaw());
             scheduleMovePoll(taskId, moveTask.getId());
         } catch (Exception exception) {
-            // MoveTaskService 的闸门（连接/定位/模式/占用）在这里拦截
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());
         }
     }
 
-    /**
-     * 充电任务执行（方案 B：调度分段）：
-     * - 携带 destination：单段导航（与 navigate 同构，导航不过去直接报错）→ 到桩校验 → 充电；
-     * - 未携带 destination：原地执行充电（真机行为树 Charge 节点语义）——调度分段导航已把车开到桩上，
-     *   本阶段直接开始充电，不再重复导航。
-     * 完成标志 = 对接充电桩成功（遥测 charging=true）即 COMPLETED 上报——充到多少电量、
-     * 何时断充由调度自行控制（如「充到 60% 允许作业」由调度跟踪电量再派新任务）。
-     * parameters.target_battery_pct / target_soc 仅记录展示（缺省用 charge.target_battery_pct 配置）。
-     */
     private void executeCharge(RmsTask task) {
         TaskCommandRequest.Destination destination = task.destination();
         try {
@@ -562,12 +479,10 @@ public class RmsTaskService {
                     chargeTask.targetBatteryPct());
             scheduleChargePoll(task.taskId(), chargeTask.id());
         } catch (Exception exception) {
-            // ChargeService/MoveTaskService 的闸门（连接/定位/模式/占用/已在充电）在这里拦截
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());
         }
     }
 
-    /** RMS 充电目标电量：parameters.target_battery_pct / target_battery / target_soc（可缺省）。 */
     private Double targetBatteryOf(RmsTask task) {
         for (String key : new String[]{"target_battery_pct", "target_battery", "target_soc"}) {
             String text = task.parameterText(key);
@@ -588,14 +503,12 @@ public class RmsTaskService {
 
     private void pollChargeTask(String taskId, Long chargeTaskId) {
         RmsTask task = registry.find(taskId).orElse(null);
-        // 任务被 pause/stop/删除：静默停止轮询（终态迁移由指令入口完成）
         if (task == null || task.status() != RmsTaskStatus.RUNNING
                 || !java.util.Objects.equals(task.internalChargeTaskId(), chargeTaskId)) {
             return;
         }
         com.agv.navdeployer.vo.ChargeTaskVO chargeTask = chargeService.get(chargeTaskId);
         if (chargeTask == null) {
-            // 充电任务实例被覆盖/消失（理论不该发生）：按失败收口
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, "内部充电任务丢失: id=" + chargeTaskId);
             return;
         }
@@ -608,7 +521,6 @@ public class RmsTaskService {
                     chargeTask.message() == null || chargeTask.message().isBlank()
                             ? "charge task failed" : chargeTask.message());
             case "CANCELLED" -> {
-                // 充电被打断/取消但 RMS 任务仍在跑（如新移动任务顶掉、底层手动取消）
                 task.setMessage(chargeTask.message() == null || chargeTask.message().isBlank()
                         ? "charge task cancelled" : chargeTask.message());
                 registry.transition(taskId, RmsTaskStatus.CANCELED);
@@ -636,7 +548,6 @@ public class RmsTaskService {
 
     private void pollMoveTask(String taskId, Long moveTaskId) {
         RmsTask task = registry.find(taskId).orElse(null);
-        // 任务被 pause/stop/删除：静默停止轮询（终态迁移由指令入口完成）
         if (task == null || task.status() != RmsTaskStatus.RUNNING
                 || !java.util.Objects.equals(task.internalMoveTaskId(), moveTaskId)) {
             return;
@@ -661,8 +572,6 @@ public class RmsTaskService {
                     moveError != null && !moveError.isBlank()
                             ? moveError : "move task " + moveStatus.toLowerCase());
             case "CANCELLED" -> {
-                // 内部移动被取消但 RMS 任务仍在跑（前端手动取消/被抢占；pause/stop 路径不会走到这里）：
-                // 必须收口上报，否则任务永远 RUNNING，后续所有 task/start 被 busy 闸门拒绝
                 log.warn("rms task {} internal move task {} cancelled by external command, abort rms task",
                         taskId, moveTaskId);
                 task.setMessage(moveError != null && !moveError.isBlank() ? moveError
@@ -671,7 +580,6 @@ public class RmsTaskService {
                 resultReporter.report(registry.find(taskId).orElse(task));
             }
             default -> {
-                // 防御：非活跃状态一律收口（避免未知终态导致无限轮询），活跃状态继续等
                 if (!"CREATED".equals(moveStatus) && !"DISPATCHED".equals(moveStatus)
                         && !"EXECUTING".equals(moveStatus)) {
                     log.warn("rms task {} internal move task {} unexpected status {}, abort rms task",
@@ -685,7 +593,6 @@ public class RmsTaskService {
         }
     }
 
-    /** 行为树 action 占位执行（fetch_cable 等无专用执行器的模板）：固定时长后完成，不移动。 */
     private void simulateAction(RmsTask task) {
         long dwellMs = Math.max(0L, props.getBehavior().getActionDurationMs());
         log.info("rms task {} simulated action start: template={} dwell={}ms",
@@ -698,14 +605,6 @@ public class RmsTaskService {
         });
     }
 
-    /** 质检占位执行：固定时长后完成（仿真机械臂接入后替换此方法）。 */
-    /**
-     * 质检作业仿真——单任务三阶段（对齐真机本体程序语义，云端只见一个 action 任务）：
-     * ① 展臂到质检位（arm_move + 到位等待）② 采集停留 ③ 收臂归位（arm_move + 到位等待）；
-     * 全部完成后 COMPLETED 并走既有 result_report → 上传 zip 闭环。
-     * 无臂环境（dispatcher/关节数据缺失）退化为纯停留模拟（保留旧行为）；
-     * 序列期间臂为 DEPLOYED/MOVING，移动联锁自动拒绝导航——正是真机安全语义。
-     */
     private static final double ARM_PHASE_SEC = 6.0;
 
     private void simulateInspection(RmsTask task) {
@@ -719,9 +618,8 @@ public class RmsTaskService {
                 return;
             }
             if (armAvailable) {
-                return; // 序列内已 fail 上报
+                return;
             }
-            // 无臂退化：纯停留
             if (!dwell(task, dwellMs)) {
                 return;
             }
@@ -729,7 +627,6 @@ public class RmsTaskService {
         });
     }
 
-    /** @return true=序列已收尾（成功或已 fail 上报）；false=任务被暂停/取消（各自已上报） */
     private boolean runInspectionSequence(RmsTask task, long dwellMs) {
         java.util.List<String> names = com.agv.navdeployer.sim.ArmStateMonitor
                 .armJointNamesSorted(armTelemetry.getJointStates());
@@ -755,7 +652,6 @@ public class RmsTaskService {
         return true;
     }
 
-    /** 角色顺序位姿 → 关节名排序顺序目标角；任一关节角色无法识别返回 null。 */
     private static double[] roleTargets(java.util.List<String> names, double[] rolePose) {
         if (rolePose == null || rolePose.length < 6) {
             return null;
@@ -771,7 +667,6 @@ public class RmsTaskService {
         return targets;
     }
 
-    /** 单个臂阶段：下发 arm_move → 轮询到位（容差同联锁）；拒绝/超时 → 任务 FAILED。 */
     private boolean armPhase(RmsTask task, java.util.List<String> names, String label, double[] targets) {
         try {
             RosCommandDispatcher.ArmMoveResult result = armDispatcher.armMove("left", targets, ARM_PHASE_SEC).join();
@@ -784,14 +679,13 @@ public class RmsTaskService {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, "arm " + label + " 下发失败: " + exception.getMessage());
             return false;
         }
-        // arm_move 时长是仿真时间；宿主机过载时 Gazebo RTF<1（如 0.3 时 6 仿真秒≈20 墙钟秒），
         // 到位等待必须按墙钟给足余量，否则仿真侧还在走就被判超时（AGV_NODE_FAILED 到位超时）。
         long deadline = System.currentTimeMillis() + Math.max(
                 (long) (ARM_PHASE_SEC * 1000) + 8000,
                 props.getBehavior().getArmPhaseWallClockTimeoutMs());
         while (System.currentTimeMillis() < deadline) {
             if (!dwell(task, 200)) {
-                return false; // 暂停/取消
+                return false;
             }
             SimAgvTelemetry.JointSnapshot joints = armTelemetry.getJointStates();
             if (joints == null) {
@@ -814,7 +708,6 @@ public class RmsTaskService {
         return false;
     }
 
-    /** 停留/等待：分片睡眠并检查任务仍 RUNNING（暂停/取消即中止，由对应入口上报）。 */
     private boolean dwell(RmsTask task, long ms) {
         long deadline = System.currentTimeMillis() + ms;
         while (System.currentTimeMillis() < deadline) {
@@ -857,7 +750,6 @@ public class RmsTaskService {
             try {
                 moveTaskService.cancel(moveTaskId);
             } catch (Exception exception) {
-                // 已完成/已取消的内部任务会抛异常，属正常
                 log.debug("cancel internal move task {} for rms task {}: {}",
                         moveTaskId, task.taskId(), exception.getMessage());
             }
@@ -867,7 +759,6 @@ public class RmsTaskService {
             try {
                 chargeService.cancel("rms task pause/stop: " + task.taskId());
             } catch (Exception exception) {
-                // 充电任务已终态时抛异常，属正常
                 log.debug("cancel internal charge task {} for rms task {}: {}",
                         chargeTaskId, task.taskId(), exception.getMessage());
             }

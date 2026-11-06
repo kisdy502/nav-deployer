@@ -5,10 +5,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.Map;
 
-/**
- * robot → RMS 的 query 同步回复（与 qcrobotmock 的 BodyReply 字节级一致）：
- * {@code {status:0, msg, timestamp, data}}，status=0 成功。
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record BodyReply(
         int status,
@@ -24,7 +20,6 @@ public record BodyReply(
         return new BodyReply(status, msg, Instant.now().toEpochMilli(), Map.of());
     }
 
-    /** 带业务 data 的失败回复（如日志收集拒绝时携带 collection_id/accepted/error_code） */
     public static BodyReply failure(int status, String msg, Object data) {
         return new BodyReply(status, msg, Instant.now().toEpochMilli(), data);
     }

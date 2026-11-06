@@ -11,14 +11,12 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 多楼层地图主表：版本信息 + 全局栅格元数据（栅格数据 gzip 存 MinIO）。 */
 @TableName("map")
 @Getter
 @Setter
 @NoArgsConstructor
 public class MapMeta {
 
-    /** DRAFT：编辑中；PUBLISHED：已发布使用中（全局唯一）；ARCHIVED：被替换归档。 */
     public static final String STATUS_DRAFT = "DRAFT";
     public static final String STATUS_PUBLISHED = "PUBLISHED";
     public static final String STATUS_ARCHIVED = "ARCHIVED";
@@ -33,27 +31,20 @@ public class MapMeta {
 
     private String mapName;
 
-    /** 坐标系类型，固定 map。 */
     private String coordinateSystem;
 
-    /** 坐标单位，固定 meters。 */
     private String unit;
 
-    /** 语义化版本号 v0.0.1 起，每次变更自动 +1。 */
     private String version;
 
     private String status;
 
-    /** 最后修改人。 */
     private String modifiedBy;
 
-    /** 来源：LIVE / ROBOT_SYNC / IMPORT / MIGRATED。 */
     private String source;
 
-    /** 机器人侧地图名（切图时下发给 /agv/load_map）。 */
     private String robotMapName;
 
-    /** 米/格。 */
     private Double resolution;
 
     private Integer width;
@@ -66,7 +57,6 @@ public class MapMeta {
 
     private Double originYaw;
 
-    /** MinIO 对象 key（gzip 的 OccupancyGrid JSON）。 */
     private String objectKey;
 
     private Long dataSize;

@@ -11,14 +11,12 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 部署地图（Cartographer 建图快照），栅格数据存 MinIO。 */
 @TableName("nav_map")
 @Getter
 @Setter
 @NoArgsConstructor
 public class NavMap {
 
-    /** DRAFT：已保存；ACTIVE：当前部署地图（全局唯一）；ARCHIVED：被替换归档。 */
     public static final String STATUS_DRAFT = "DRAFT";
     public static final String STATUS_ACTIVE = "ACTIVE";
     public static final String STATUS_ARCHIVED = "ARCHIVED";
@@ -32,10 +30,8 @@ public class NavMap {
 
     private String source;
 
-    /** 机器人侧地图名（maps_dir 三件套文件名主干，切图时下发给 /agv/load_map）。 */
     private String robotMapName;
 
-    /** 米/格。 */
     private Double resolution;
 
     private Integer width;
@@ -48,7 +44,6 @@ public class NavMap {
 
     private Double originYaw;
 
-    /** MinIO 对象 key（gzip 的 OccupancyGrid JSON）。 */
     private String objectKey;
 
     private Long dataSize;

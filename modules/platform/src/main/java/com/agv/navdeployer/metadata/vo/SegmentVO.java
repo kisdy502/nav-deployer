@@ -5,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.util.List;
 
-/** 路线段视图（含合并的曲线能力：segmentType/controlPoints/backUp/reverse）。 */
 public record SegmentVO(Long id,
                         Integer seq,
                         Long sourceWaypointId,

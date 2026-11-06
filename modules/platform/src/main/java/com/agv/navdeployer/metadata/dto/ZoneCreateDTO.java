@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
-/** 新建区域（type：forbidden/slowDown/ramp；vertices 至少 3 个顶点 [x,y]）。 */
 public record ZoneCreateDTO(
         @NotNull Long mapId,
         @NotNull Long floorId,

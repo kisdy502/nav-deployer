@@ -5,10 +5,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.Map;
 
-/**
- * 任务完成上报信封（put 到 task/{task_id}/result_report，
- * 对齐 qcrobotmock 的 taskResultReportEnvelope：{status:0, data, timestamp}）。
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TaskResultEnvelope(
         int status,

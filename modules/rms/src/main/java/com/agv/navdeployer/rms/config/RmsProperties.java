@@ -5,9 +5,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * RMS 对接配置。rms.enabled=false 时整条链路空载（默认）。
- */
 @ConfigurationProperties(prefix = "rms")
 public class RmsProperties {
 
@@ -58,20 +55,11 @@ public class RmsProperties {
         this.behavior = behavior;
     }
 
-    /**
-     * zenoh 会话参数。连接配置（endpoints/scouting/TLS/namespace 等）走 zenoh 标准做法：
-     * classpath 的 config-json5.json，或 config-file 指向外部文件——yaml 不再承载连接项。
-     */
     public static class Zenoh {
-        /** query-reply（注册/心跳查询）超时 */
         private long queryTimeoutMs = 5000;
-        /** 注册失败后是否继续运行（不上报 RMS） */
         private boolean continueWithoutRegister = false;
-        /** 注册 key */
         private String registerKey;
-        /** legacy key 前缀（.../robot/{code}/heartbeat 等） */
         private String robotKeyPrefix;
-        /** 外部 zenoh 配置文件路径（空 = classpath config-json5.json） */
         private String configFile;
 
         public long getQueryTimeoutMs() {
@@ -115,23 +103,12 @@ public class RmsProperties {
         }
     }
 
-    /**
-     * 机器人身份。
-     * robot_code：不配置（留空）——由 RMS 注册时分配，注册后自动切换到分配值。
-     * robot_sn：唯一硬件标识（RMS 去重键），跨重启不变 → RMS 按 SN 找到已有机器人走更新。
-     * 配置优先：rms.robot.robot_sn（yml 直接写值，或 ${RMS_ROBOT_SN:} 环境变量占位）非空即强制覆盖；
-     * 留空才回退 {@link #defaultSn()}——注意默认值所有实例共享，多机联调会汇到同一台机器人。
-     */
     public static class Robot {
-        /** 默认 SN 的固定种子：模拟一台"出厂"仿真底盘，所有实例生成相同 SN（见 {@link #defaultSn()}） */
         private static final String DEFAULT_SN_SEED = "nav-deployer-sim-chassis-001";
 
-        /** 留空 = RMS 分配（推荐） */
         private String robotCode = "";
-        /** 配置注入的 SN（已 trim）；null/blank = 未配置，getter 回退共享默认值 */
         private String robotSn;
         private String robotName = "robot";
-        /** body key 用：zioneer/{robot_type}/robot/{robot_code}/api/v1 */
         private String robotType = "qc-robot";
         private String model;
         private String hardwareVersion;
@@ -150,13 +127,11 @@ public class RmsProperties {
             this.robotCode = robotCode;
         }
 
-        /** 固定种子生成的默认 SN（32 位 hex，格式与真机一致；所有实例相同）。 */
         public static String defaultSn() {
             return java.util.UUID.nameUUIDFromBytes(DEFAULT_SN_SEED.getBytes())
                     .toString().replace("-", "");
         }
 
-        /** SN 是否由配置显式指定（false = 使用共享默认值，多机联调会共用同一台机器人）。 */
         public boolean isRobotSnConfigured() {
             return robotSn != null && !robotSn.isBlank();
         }
@@ -207,7 +182,6 @@ public class RmsProperties {
 
         public String getIp() {
             if (ip == null || ip.isBlank()) {
-                // 未配置时自动取本机 IP（注册信息展示用）
                 try {
                     return java.net.InetAddress.getLocalHost().getHostAddress();
                 } catch (Exception ignored) {
@@ -262,26 +236,13 @@ public class RmsProperties {
         }
     }
 
-    /** 心跳/状态上报周期。 */
     public static class Report {
         private long heartbeatIntervalMs = 5000;
         private long statusIntervalMs = 5000;
-        /** 是否同时发布 legacy key（...robot/{code}/status/report） */
         private boolean publishLegacyStatus = true;
-        /** 是否发布 body key（.../api/v1/status/report） */
         private boolean publishBodyStatus = true;
-        /** 排查开关：逐条打印心跳/状态上报结果（默认只打 30s 汇总） */
         private boolean verboseLog = false;
-        /**
-         * 周期类消息（RMS 轮询查询 status/pose/task_status 等、状态上报汇总）的日志节流间隔：
-         * 同一 key 每 intervalMs 最多 1 条 INFO。一次性指令（task/add、mapping/change…）
-         * 不受此限制、始终全量。建议 10000~30000ms。
-         */
         private long periodicLogIntervalMs = 30_000;
-        /**
-         * 周期上报「结果无变化」时的保底日志间隔（心跳/状态上报成功且内容同上次时，
-         * 拉长到该间隔打 1 条保底，不再每 30s 重复同样内容）。
-         */
         private long unchangedLogIntervalMs = 60_000;
 
         public long getPeriodicLogIntervalMs() {
@@ -341,30 +302,15 @@ public class RmsProperties {
         }
     }
 
-    /** 任务行为参数。 */
     public static class Behavior {
-        /** 质检占位执行时长（仿真机械臂就位前的模拟时长） */
         private long inspectionDurationMs = 8000;
-        /** 机械臂阶段到位等待的墙钟总时长下限：arm_move 时长是仿真时间，宿主机过载 RTF<1 时
-         *  需按墙钟给足（RTF 0.1 时 6 仿真秒≈60 墙钟秒），可按机器负载调整 */
         private long armPhaseWallClockTimeoutMs = 60000;
-        /** 行为树 action 占位执行时长（fetch_cable 等无专用执行器的模板） */
         private long actionDurationMs = 3000;
-        /** 质检模拟结果：OK / NG */
         private String inspectionResult = "OK";
-        /** 仿真质检图片目录（含子目录）：打包 zip 时随机取 2~3 张真实图片；为空或无图时回退占位图 */
         private String inspectionImageDir = "";
-        /** teach 采集样例目录（含子目录）：teach/capture 打包 zip 时取前几个文件；为空回退 application.yaml+runtime 信息 */
         private String teachSampleDir = "";
-        /**
-         * 任务模板存储目录（真机机制：模板由上层经 task_template/add 下发并落盘，
-         * 任务引用未下发的模板时提示"类型 x 的任务模板 x 不存在"）。
-         * 相对路径基于工作目录，机器人侧自行约定，上层无需感知。
-         */
         private String templateDir = "data/rms-templates";
-        /** 回家点坐标（return_home 模板目标） */
         private Pose homePose;
-        /** compatible_chargers 上报值 */
         private List<String> compatibleChargers = new ArrayList<>();
 
         public long getInspectionDurationMs() {

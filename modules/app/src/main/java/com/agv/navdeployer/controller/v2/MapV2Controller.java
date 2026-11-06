@@ -33,7 +33,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
-/** v2 多楼层地图管理：建图、全量树、发布、新格式 zip 包导入导出、旧版迁移。 */
 @Tag(name = "地图管理 v2", description = "多楼层地图元数据（新格式：楼层/点位/区域/货架/路线/楼层间连接）")
 @RestController
 @RequestMapping("/api/v2/maps")

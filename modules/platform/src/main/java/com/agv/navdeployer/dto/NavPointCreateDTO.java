@@ -5,7 +5,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
-/** 手动创建点位（map 系坐标，yaw 弧度）。 */
 public record NavPointCreateDTO(
         @NotNull(message = "map_id 不能为空") Long mapId,
         @NotBlank(message = "点位编码不能为空") @Size(max = 64) String pointCode,

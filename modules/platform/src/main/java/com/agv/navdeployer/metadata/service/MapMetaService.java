@@ -62,10 +62,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/**
- * v2 多楼层地图管理：建图（实时快照）、发布（全局唯一 PUBLISHED）、全量树加载、
- * 旧版 nav_map 迁移（点位类型映射 + 路线曲线字段合并）。
- */
 @Service
 public class MapMetaService {
 
@@ -134,8 +130,6 @@ public class MapMetaService {
         this.ticker = ticker;
     }
 
-    // ==================== 查询 ====================
-
     public List<MapV2VO> list() {
         return mapMetaMapper.selectList(Wrappers.lambdaQuery(MapMeta.class)
                         .orderByDesc(MapMeta::getId))
@@ -154,7 +148,6 @@ public class MapMetaService {
         return map;
     }
 
-    /** 编辑器一次拉取：地图 + 各楼层全量（点位/区域/货架/路线）+ 楼层间连接。 */
     public MapFullVO loadFull(Long id) {
         MapMeta map = requireMap(id);
         List<MapFloor> floors = floorMapper.selectList(Wrappers.lambdaQuery(MapFloor.class)
@@ -230,9 +223,6 @@ public class MapMetaService {
                 .toList();
     }
 
-    // ==================== 栅格 ====================
-
-    /** 已存栅格（解析为 MapGridVO，前端画布渲染用）。 */
     public MapGridVO getGrid(Long id) {
         MapMeta map = requireMap(id);
         if (map.getObjectKey() == null) {
@@ -246,7 +236,6 @@ public class MapMetaService {
         }
     }
 
-    /** 用实时栅格替换地图底图（保留全部元数据，版本 +1）。 */
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO replaceGridFromLive(Long id, String modifiedBy) {
         MapMeta map = requireMap(id);
@@ -270,7 +259,6 @@ public class MapMetaService {
         return MapV2VO.from(map);
     }
 
-    /** 从实时快照建图：栅格入 MinIO + 建图 + 默认楼层 F1。 */
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO createFromLive(MapCreateFromLiveDTO dto) {
         String mapName = dto.mapName().trim();
@@ -333,8 +321,6 @@ public class MapMetaService {
         floorMapper.insert(floor);
     }
 
-    // ==================== 元信息 / 发布 / 删除 ====================
-
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO update(Long id, MapUpdateDTO dto) {
         MapMeta map = requireMap(id);
@@ -359,7 +345,6 @@ public class MapMetaService {
         return MapV2VO.from(map);
     }
 
-    /** 发布（使用中）：全局唯一 PUBLISHED，其余已发布地图归档；版本 +1。 */
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO publish(Long id, String modifiedBy) {
         MapMeta map = requireMap(id);
@@ -390,7 +375,6 @@ public class MapMetaService {
         afterCommitOrNow(() -> gridStore.removeQuietly(map.getObjectKey()));
     }
 
-    /** RMS 上传按名定位：优先 robot_map_name，其次 map_name。 */
     public MapMeta findByUploadName(String mapName) {
         MapMeta byRobotName = mapMetaMapper.selectOne(Wrappers.lambdaQuery(MapMeta.class)
                 .eq(MapMeta::getRobotMapName, mapName).last("LIMIT 1"));
@@ -401,13 +385,6 @@ public class MapMetaService {
                 .eq(MapMeta::getMapName, mapName).last("LIMIT 1"));
     }
 
-    // ==================== 旧版迁移 ====================
-
-    /**
-     * 旧版 nav_map → v2 多楼层格式：
-     * 点位类型 NORMAL/WORK/CHARGER/HOME → normal/pickup/charge/storage；
-     * 路线边（含 STRAIGHT/CURVE + 贝塞尔控制点 + backUp/reverse）→ 路线段，曲线能力完整保留。
-     */
     @Transactional(rollbackFor = Exception.class)
     public MapV2VO migrateFromNavMap(Long navMapId, MapMigrateDTO dto) {
         NavMap legacy = navMapMapper.selectById(navMapId);
@@ -433,7 +410,6 @@ public class MapMetaService {
         map.setOriginX(legacy.getOriginX());
         map.setOriginY(legacy.getOriginY());
         map.setOriginYaw(legacy.getOriginYaw());
-        // 复制栅格（独立对象，旧图删除互不影响）
         try {
             byte[] json = navMapService.getGridData(legacy.getId()).json();
             byte[] compressed = GridObjectStore.gzip(json);
@@ -449,7 +425,6 @@ public class MapMetaService {
         MapFloor floor = floorMapper.selectList(Wrappers.lambdaQuery(MapFloor.class)
                 .eq(MapFloor::getMapId, map.getId())).get(0);
 
-        // 点位迁移（旧点位 id → 新点位 id 映射，供路线链转换）
         Map<Long, Long> pointIdToWaypointId = new HashMap<>();
         for (NavPoint point : navPointMapper.selectList(Wrappers.lambdaQuery(NavPoint.class)
                 .eq(NavPoint::getMapId, navMapId).orderByAsc(NavPoint::getId))) {
@@ -467,7 +442,6 @@ public class MapMetaService {
             pointIdToWaypointId.put(point.getId(), waypoint.getId());
         }
 
-        // 路线迁移：边链 → 途经点位链 + 段（曲线字段合并）
         int migratedPaths = 0;
         for (NavPath legacyPath : navPathMapper.selectList(Wrappers.lambdaQuery(NavPath.class)
                 .eq(NavPath::getMapId, navMapId).orderByAsc(NavPath::getId))) {
@@ -478,7 +452,6 @@ public class MapMetaService {
             if (edges.isEmpty()) {
                 continue;
             }
-            // 旧点位 id 链 → 新点位 id 链（任一端点缺失则跳过该路线）
             List<Long> chain = new ArrayList<>();
             chain.add(edges.get(0).getSourcePointId());
             edges.forEach(edge -> chain.add(edge.getTargetPointId()));
@@ -530,7 +503,6 @@ public class MapMetaService {
         return MapV2VO.from(map);
     }
 
-    /** 旧控制点 JSON [{"x":..,"y":..}] → 新 [[x,y]]。 */
     private static String convertControlPoints(String legacyJson) {
         if (legacyJson == null || legacyJson.isBlank()) {
             return null;
@@ -547,7 +519,6 @@ public class MapMetaService {
         }
     }
 
-    /** v1 类型 → v2 新词表映射：WORK(作业点)→workstation、HOME(待命/归巢)→parking、NORMAL(普通)→path。 */
     private static String legacyWaypointType(String legacyType) {
         if (legacyType == null) {
             return MapWaypoint.TYPE_PATH;

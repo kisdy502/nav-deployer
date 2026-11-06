@@ -25,30 +25,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
-/**
- * 调度系统地图适配器（蓝心底盘 zip 格式，样例 map_0728.zip）。
- *
- * <p>包结构（六件套，全部以地图名 <name> 为前缀）：
- * <pre>
- *   <name>.pgm          栅格（P5，254=空/0=占据/205=未知）
- *   <name>.png          同尺寸灰度预览
- *   <name>.yaml         元数据（OpenCV %YAML:1.0 风格 + map_scan_plane 专有键）
- *   <name>.yaml.lxmap   拓扑：Topology-Map 头 + Cairn Goal(点位)/Route(路线) 行
- *   <name>.feature.json 特征容器模板（反光板/禁区/虚拟墙，固定空模板）
- *   <name>.json         点位/路线属性 schema 模板（调度工具链定义，与地图无关）
- * </pre>
- *
- * <p>lxmap 的 Cairn 行是空格分隔的自定义文本（非 JSON/标准 YAML）。固定字段及
- * 行尾属性严格按调度系统样例生成；尤其 Goal 的 function_ 数值是服务端识别点位语义的
- * 唯一依据，不能只把类型写进自定义 JSON。导入解析读取固定字段并宽松容错。
- */
 @Component
 public class ScheduleMapAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(ScheduleMapAdapter.class);
     private static final String SCHEMA_RESOURCE = "schedule/schedule-map-schema.json";
     private static final String FEATURES_RESOURCE = "schedule/schedule-map-features.json";
-    /** Route 行第 10 字段（样例值 0.6，推断为限速 m/s）缺省值 */
     private static final double DEFAULT_ROUTE_SPEED = 0.6;
     private static final int GOAL_TYPE_PATH_MARKER = 0;
     private static final int GOAL_TYPE_WORKSTATION = 1;
@@ -58,8 +40,6 @@ public class ScheduleMapAdapter {
             "{\"quadrant_divide_angle\":\"0,90,180,270\"}";
     private static final String DEFAULT_ROUTE_ATTRIBUTES =
             "{\"shelf_posture\":0,\"path_width\":100,\"cost\":1,\"empty_cost\":1,\"full_cost\":1}";
-
-    // ==================== 导出：我方数据 → 调度 zip ====================
 
     public byte[] exportZip(String mapName,
                             MapGridVO grid,
@@ -80,7 +60,6 @@ public class ScheduleMapAdapter {
         return buffer.toByteArray();
     }
 
-    /** P5 灰度：占据(>65)→0 黑，空闲(<20)→254 白，未知(-1)→205，中间按概率线性取反。 */
     private byte[] buildPgm(MapGridVO grid) {
         int width = grid.getWidth();
         int height = grid.getHeight();
@@ -114,7 +93,6 @@ public class ScheduleMapAdapter {
         return 255 - Math.round(occupancy * 255f / 100f);
     }
 
-    /** PNG 预览：与 pgm 相同的灰度映射（调度 UI 展示用）。 */
     private byte[] buildPng(MapGridVO grid) throws IOException {
         int width = grid.getWidth();
         int height = grid.getHeight();
@@ -132,7 +110,6 @@ public class ScheduleMapAdapter {
         return out.toByteArray();
     }
 
-    /** OpenCV 风格 yaml（样例为 %YAML:1.0，标准 yaml 解析器读不了，必须按样例手写）。 */
     private byte[] buildYaml(String name, MapGridVO grid) {
         String yaml = "%YAML:1.0\n"
                 + "image: \"" + name + ".pgm\"\n"
@@ -145,20 +122,6 @@ public class ScheduleMapAdapter {
         return yaml.getBytes(StandardCharsets.UTF_8);
     }
 
-    /**
-     * lxmap 拓扑：
-     * <pre>
-     * Topology-Map
-     * MapId: 0
-     * Rect: <origin_x> <origin_y> <width> <height>      （宽高 = 栅格数 × 分辨率，样例验证 1099×0.05=54.95）
-     * Version:
-     * Description: default description
-     * Cairn: Goal <id> <code> "" "" <x> <y> <theta> <type> 0 7 0 "" "0,0,0" "0,0,0" "0" "1" 0 0 0 0 0 0 {扩展}
-     * Cairn: Route <id> <src> <dst> <sx> <sy> <dx> <dy> <back> <speed> 0 1 0 0 0 "" "0" "1" "" "0" 0 0 0 {扩展}
-     * </pre>
-     * Goal 的 type/function_：0=路径标点，1=作业/质检点，2=充电点，3=休息/待命点。
-     * 分别对应我方 NORMAL、WORK、CHARGER、HOME。
-     */
     private byte[] buildLxmap(MapGridVO grid,
                               List<NavPointVO> points,
                               List<NavPathVO> paths,
@@ -166,7 +129,6 @@ public class ScheduleMapAdapter {
         return buildLxmap(grid, points, paths, edgesByPath, true);
     }
 
-    /** V2 复用旧格式序列化，并保留路线单向性。 */
     public byte[] buildLxmap(MapGridVO grid, List<NavPointVO> points, List<NavPathVO> paths,
                             Map<Long, List<PathEdgeVO>> edgesByPath, boolean forceBidirectional) {
         StringBuilder sb = new StringBuilder();
@@ -178,7 +140,6 @@ public class ScheduleMapAdapter {
         sb.append("Version: \n");
         sb.append("Description: default description\n");
 
-        // 点位 id 映射（lxmap 用数字 id，我方用数据库自增）
         Map<Long, Integer> pointIds = new LinkedHashMap<>();
         int nextGoalId = 1;
         for (NavPointVO point : points) {
@@ -271,9 +232,6 @@ public class ScheduleMapAdapter {
         return points.stream().filter(p -> p.getId().equals(id)).findFirst().orElse(null);
     }
 
-    // ==================== 导入：调度 zip → 解析结果 ====================
-
-    /** 导入解析结果：栅格 + 点位 + 路线边（坐标/类型已还原）。 */
     public record ScheduleMapImport(
             double resolution,
             double originX,
@@ -335,10 +293,10 @@ public class ScheduleMapAdapter {
         if (grey == 205) {
             return -1;
         }
-        if (grey > 254 - 60) {   // 空闲阈值附近
+        if (grey > 254 - 60) {
             return 0;
         }
-        if (grey < 65) {         // 占据阈值附近
+        if (grey < 65) {
             return 100;
         }
         return Math.round((255 - grey) * 100f / 255f);
@@ -395,7 +353,6 @@ public class ScheduleMapAdapter {
         return new YamlMeta(resolution, originX, originY);
     }
 
-    /** 宽松解析 lxmap：Goal 取前 8 个已知字段，Route 取前 10 个；扩展段还原我方专有数据。 */
     private void parseLxmap(String lxmap, List<ImportedPoint> points, List<ImportedRoute> routes) {
         Map<Integer, String> goalIdToCode = new LinkedHashMap<>();
         Map<Integer, double[]> goalIdToPose = new LinkedHashMap<>();
@@ -409,7 +366,6 @@ public class ScheduleMapAdapter {
                 }
                 int id = Integer.parseInt(f[0]);
                 goalIdToCode.put(id, f[1]);
-                // 字段序：id code "" "" x y theta → f[4]/f[5]/f[6]（空引号占 f[2]/f[3]）
                 goalIdToPose.put(id, new double[]{
                         Double.parseDouble(f[4]), Double.parseDouble(f[5]), Double.parseDouble(f[6])});
                 goalIdToType.put(id, navPointType(Integer.parseInt(f[7])));
@@ -417,7 +373,6 @@ public class ScheduleMapAdapter {
                 routeRows.add(line.substring("Cairn: Route ".length()).split("\\s+"));
             }
         }
-        // 点位类型来自调度格式固定的 function_ 字段。
         for (var entry : goalIdToCode.entrySet()) {
             double[] pose = goalIdToPose.get(entry.getKey());
             points.add(new ImportedPoint(entry.getValue(), pose[0], pose[1], pose[2],
@@ -442,14 +397,11 @@ public class ScheduleMapAdapter {
                     speed = v;
                 }
             } catch (NumberFormatException ignored) {
-                // 容错：非数值限速字段
             }
             routes.add(new ImportedRoute(goalIdToCode.get(src), goalIdToCode.get(dst),
                     sp[0], sp[1], dp[0], dp[1], speed, reverse, null));
         }
     }
-
-    // ==================== 通用工具 ====================
 
     private static byte[] findEntry(Map<String, byte[]> entries, String... suffixes) {
         for (String suffix : suffixes) {

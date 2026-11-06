@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 点位（waypoints）。类型词表（11 类）：path/charge/pickup/dropoff/storage/elevator/stairs/ramp/relocation/parking/workstation。 */
 @TableName("map_waypoint")
 @Getter
 @Setter
@@ -39,19 +38,16 @@ public class MapWaypoint {
 
     private Long floorId;
 
-    /** 点位唯一标识（WP_001，地图内唯一）。 */
     private String waypointCode;
 
     private String name;
 
     private String wpType;
 
-    /** map 系坐标（米）。 */
     private Double x;
 
     private Double y;
 
-    /** 朝向（弧度）。 */
     private Double yaw;
 
     private String remark;

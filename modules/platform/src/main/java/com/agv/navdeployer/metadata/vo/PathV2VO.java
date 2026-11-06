@@ -5,7 +5,6 @@ import com.agv.navdeployer.metadata.entity.MapPath;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 路线视图（waypointIds 由段链推导：首段 source + 各段 target，保留重复途经）。 */
 public record PathV2VO(Long id,
                        Long mapId,
                        Long floorId,

@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-/** 货架管理：整树保存（footprint + 层 + 格位一起提交一起替换）。 */
 @Service
 public class MapShelfService {
 
@@ -79,20 +78,17 @@ public class MapShelfService {
     @Transactional(rollbackFor = Exception.class)
     public ShelfVO update(Long id, ShelfSaveDTO dto) {
         MapShelf shelf = requireShelf(id);
-        // 元属性：缺省不动
         if (dto.name() != null) {
             shelf.setName(dto.name().isBlank() ? shelf.getShelfCode() : dto.name().trim());
         }
         if (dto.height() != null) {
             shelf.setHeight(dto.height());
         }
-        // 占地轮廓：携带时才替换（画布拖拽顶点/中心手柄的保存路径会带；属性面板整树保存不带=保留轮廓）
         if (dto.vertices() != null && !dto.vertices().isEmpty()) {
             applyVertices(shelf, dto);
         }
         shelf.setUpdatedAt(null);
         shelfMapper.updateById(shelf);
-        // 层/格位：提供时整树替换；缺省保留（避免仅改名称/高度时误删层）
         if (dto.layers() != null) {
             layerMapper.delete(Wrappers.lambdaQuery(MapShelfLayer.class)
                     .eq(MapShelfLayer::getShelfId, id));
@@ -109,7 +105,6 @@ public class MapShelfService {
         ticker.touch(shelf.getMapId(), null);
     }
 
-    /** 货架整树详情。 */
     public ShelfVO get(Long id) {
         MapShelf shelf = requireShelf(id);
         List<ShelfLayerVO> layers = loadLayers(List.of(id)).get(id);
@@ -168,7 +163,6 @@ public class MapShelfService {
         return result;
     }
 
-    /** 新建：全字段应用（vertices 必填校验在此）。 */
     private void applyFields(MapShelf shelf, ShelfSaveDTO dto) {
         applyVertices(shelf, dto);
         shelf.setName(dto.name() == null || dto.name().isBlank()
@@ -176,7 +170,6 @@ public class MapShelfService {
         shelf.setHeight(dto.height() != null ? dto.height() : 1.8);
     }
 
-    /** 校验并应用占地多边形 + 边定义（vertices 必填 ≥3）。 */
     private void applyVertices(MapShelf shelf, ShelfSaveDTO dto) {
         if (dto.vertices() == null || dto.vertices().size() < 3) {
             throw new IllegalArgumentException("货架占地多边形至少需要 3 个顶点");
@@ -190,7 +183,6 @@ public class MapShelfService {
         shelf.setEdges(MapZoneService.toJson(normalizeEdges(dto.edges(), dto.vertices().size())));
     }
 
-    /** edges 缺省时按顶点顺序自动生成闭环边（0→1→2→…→n-1→0）。 */
     private List<ShelfEdgeDTO> normalizeEdges(List<ShelfEdgeDTO> edges, int vertexCount) {
         if (edges == null || edges.isEmpty()) {
             List<ShelfEdgeDTO> auto = new ArrayList<>(vertexCount);

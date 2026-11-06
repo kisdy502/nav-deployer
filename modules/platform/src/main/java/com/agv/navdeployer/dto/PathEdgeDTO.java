@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Pattern;
 
 import java.util.List;
 
-/** 路线的一段（边）。seq 由服务端按数组顺序生成，无需上送。 */
 public record PathEdgeDTO(
         @NotNull(message = "source_point_id 不能为空") Long sourcePointId,
         @NotNull(message = "target_point_id 不能为空") Long targetPointId,

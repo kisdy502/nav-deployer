@@ -22,12 +22,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
-/**
- * RMS 会话编排（只管生命周期，不管任何一方向的通信细节）：
- * 通道重建 → 注册（B 网关）→ 声明指令端点（C 网关）→ 心跳/状态调度（A+B 网关）。
- * 三个网关各管一个方向：A=robot 发布（RmsReportGateway）、B=robot 查询（RmsServiceGateway）、
- * C=RMS 查询应答（RmsCommandGateway）。
- */
 public class RmsRobotSession {
 
     private static final Logger log = LoggerFactory.getLogger(RmsRobotSession.class);
@@ -49,12 +43,10 @@ public class RmsRobotSession {
     private ScheduledFuture<?> heartbeatTask;
     private ScheduledFuture<?> statusTask;
 
-    /** 是否已向 RMS 注册成功（配置页连接状态展示用）。 */
     public boolean isRegistered() {
         return registered;
     }
 
-    /** zenoh 会话是否已建立。 */
     public boolean isSessionOpen() {
         return channel != null;
     }
@@ -65,7 +57,6 @@ public class RmsRobotSession {
             thread.setDaemon(true);
             return thread;
         });
-        // 重连时被取消的周期任务立即从队列移除，避免长周期配置下仍暂时占用资源。
         executor.setRemoveOnCancelPolicy(true);
         executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
         return executor;
@@ -105,7 +96,6 @@ public class RmsRobotSession {
         ensureSession();
     }
 
-    /** 会话维护：断线（或未建）时重建；连接抖动由 building 标志去抖。 */
     @Scheduled(fixedDelay = 5000)
     public void ensureSession() {
         if (!props.isEnabled()) {
@@ -139,7 +129,6 @@ public class RmsRobotSession {
             reportGateway.attach(fresh);
             serviceGateway.attach(fresh);
 
-            // B：注册（失败策略按 continue_without_register）
             RmsServiceGateway.RegisterResult result =
                     serviceGateway.register(buildRegisterRequest(robot),
                             props.getZenoh().getQueryTimeoutMs());
@@ -149,15 +138,12 @@ public class RmsRobotSession {
             }
 
             // 关键：RMS 分配的 robot_code 可能与配置不同（首次注册 RMS 自动生成新 code）。
-            // 后续心跳/状态/任务必须用分配值，否则 RMS 按 code 查不到机器人 → 永远离线。
-            // 与 mock 的 applyRegistrationReply 同语义。
             String effectiveCode = (result.assignedRobotCode() != null && !result.assignedRobotCode().isBlank())
                     ? result.assignedRobotCode() : robot.getRobotCode();
             if (!effectiveCode.equals(robot.getRobotCode())) {
                 log.info("RMS assigned robot_code: config={} -> effective={}",
                         robot.getRobotCode(), effectiveCode);
                 stateView.setEffectiveRobotCode(effectiveCode);
-                // 用 effective code 重建三个 key 集
                 String prefix = props.getZenoh().getRobotKeyPrefix();
                 reportGateway.updateKeys(new com.agv.navdeployer.rms.protocol.keys.RmsReportKeys(
                         prefix, robot.getRobotType(), effectiveCode));
@@ -169,17 +155,13 @@ public class RmsRobotSession {
 
             reportGateway.declarePublishers();
 
-            // 通道与最终 robot_code 就绪后重放断线期间的终态结果。
             resultReporter.attach(reportGateway);
 
-            // C：声明全部指令端点（queryable key 已用 effective code）
             commandGateway.attach(fresh);
 
-            // 完整建链成功后才把 Session 交给实例持有；此前任一步失败都由 finally 关闭 fresh。
             channel = fresh;
             ownershipTransferred = true;
 
-            // A+B：心跳/状态定时调度（payload 已用 effective code）
             scheduleReports();
             log.info("RMS session ready: effective_robot_code={} robot_type={} registered={}",
                     effectiveCode, robot.getRobotType(), registered);
@@ -190,13 +172,11 @@ public class RmsRobotSession {
         }
     }
 
-    /** 心跳 = A 网关 legacy put + B 网关 body query，同一份报文双通道。 */
     private long lastHeartbeatLogMs = 0;
     private String lastHeartbeatSummary = "";
 
     private void heartbeatSafe() {
         try {
-            // 心跳 payload = 简单身份信息（对齐 RMS 真机格式）
             String json = mapper.writeValueAsString(stateView.buildHeartbeatPayload());
             reportGateway.publishLegacyHeartbeat(json);
             boolean queryReplied = serviceGateway.heartbeatQuery(json, props.getZenoh().getQueryTimeoutMs());
@@ -206,8 +186,6 @@ public class RmsRobotSession {
                         queryReplied, props.getReport().getHeartbeatIntervalMs());
                 return;
             }
-            // 结果与上次相同（正常恒为 ok）→ 拉长到保底间隔再打，不每 30s 重复同样内容；
-            // 结果变化（如 body_query_replied 翻转）→ 立即按短间隔打出
             String summary = "legacy_put=ok, body_query_replied=" + queryReplied;
             boolean unchanged = summary.equals(lastHeartbeatSummary);
             long throttle = unchanged
@@ -231,8 +209,6 @@ public class RmsRobotSession {
         try {
             reportGateway.publishStatus();
             long now = System.currentTimeMillis();
-            // 周期状态上报成功且汇总内容恒定：按「未变化保底间隔」（默认 60s）打 1 条，
-            // 保持链路可见；失败走 WARN 不受节流影响
             long throttle = Math.max(props.getReport().getPeriodicLogIntervalMs(),
                     props.getReport().getUnchangedLogIntervalMs());
             if (now - lastStatusLogMs > throttle) {
@@ -248,8 +224,6 @@ public class RmsRobotSession {
     }
 
     private RegisterRequest buildRegisterRequest(RmsProperties.Robot robot) {
-        // robot_code 取 effective（首次注册 RMS 分配后由 stateView 持有），
-        // 空则回退配置值（首次注册）。这样 RMS 重注册时能按 code 匹配更新而非新建。
         return new RegisterRequest(
                 stateView.robotCode(), robot.getRobotSn(), robot.getRobotSn(), robot.getRobotName(),
                 robot.getIp(), robot.getModel(), robot.getHardwareVersion(), robot.getFirmwareVersion(),

@@ -36,11 +36,6 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message);
     }
 
-    /**
-     * 客户端断开连接（SSE/长连接的正常生命周期：浏览器刷新、关页、断网）。
-     * 此时响应已提交（text/event-stream），无法也无需再写错误响应体；
-     * 返回 null 视为已处理，避免 HttpMessageNotWritableException 与 Tomcat ERROR 刷屏。
-     */
     @ExceptionHandler(IOException.class)
     public ResponseEntity<ApiResponse<Void>> handleClientAbort(IOException e, HttpServletResponse response) {
         if (response.isCommitted() || isClientAbort(e)) {

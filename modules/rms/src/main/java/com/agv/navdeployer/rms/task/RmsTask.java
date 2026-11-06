@@ -6,10 +6,6 @@ import com.agv.navdeployer.rms.protocol.dto.command.TaskInfoReport;
 import java.time.Instant;
 import java.util.Map;
 
-/**
- * RMS 任务运行时（domain）。状态迁移只经 {@link RmsTaskRegistry}，
- * 与 mock 的本质区别：携带 destination 快照供 pause→resume 重发，并链接内部 move task。
- */
 public final class RmsTask {
 
     private final String taskId;
@@ -24,13 +20,9 @@ public final class RmsTask {
     private RmsTaskStatus status = RmsTaskStatus.IDLE;
     private Instant startedAt;
     private Instant finishedAt;
-    /** navigate 类目标快照（pause 后 resume 重发用） */
     private TaskCommandRequest.Destination destination;
-    /** 内部 MoveTask id（导航执行期间） */
     private Long internalMoveTaskId;
-    /** 内部充电任务 id（charge / replace_battery 执行期间，ChargeService） */
     private Long internalChargeTaskId;
-    /** 终态的可读原因，随 result_report 上报。 */
     private String message;
 
     public RmsTask(TaskCommandRequest request) {
@@ -72,7 +64,6 @@ public final class RmsTask {
         return parameters;
     }
 
-    /** parameters 单值文本（任意类型转字符串；缺失返回 null）。 */
     public String parameterText(String key) {
         Object value = parameters == null ? null : parameters.get(key);
         return value == null ? null : String.valueOf(value);
@@ -136,15 +127,12 @@ public final class RmsTask {
         this.message = message;
     }
 
-    /** charge / replace_battery 执行中（充电任务已派发）→ 状态报文 is_charging=true。
-     *  充电任务流的起点导航阶段（charge 模板但仍是 navigate 语义、充电未派发）不算。 */
     public boolean isChargingBehavior() {
         return status == RmsTaskStatus.RUNNING
                 && internalChargeTaskId != null
                 && (isTemplate("charge") || isTemplate("replace_battery"));
     }
 
-    /** return_home 执行中 → 状态报文 is_homing=true */
     public boolean isHomingBehavior() {
         return status == RmsTaskStatus.RUNNING && isTemplate("return_home");
     }
@@ -153,28 +141,23 @@ public final class RmsTask {
         return taskTemplateType != null && taskTemplateType.equalsIgnoreCase(templateType);
     }
 
-    /** navigate 语义判定：rmf_navigate / navigate 模板，或 task_type 为 navigate。 */
     public boolean isNavigation() {
         return isTemplate("rmf_navigate") || isTemplate("navigate")
                 || "navigate".equalsIgnoreCase(taskType);
     }
 
-    /** task_type=action 的行为树任务：协议规定 parameters 仅在此类任务中不要求 destination。 */
     public boolean isAction() {
         return "action".equalsIgnoreCase(taskType);
     }
 
-    /** 移动语义模板：目标取自本机 pose 配置（charge/home），缺配置才回退报文 destination。 */
     public boolean isMoveBehavior() {
         return isTemplate("charge") || isTemplate("replace_battery") || isTemplate("return_home");
     }
 
-    /** 无移动语义的行为树 action 任务（质检、fetch_cable 等）：不受机械臂归位联锁约束。 */
     public boolean isArmGateExempt() {
         return isAction() && !isMoveBehavior();
     }
 
-    /** 模板可包含导航步骤；只有当前 action 步骤才执行并上报质检。 */
     public boolean isInspectionAction() {
         return isTemplate("quality_inspection") && "action".equalsIgnoreCase(taskType);
     }

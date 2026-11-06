@@ -5,10 +5,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 仿真 AGV 对接配置（application.yaml 的 sim_agv 前缀，宽松绑定兼容 snake_case）。
- * 上行：遥测话题订阅；下行：follow_edge action / set_control 服务 / 重定位 / 遥控速度。
- */
 @ConfigurationProperties(prefix = "sim-agv")
 public class SimAgvProperties {
 
@@ -20,7 +16,6 @@ public class SimAgvProperties {
     private String statusTopic = "/agv/status";
     private String poseTopic = "/agv/pose";
     private String tfTopic = "/tf";
-    /** 静态 TF（雷达等传感器安装关系：base_link → laser_frame），点云安装变换的优先来源 */
     private String tfStaticTopic = "/tf_static";
     private String tfChildFrame = "AGV001/base_link";
     private int tfThrottleMs = 100;
@@ -31,17 +26,14 @@ public class SimAgvProperties {
     private String scanTopic2 = "/scan_2";
     private int scanThrottleMs = 333;
 
-    /** 关节状态（底盘舵轮转向角 / 机械臂关节角），驱动前端 3D 模型。 */
     private boolean jointStatesEnabled = true;
     private String jointStatesTopic = "/joint_states";
-
 
     private boolean mapEnabled = true;
     private String mapTopic = "/map";
     private int mapThrottleMs = 5000;
     private int mapFragmentSize = 500000;
 
-    // ===== 订阅话题的显式消息类型（rosbridge 协议 subscribe.type）=====
     // 客户端一连接就订阅，若机器人侧话题还没 advertise（桥接节点阻塞初始化中），
     // rosbridge 类型推断失败且不重试 → 永久失明。显式类型从根上消除该竞态。
     private String statusTopicType = "agv_bridge_v2_interfaces/msg/AgvStatus";
@@ -58,89 +50,40 @@ public class SimAgvProperties {
     private String relocalizeService = "/agv/relocalize";
     private String cmdVelTopic = "/cmd_vel";
     private long serviceTimeoutMs = 5000L;
-    /** rosbridge 指令类消息日志（call_service / service_response / action goal/result 等）：
-     * 一次性请求-响应全量打印、不节流，联调对账靠它，默认开。 */
     private boolean wsMessageLogCommandsEnabled = true;
-    /** rosbridge 话题数据日志开关（publish 话题 / action_feedback / cmd_vel）：周期数据按 topic_interval 节流。 */
     private boolean wsMessageLogEnabled = true;
-    /** rosbridge 消息日志「未变化保底/摘要」的截断长度（字符） */
     private int wsMessageLogMaxChars = 300;
-    /**
-     * rosbridge 消息日志「全量打印」的截断上限（字符）：指令类回包与话题变化内容完整输出，
-     * 方便复制完整 JSON 格式化分析；雷达/状态报文远小于此，/map 响应（MB 级）仍会被截断保护。
-     */
     private int wsMessageLogFullChars = 65_536;
-    /** 话题数据「内容变化」的日志间隔（毫秒，同一话题最多 1 条/间隔）；<=0 完全不打话题数据（指令日志保留） */
     private long wsMessageLogTopicIntervalMs = 10_000;
-    /**
-     * 话题数据「内容未变化」的保底日志间隔（毫秒）：机器人静止/状态稳定（规范化比较相同：
-     * 去 stamp、浮点取 2 位小数）时拉长到该间隔打 1 条，证明链路活着又不重复刷同样的报文。
-     */
     private long wsMessageLogUnchangedIntervalMs = 60_000;
-    /** 传感器流话题（雷达/pose/tf/odom/关节/feedback/cmd_vel）的固定日志间隔（毫秒），只打摘要。 */
     private long wsMessageLogSensorIntervalMs = 30_000;
     private long goalTimeoutSeconds = 600L;
     private double defaultMaxSpeed = 0.6;
     private double defaultStep = 0.1;
-    /** FOLLOW_PATH 起点纠偏阈值（米）：机器人距首段起点超过该值时自动插入一段"驶向起点"。 */
     private double followPathStartRadius = 0.5;
 
-    // ===== 机械臂归位联锁（真机安全语义：臂未归位时移动作业可能撞击人员/设施）=====
-    /** 联锁总开关：false 时状态恒为 HOME（闸门全放行） */
     private boolean armGateEnabled = true;
-    /** UNKNOWN 态策略：true=无关节数据也拒绝（严格，真机原则"未知即不安全"）；false=放行（兼容不发布 /joint_states 的旧栈） */
     private boolean armStrictUnknown = false;
-    /** 归位判定容差（弧度，所有臂关节与归位姿态之差需小于该值） */
     private double armHomeToleranceRad = 0.1;
-    /**
-     * 左臂归位姿态（弧度，按语义角色顺序 pan/lift/elbow/wrist1/wrist2/wrist3）。
-     * 机器人侧标定（关节名字母序 [elbow,lift,pan,wrist1..3] = [2.65,-2.6,0,-1.6208,-1.5708,0]）换算；
-     * 运行期可被前端「设为归位位」经 REST 覆盖。
-     */
     private double[] armHomeLeft = {0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0};
-    /** 右臂归位姿态（弧度，同上按角色顺序） */
     private double[] armHomeRight = {0, -2.6, 2.65, -1.62079632679, -1.57079632679, 0};
-    /** 质检展开位姿（弧度，角色顺序 pan..wrist3）：质检任务三阶段序列的第一阶段目标 */
     private double[] armInspectPose = {0.5, -1.2, 1.0, -0.5, 0, 0};
 
-    // ===== 地图管理服务（agv_bridge_v2 v0.3.0+）=====
     private String listMapsService = "/agv/list_maps";
     private String getMapService = "/agv/get_map";
     private String loadMapService = "/agv/load_map";
     private String startMappingService = "/agv/start_mapping";
     private String saveMapService = "/agv/save_map";
 
-    // ===== 定位操作闭环（agv_bridge_v2 新增 operation_id 体系）=====
-    /** 操作状态话题：阶段变化即时发布 + 约每秒重发最新操作（transient_local QoS）。 */
     private String localizationOperationTopic = "/agv/localization_operation";
     private String localizationOperationTopicType = "agv_bridge_v2_interfaces/msg/LocalizationOperation";
-    /** 按 operation_id 查询操作记录的服务（空串查最近一次），用于重连恢复/补齐。 */
     private String getLocalizationOperationService = "/agv/get_localization_operation";
-    /**
-     * 带操作 ID 的任务（切图/重定位）终态兜底截止：机器人侧 localization_operation_timeout_sec
-     * 默认 600s 才给 TIMED_OUT 结论，上位机兜底必须晚于它，否则会抢跑误判 FAILED。
-     * 默认 660s = 机器人默认 600s + 60s 传输余量。
-     */
     private long localizationTaskTimeoutMs = 660000L;
-    /** 机械臂/腰关节运动服务（《仿真机器人功能开发说明.md》F1.5 契约）。 */
     private String armMoveService = "/agv/arm_move";
-    /** URDF mesh 静态服务端口（机器人侧 HTTP 目录，见说明文档 F1.4/F3；host 自动取 ws-url）。 */
     private int urdfMeshPort = 8090;
 
-    /**
-     * 镜像状态新鲜度阈值：超过该时长未收到 /agv/status 视为 UNKNOWN，拒绝模式类操作。
-     * 不能太紧：机器人侧 /agv/status 是 1Hz wall timer，但与 ~3MB 的 /map JSON（已限流 5s/帧）
-     * 共用同一条 rosbridge websocket，宿主机同时跑 gazebo/nav2/RViz 时小消息会被挤到 5s 之外；
-     * rosbridge 断线重连的窗口同理。取 15s：只拦截"桥接真死了"，放过传输层抖动。
-     */
     private long statusFreshMs = 15000L;
 
-    /**
-     * 模式任务（切图/建图/保存）整体截止时间：超时未达到预期 mode 判 FAILED。
-     * SAVE_MAP 机器人侧含 pbstream 优化、栅格导出、定位重启；arm64 上大地图
-     * load_state 优化实测超 150s（机器人侧轨迹状态检查已放宽到 300s），
-     * 任务截止需覆盖全流程，取 360s。
-     */
     private long modeTaskTimeoutMs = 360000L;
 
     private final List<String> advertiseTopics = new ArrayList<>();

@@ -12,9 +12,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 充电任务（前端「去充电」入口；RMS charge 任务走 ChargeService 同一底层链路）。
- */
 @Tag(name = "充电任务", description = "导航到充电点 → 对接充电桩开始充电即完成"
         + "（充到多少/何时断充由上层调度控制；阶段进度经 SSE charge 事件推送）")
 @RestController

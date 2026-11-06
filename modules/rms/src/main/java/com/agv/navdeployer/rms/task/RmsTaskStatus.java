@@ -1,6 +1,5 @@
 package com.agv.navdeployer.rms.task;
 
-/** RMS 任务状态，action_status 严格对齐真机 TaskStatus。 */
 public enum RmsTaskStatus {
 
     IDLE("idle", 0),
@@ -43,7 +42,6 @@ public enum RmsTaskStatus {
         return this != COMPLETED && this != CANCELED && terminal();
     }
 
-    /** 兼容 RMS 侧的旧拼写别名。 */
     public static RmsTaskStatus fromWire(String value) {
         if (value == null) {
             return IDLE;

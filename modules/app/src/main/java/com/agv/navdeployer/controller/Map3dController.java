@@ -21,7 +21,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
-/** Proxy map assets through the application's origin; control websocket stays small. */
 @RestController
 @RequestMapping("/api/v1/map-3d")
 public class Map3dController {

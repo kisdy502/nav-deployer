@@ -6,11 +6,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * status/query 的 data 部分（对齐 qcrobotmock 的 buildStatusData 默认模块集）。
- * parameters 为 RMS 真实下发的动态字典，用受控的 AnyGetter 透传，
- * 不在业务代码里手拼 Map。
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record BodyStatusData(
         AgvStatus agvStatus,

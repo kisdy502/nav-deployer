@@ -21,32 +21,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * 充电任务编排（前端「去充电」右键与 RMS charge/replace_battery 任务共用的底层入口）。
- *
- * <p>阶段状态机（对齐真机行为树 Charge 节点语义——对接成功即任务完成）：
- * <pre>
- * MOVING（智能导航到充电点）→ STARTING（调 /agv/set_charging data=true，等服务 success
- *   并以 /agv/status 遥测 charging=true 确认）→ SUCCEEDED（对接成功、充电已开始）。
- * 任意阶段：导航失败/被取消、服务拒绝、遥测确认超时 → FAILED/CANCELLED。
- * </pre>
- *
- * <p>完成标志 = 连接上充电桩、可以充电。之后充到多少电量、何时断充由上层调度决定
- * （如「充到 60% 允许作业」由调度自行跟踪电量下发新任务；新移动任务触发时 bridge
- * 自动断充）。若等充满才完成会阻塞调度的后续进程。
- *
- * <p>判定纪律：set_charging 返回 success 只代表「开始充电操作成功」，不是任务完成；
- * 完成只认遥测 charging=true（对接确认）。
- */
 @Component
 public class ChargeService {
 
     private static final Logger log = LoggerFactory.getLogger(ChargeService.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    /** SSE 发布保活间隔：无状态/电量变化也周期推一次，防前端断连窗口丢事件 */
     private static final long PUBLISH_KEEPALIVE_MS = 30000L;
 
-    /** 充电指令：waypointId（v2 充电点）优先，缺省用显式坐标；targetBatteryPct null=用默认配置。 */
     public record ChargeCommand(String source, Long waypointId,
                                 Double x, Double y, Double yaw, Double targetBatteryPct) {
     }
@@ -58,10 +39,8 @@ public class ChargeService {
     private final SimAgvSsePublisher ssePublisher;
     private final ChargeProperties props;
     private final MapWaypointMapper v2WaypointMapper;
-    /** 机械臂归位/停用闸门已由 MoveTaskService.create 统一执行（可空：独立装配） */
     private final RobotOperationalService operationalService;
 
-    /** 状态机线程：轮询与回调串行执行，状态非终态字段只在该线程写 */
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "charge-worker");
@@ -70,9 +49,7 @@ public class ChargeService {
             });
 
     private final AtomicLong idSeq = new AtomicLong(System.currentTimeMillis());
-    /** 单机器人单充电任务：当前实例（终态后保留供查询，新任务覆盖） */
     private volatile ChargeTask current;
-    /** 终态任务历史（内存环形，最新在前；任务管理页展示用，重启即清） */
     private final java.util.ArrayDeque<ChargeTaskVO> history = new java.util.ArrayDeque<>();
     private static final int HISTORY_CAPACITY = 100;
 
@@ -94,12 +71,6 @@ public class ChargeService {
         this.operationalService = operationalService;
     }
 
-    // ==================== 对外入口 ====================
-
-    /**
-     * 发起充电：导航到充电点 → 开始充电 → 对接确认即完成。
-     * 闸门失败（连接/定位/占用/机械臂未归位等）由 MoveTaskService.create 抛出 IllegalArgumentException。
-     */
     public synchronized ChargeTaskVO start(ChargeCommand command) {
         ChargeTask existing = current;
         if (existing != null && !existing.status().terminal()) {
@@ -109,7 +80,6 @@ public class ChargeService {
         if (operationalService != null && operationalService.isDecommissioned()) {
             throw new IllegalStateException("机器人已停用（" + operationalService.getReason() + "），无法发起充电");
         }
-        // 目标位姿：优先 v2 充电点位 id，缺省用显式坐标
         Long waypointId = command.waypointId();
         double x;
         double y;
@@ -135,14 +105,8 @@ public class ChargeService {
             throw new IllegalArgumentException("target_battery_pct 必须在 (0, 100]，当前: " + target);
         }
 
-        // 导航与普通 navigate 任务完全同构（方案 B：调度分段规划模式）：
-        // 充电的到桩路线由调度逐段下发 navigate（与质检流程一致），本任务只做单段执行——
-        // 路线优先（Dijkstra 第一条 path），否则 GOAL 直线；导航不过去（失败/超时）任务直接报错。
-        // 闸门复用 MoveTaskService：连接/定位/模式/单任务互斥/机械臂归位。
-        // 到桩后经过桩校验（dock_arrival_radius）再开始充电——防止吸附点距桩偏远时误充电。
         ChargeTask task = new ChargeTask(idSeq.incrementAndGet(), command.source(),
                 waypointId, x, y, yaw, target);
-        // source=charge:{chargeTaskId}：任务页据此把充电任务与其内部导航关联展示
         MoveTaskVO moveTask = smartNavigation.createOptimizedMoveTask(
                 "charge-" + task.id(), x, y, yaw, "charge:" + task.id());
         task.setInternalMoveTaskId(moveTask.getId());
@@ -155,37 +119,22 @@ public class ChargeService {
         return task.vo();
     }
 
-    /** 进行中的充电任务（无或已终态返回 null）。 */
     public ChargeTaskVO active() {
         ChargeTask task = current;
         return task != null && !task.status().terminal() ? task.vo() : null;
     }
 
-    /** 按 id 查询（RMS 轮询用）；id 不匹配（已被新任务覆盖）返回 null。 */
     public ChargeTaskVO get(long id) {
         ChargeTask task = current;
         return task != null && task.id() == id ? task.vo() : null;
     }
 
-    /**
-     * 救援充电：跳过导航，直接远程调 set_charging 开始充电。
-     * 适用：电量耗尽机器人拒绝一切移动指令、无法导航到桩的死锁场景
-     * （机器人侧不校验是否在桩上；真机 BMS 接入后此接口自然失效——真机 0% 需人工推桩）。
-     * 流程仍走完整状态机：停稳等待 → 服务受理 → 遥测确认（对接成功即完成）。
-     */
     public synchronized ChargeTaskVO startRescue() {
         ChargeTaskVO task = startDirect("rescue", null);
         log.info("charge task {} RESCUE: 远程开始充电（机器人未导航到桩，低电量死锁救援）", task.id());
         return task;
     }
 
-    /**
-     * 直接开始充电（无导航、无目标坐标）：适用于两类场景——
-     * 1. 本机救援充电（{@link #startRescue()}，模拟充电器快速充电）；
-     * 2. RMS 原地充电：充电任务流指定起点时，前置 navigate 任务已把车开到桩上，
-     *    start-activity 充电任务（不带 destination）原地执行（真机行为树 Charge 节点语义）。
-     * 流程与正常充电一致：停稳等待 → set_charging → 遥测确认（对接成功即完成）。
-     */
     public synchronized ChargeTaskVO startDirect(String source, Double targetBatteryPct) {
         ChargeTask existing = current;
         if (existing != null && !existing.status().terminal()) {
@@ -205,14 +154,12 @@ public class ChargeService {
         this.current = task;
         log.info("charge task {} DIRECT start: source={} 跳过导航原地开始充电, targetBattery={}%",
                 task.id(), source, target);
-        // 不经 MOVING：直接进入「开始充电」阶段（停稳等待 + 服务 + 遥测确认），后续与正常充电一致
         beginStartCharging(task);
         publish(task, true);
         worker.schedule(this::poll, props.getPollIntervalMs(), TimeUnit.MILLISECONDS);
         return task.vo();
     }
 
-    /** 取消充电：MOVING 阶段连带取消内部移动；已在桩上则尽力调用停止充电（data=false）。 */
     public synchronized ChargeTaskVO cancel(String reason) {
         ChargeTask task = current;
         if (task == null || task.status().terminal()) {
@@ -230,7 +177,6 @@ public class ChargeService {
             Long moveTaskId = task.internalMoveTaskId();
             worker.execute(() -> cancelMoveQuietly(moveTaskId));
         } else if (phase == ChargeTask.Status.STARTING) {
-            // 取消时显式断充（服务可能已受理、已在充电；未受理时下发 data=false 也无害）
             callSetCharging(false);
         }
         publish(task, true);
@@ -238,16 +184,11 @@ public class ChargeService {
         return task.vo();
     }
 
-    /**
-     * 远程停止充电（不依赖充电任务存在）：任务对接成功即完成后，机器人仍插桩继续充电，
-     * 上层/本机可用此入口断充（set_charging data=false）；新移动任务触发时 bridge 也会自动断充。
-     */
     public void stopCharging() {
         log.info("stop charging requested: calling {} data=false", props.getService());
         callSetCharging(false);
     }
 
-    /** 充电任务历史（最新在前，内存环形；含当前进行中的任务置顶）。 */
     public synchronized java.util.List<ChargeTaskVO> history(int limit) {
         java.util.List<ChargeTaskVO> snapshot = new java.util.ArrayList<>(Math.max(1, limit));
         ChargeTask active = current;
@@ -274,15 +215,12 @@ public class ChargeService {
         }
     }
 
-    // ==================== 状态机（charge-worker 线程） ====================
-
     private void poll() {
         try {
             ChargeTask task = current;
             if (task == null || task.status().terminal()) {
                 return;
             }
-            // 全流程看门狗（导航 + 充电总时长）
             if (System.currentTimeMillis() - task.createdAtMs() > props.getMaxDurationMs()) {
                 finish(task, ChargeTask.Status.FAILED,
                         "充电任务超时（超过 max_duration_ms=" + props.getMaxDurationMs() + "ms）");
@@ -314,8 +252,6 @@ public class ChargeService {
         }
         String status = moveTask.getStatus() == null ? "" : moveTask.getStatus();
         switch (status) {
-            // 单段导航完成 → 到桩校验 → 停稳 → 开始充电（多段到桩路线由调度逐段 navigate，
-            // 最后的 start-activity 充电多为原地充电，不经过本状态机的 MOVING）
             case "SUCCEEDED" -> beginStartCharging(task);
             case "FAILED", "TIMEOUT" -> finish(task, ChargeTask.Status.FAILED,
                     "导航到充电点失败: " + (moveTask.getErrorMessage() == null
@@ -327,17 +263,6 @@ public class ChargeService {
         }
     }
 
-    /**
-     * 到桩（或原地充电模式直接进入）：先做<b>到桩硬校验</b>（有充电目标坐标的任务必须真的
-     * 在桩附近），通过后进入停稳等待（机器人侧 set_charging 会拒绝运动中的请求——移动任务
-     * SUCCEEDED 后末端旋转/减速仍有残余速度，到位即调会被拒），真正调服务由 pollStarting 在
-     * 「最小等待 + odom 静止」后触发。
-     *
-     * <p>校验背景：仿真机器人 set_charging 不校验位置（在哪儿调都受理），而路线终点只保证
-     * 「离桩最近的 waypoint」——不校验就会出现"走到半路（如 P4）就开始充电"。
-     * 无目标坐标的任务（救援充电、RMS 原地充电）没有可校验的桩位，豁免：
-     * 语义上由上层保证已就位（导航任务先行摆车）。
-     */
     private void beginStartCharging(ChargeTask task) {
         if (!Double.isNaN(task.x()) && !Double.isNaN(task.y())) {
             SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
@@ -365,7 +290,6 @@ public class ChargeService {
                 task.id(), props.getDockSettleMinMs(), props.getDockSettleMaxMs());
     }
 
-    /** 停稳判定通过，真正调用机器人侧开始充电服务（std_srvs/SetBool data=true）。 */
     private void sendStartCharging(ChargeTask task) {
         task.setServiceSentAt(System.currentTimeMillis());
         task.setMessage("正在开始充电");
@@ -384,7 +308,6 @@ public class ChargeService {
                 onChargeServiceResult(task, values, error)));
     }
 
-    /** set_charging(data=true) 结果（worker 线程）。 */
     private void onChargeServiceResult(ChargeTask task, JsonNode values, Throwable error) {
         if (task.status().terminal()) {
             return;
@@ -406,8 +329,6 @@ public class ChargeService {
     }
 
     private void pollStarting(ChargeTask task) {
-        // 阶段一：停稳等待——满足「最小等待 + odom 静止」才调 set_charging；
-        // odom 未启用/未收到数据时无法判静止，退化为纯最小等待；超过等待上限强制尝试（兜底）
         if (task.serviceSentAt() == 0) {
             long elapsed = System.currentTimeMillis() - task.dockedAt();
             boolean quiet = isRobotSettled();
@@ -416,13 +337,10 @@ public class ChargeService {
             }
             return;
         }
-        // 阶段二：服务已发出——等 ack + 遥测 charging=true 确认（对接成功）
         if (task.serviceAckAt() > 0) {
             SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
             if (status != null && Boolean.TRUE.equals(status.charging())) {
                 task.setBatteryAtStart(status.battery());
-                // 对接成功即任务完成：充电时长/何时断充由上层调度决定（新移动任务自动断充），
-                // 不等充满/目标电量——否则会阻塞调度后续进程（如「充到 60% 允许作业」）
                 finish(task, ChargeTask.Status.SUCCEEDED, String.format(java.util.Locale.ROOT,
                         "已对接充电桩，充电已开始（当前电量 %s%%）", formatBattery(status.battery())));
                 return;
@@ -434,14 +352,12 @@ public class ChargeService {
             }
             return;
         }
-        // 服务未回（future 泄漏兜底，理论上 orTimeout 会异常完成走 onChargeServiceResult）
         if (task.serviceSentAt() > 0
                 && System.currentTimeMillis() - task.serviceSentAt() > props.getServiceTimeoutMs() + 3000L) {
             finish(task, ChargeTask.Status.FAILED, "开始充电服务无响应");
         }
     }
 
-    /** 终态迁移 + 日志 + SSE 推送（幂等：已终态忽略）。 */
     private void finish(ChargeTask task, ChargeTask.Status status, String message) {
         if (!task.transitionTo(status)) {
             return;
@@ -453,12 +369,6 @@ public class ChargeService {
         recordHistory(task);
     }
 
-    // ==================== 辅助 ====================
-
-    /**
-     * 机器人静止判定：/odom twist 接近零速视为停稳；
-     * odom 未启用/未收到数据（getOdomCount=0）时返回 true（视为不可判，走纯延时）。
-     */
     private boolean isRobotSettled() {
         if (telemetry.getOdomCount() <= 0) {
             return true;
@@ -502,7 +412,6 @@ public class ChargeService {
         return Double.isNaN(battery) ? Double.NaN : battery;
     }
 
-    /** SSE 推送（带变化检测：状态变更 / 电量变化≥0.5% / 30s 保活），force 立即推。 */
     private void publish(ChargeTask task, boolean force) {
         long now = System.currentTimeMillis();
         boolean statusChanged = task.status() != task.lastPublishedStatus;

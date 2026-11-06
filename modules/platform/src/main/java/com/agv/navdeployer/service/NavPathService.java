@@ -32,10 +32,6 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
- * 路线部署：路线 = 有序边序列。替换边序列时做同图 / 连续性 / 曲线控制点校验，
- * 校验通过才允许 deploy；FOLLOW_PATH 任务只执行 DEPLOYED 路线。
- */
 @Service
 public class NavPathService {
 
@@ -88,7 +84,6 @@ public class NavPathService {
                 .stream().map(NavPathVO::from).toList();
     }
 
-    /** 详情（含有序边 + 点位编码）。 */
     public NavPathVO get(Long id) {
         NavPath path = findOrThrow(id);
         return NavPathVO.from(path, loadEdgeVOs(id));
@@ -108,7 +103,6 @@ public class NavPathService {
         return NavPathVO.from(path);
     }
 
-    /** 整体替换边序列；替换后路线回到 DRAFT，需重新 deploy。 */
     @Transactional(rollbackFor = Exception.class)
     public NavPathVO replaceEdges(Long id, NavPathEdgesUpdateDTO dto) {
         NavPath path = findOrThrow(id);
@@ -140,7 +134,6 @@ public class NavPathService {
         return get(id);
     }
 
-    /** 部署路线：要求已配置至少一条边。 */
     @Transactional(rollbackFor = Exception.class)
     public NavPathVO deploy(Long id) {
         NavPath path = findOrThrow(id);
@@ -156,14 +149,12 @@ public class NavPathService {
         return NavPathVO.from(path);
     }
 
-    /** 删除路线（边随 FK 级联删除；在途任务由 MoveTaskService 自行校验）。 */
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         NavPath path = findOrThrow(id);
         navPathMapper.deleteById(path.getId());
     }
 
-    /** 载入某路线的执行计划（边 + 起终点实体，供 FOLLOW_PATH 任务使用）。 */
     public List<PathEdgeVO> loadEdgeVOs(Long pathId) {
         List<NavPathEdge> edges = navPathEdgeMapper.selectList(
                 Wrappers.lambdaQuery(NavPathEdge.class)
@@ -198,12 +189,6 @@ public class NavPathService {
         return findOrThrow(id);
     }
 
-    /**
-     * 边序列静态校验（可单测）：
-     * 1. 起终点必须是本地图已有点位且不相等；
-     * 2. STRAIGHT 不得带控制点，CURVE 必须带 1~2 个（桥接节点限制，超 2 个会退化直线）；
-     * 3. 第 i 条边的 source 必须等于第 i-1 条边的 target（连续性）。
-     */
     static void validateEdgeSequence(List<PathEdgeDTO> edges, Map<Long, NavPoint> pointsOfMap) {
         Long previousTarget = null;
         int index = 0;

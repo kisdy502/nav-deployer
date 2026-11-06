@@ -15,13 +15,6 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
-/**
- * RMS 任务注册表：task_id → 运行时。单机器人单任务互斥，
- * 状态迁移统一走 {@link #transition}（含日志）。
- *
- * <p>每次 put/transition 顺带写透 rms_task 表（执行历史跨重启可查）；
- * 持久化失败仅告警不阻断任务流（DB 是辅助记录，内存才是权威状态）。
- */
 @Component
 public class RmsTaskRegistry {
 
@@ -30,7 +23,6 @@ public class RmsTaskRegistry {
 
     private final Map<String, RmsTask> tasks = new ConcurrentHashMap<>();
 
-    /** 可空：测试/无 DB 环境直接 new，跳过持久化 */
     private final RmsTaskRecordMapper recordMapper;
 
     public RmsTaskRegistry() {
@@ -55,7 +47,6 @@ public class RmsTaskRegistry {
         return taskId == null ? null : tasks.remove(taskId);
     }
 
-    /** 唯一在途任务（RUNNING / PAUSED），无则 null。 */
     public RmsTask activeTask() {
         return tasks.values().stream()
                 .filter(task -> task.status() == RmsTaskStatus.RUNNING || task.status() == RmsTaskStatus.PAUSED)
@@ -63,13 +54,11 @@ public class RmsTaskRegistry {
                 .orElse(null);
     }
 
-    /** 是否有在途任务（不含指定的这个）。 */
     public boolean busyExcept(String taskId) {
         RmsTask active = activeTask();
         return active != null && !active.taskId().equals(taskId);
     }
 
-    /** 全部运行时任务（含终态，会话内）。 */
     public java.util.List<RmsTask> all() {
         return tasks.values().stream()
                 .sorted(java.util.Comparator.comparing(RmsTask::createdAt).reversed())
@@ -87,12 +76,10 @@ public class RmsTaskRegistry {
         });
     }
 
-    /** 运行时字段变更（internal task id / message 等）后的落库钩子。 */
     public void save(RmsTask task) {
         persist(task, false);
     }
 
-    /** 执行历史（DB，新→旧）；无持久化环境返回空列表。 */
     public java.util.List<RmsTaskRecord> history(int limit) {
         if (recordMapper == null) {
             return java.util.List.of();
@@ -106,8 +93,6 @@ public class RmsTaskRegistry {
         find(taskId).ifPresent(consumer);
     }
 
-    // ==================== 历史落库（失败不阻断） ====================
-
     private void persist(RmsTask task, boolean insert) {
         if (recordMapper == null) {
             return;
@@ -115,10 +100,7 @@ public class RmsTaskRegistry {
         try {
             RmsTaskRecord record = toRecord(task);
             if (insert) {
-                // 同 task_id 多阶段复用（质检 navigate→作业、自研调度分段导航等）会在
-                // 上一阶段终态后重建任务再注册：先删旧行再插入（覆盖语义，与内存
-                // "新阶段实例替换旧实例"一致），否则 rms_task_pkey 主键冲突刷 WARN；
-                // 旧行不存在时 delete 是无害的 no-op。重启后 DB 旧行残留同理被覆盖。
+                // RMS 复用同一 task_id 重派单：先删后插防主键冲突，勿改成裸 insert
                 recordMapper.deleteById(record.getTaskId());
                 recordMapper.insert(record);
             } else {
@@ -165,7 +147,6 @@ public class RmsTaskRegistry {
         }
     }
 
-    /** parameters.destination.topo_name（可缺省）。 */
     private static String topoNameOf(Map<String, Object> parameters) {
         if (parameters != null && parameters.get("destination") instanceof Map<?, ?> destination) {
             Object topo = destination.get("topo_name");

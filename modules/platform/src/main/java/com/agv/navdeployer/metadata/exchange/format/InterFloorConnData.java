@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 
-/** 楼层间连接（interFloorConnections 元素）：elevator / stairs / ramp。 */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record InterFloorConnData(String id,
                                  String type,
@@ -14,11 +13,9 @@ public record InterFloorConnData(String id,
                                  Double maxSpeed,
                                  RampMeta rampInfo) {
 
-    /** 连接端点：楼层编码 + 点位编码。 */
     public record Endpoint(String floorId, String waypointId) {
     }
 
-    /** 坡道元信息（type=ramp 时存在）。 */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record RampMeta(Double slope, Double length, String surface) {
     }

@@ -3,11 +3,6 @@ package com.agv.navdeployer.rms.protocol.keys;
 import java.util.Arrays;
 import java.util.Optional;
 
-/**
- * body API 段枚举（替代 mock 里的字符串 switch）。
- * 枚举覆盖 mock 声明的全部 queryable；{@link #supported} 标记本上位机是否实现，
- * 未实现的段统一回复 501，RMS 可感知能力差异。
- */
 public enum BodySegment {
 
     STATUS_QUERY("status/query", true),
@@ -41,7 +36,7 @@ public enum BodySegment {
     TASK_DELETE("task/delete", true),
     TASK_START("task/start", true),
     TASK_PAUSE("task/pause", true),
-    /** RMS 历史拼写兼容（真实存在过） */
+    // RMS 协议拼写兼容：云端真实下发过 task/puase，勿改
     TASK_PAUSE_TYPO("task/puase", true),
     TASK_RESUME("task/resume", true),
     TASK_STOP("task/stop", true),
@@ -49,10 +44,8 @@ public enum BodySegment {
 
     RESULT_FILES_UPLOAD_START("task/result_files_upload_start", true),
 
-    /** RMS 日志收集指令（robot-management RobotLogCollectionService 下发） */
     LOG_COLLECT("log/collect", true),
 
-    /** teach 2D/3D 数据采集指令（应答信封为 teach 协议自定义 {msg_id,status,msg,timestamp,data}） */
     TEACH_CAPTURE("teach/capture", true);
 
     private final String segment;
@@ -80,12 +73,10 @@ public enum BodySegment {
                 .findFirst();
     }
 
-    /** mock 声明的全量 exact queryable 段（保持与 RMS 探测行为兼容）。 */
     public static String[] allExactSegments() {
         return Arrays.stream(values()).map(BodySegment::segment).toArray(String[]::new);
     }
 
-    /** mock 声明的全量通配 queryable 段（task/{id}/xxx）。 */
     public static String[] allWildcardSegments() {
         return new String[]{"task/*/pause", "task/*/puase", "task/*/resume", "task/*/stop"};
     }

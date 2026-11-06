@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 楼层间连接（interFloorConnections）：elevator / stairs / ramp。 */
 @TableName("map_inter_floor_conn")
 @Getter
 @Setter
@@ -27,24 +26,18 @@ public class MapInterFloorConn {
 
     private Long mapId;
 
-    /** 连接唯一标识（CONN_001）。 */
     private String connCode;
 
     private String name;
 
-    /** elevator / stairs / ramp。 */
     private String connType;
 
-    /** 端点 JSON [{floorId,waypointId}]（楼层/点位编码）。 */
     private String connections;
 
-    /** 载重限制（kg，空 = 无限制）。 */
     private Double capacity;
 
-    /** 通道内最大速度（m/s）。 */
     private Double maxSpeed;
 
-    /** ramp 类型：JSON {slope,length,surface}。 */
     private String rampInfo;
 
     @TableField(value = "created_at", fill = FieldFill.INSERT)

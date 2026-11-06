@@ -36,23 +36,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * 地图模式任务编排：切图（SWITCH_MAP）、重定位（RELOCALIZE）、P3 扩展建图（START_MAPPING）/保存（SAVE_MAP）。
- *
- * 终态判定（双通道，权威优先）：
- * - 新版机器人：load_map / relocalize 受理响应携带 operation_id，
- *   终态以 {@link LocalizationOperationTracker} 的定位操作记录为权威
- *   （SUCCEEDED / FAILED / TIMED_OUT，迟到回调不改写）；mode 流转只作进度旁证；
- * - 旧版机器人（无 operation_id）：退化为 /agv/status mode 流转判定（原逻辑）。
- *
- * 一致性原则：机器人 /agv/status 仍是地图归属的事实源。
- * - 业务闸门全部读镜像（新鲜度 + mode + 无在途任务），不读本地 DB 状态；
- * - 只有切图成功才把 DB ACTIVE 对齐到该地图，失败/超时不动 DB；
- * - 重定位不换图，成功后不动 DB ACTIVE。
- *
- * 任务为内存态（秒~分钟级生命周期）：应用重启任务即失联，由机器人侧 mode 自行收敛，
- * DB ACTIVE 不会被错误的中间态污染；机器人侧操作记录由 tracker 在重连后按 ID 查询补齐。
- */
 @Service
 public class MapModeTaskService {
 
@@ -73,17 +56,10 @@ public class MapModeTaskService {
     private final AtomicLong idSequence = new AtomicLong();
     private final Deque<MapModeStateMachine> history = new ArrayDeque<>();
     private MapModeStateMachine current;
-    /** 上次 SSE 推送时的进度版本号（stage/message 变化才重复推 map-task 进度）。 */
     private int lastPushedProgressVersion;
 
-    /**
-     * 本次建图会话开始前机器人所在地图（start_mapping 受理时快照）。
-     * 放弃建图（DISCARD_MAPPING）的回载目标优先用它；为空（冷启动建图）时回退 DB ACTIVE。
-     * 每次 start_mapping 覆盖记录，天然跟随最新一次建图会话。
-     */
     private volatile String mappingPreMapName;
 
-    /** 保存成功后的栅格同步线程（get_map 数 MB 不阻塞调度线程）。 */
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "map-mode-worker");
         thread.setDaemon(true);
@@ -115,7 +91,6 @@ public class MapModeTaskService {
         this.operationTracker = operationTracker;
     }
 
-    /** 切换机器人定位地图（调 /agv/load_map，受理后由状态机跟踪收敛）；未定位冷启动同样受理（拉起定位）。 */
     public MapModeTaskVO switchMap(Long navMapId, String robotMapNameOverride) {
         requireIdleAndGates(MODE_NAVIGATION, true);
 
@@ -142,7 +117,6 @@ public class MapModeTaskService {
 
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
         if (status != null && robotMapName.equals(status.mapName())) {
-            // 已在目标地图：无需重启定位，直接成功并对齐 ACTIVE
             machine.onStatus(MODE_NAVIGATION, robotMapName, 0, Long.MAX_VALUE);
         } else {
             MapServiceResult result;
@@ -161,7 +135,6 @@ public class MapModeTaskService {
         return registerAndPublish(machine);
     }
 
-    /** 进入在线建图（调 /agv/start_mapping，停托管定位、拉起建图；遥控不受影响）；未定位冷启动同样受理。 */
     public MapModeTaskVO startMapping() {
         requireIdleAndGates(MODE_NAVIGATION, true);
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
@@ -182,7 +155,6 @@ public class MapModeTaskService {
             throw new IllegalStateException("机器人拒绝建图: " + result.message());
         }
 
-        // 快照建图前地图（放弃建图的回载目标；冷启动建图为 null——无旧图可回）
         mappingPreMapName = status == null ? null : status.mapName();
         if (mappingPreMapName != null && mappingPreMapName.isBlank()) {
             mappingPreMapName = null;
@@ -191,17 +163,9 @@ public class MapModeTaskService {
         return registerAndPublish(machine);
     }
 
-    /**
-     * 放弃建图：不保存新图，机器人退出建图并回载建图前地图恢复定位。
-     * 实现：调 /agv/load_map(旧图)（bridge 终止建图轨迹、加载旧图 pbstream、重启定位），
-     * 成功条件与切图同构（mode 回 NAVIGATION 且 map_name=旧图），成功后 DB ACTIVE 回旧图。
-     * 旧图来源：start_mapping 时的快照优先；快照缺失（服务重启/外部进入建图）回退 DB ACTIVE；
-     * 都没有（冷启动建图）无图可回，拒绝放弃。
-     */
     public MapModeTaskVO discardMapping() {
         requireIdleAndGates("MAPPING");
 
-        // 回载目标：本会话快照 → DB ACTIVE 兜底
         String target = mappingPreMapName;
         Long targetNavMapId = null;
         if (target == null) {
@@ -244,13 +208,6 @@ public class MapModeTaskService {
         return registerAndPublish(machine);
     }
 
-    /**
-     * 地图内重定位（调 /agv/relocalize，指定 map 系坐标重启定位轨迹）。
-     * 与切图共用模式任务闸门（互斥）与 SSE map-task 闭环：
-     * - 受理即返回，机器人侧携带 operation_id 时终态为权威结论（成功/失败/超时原因）；
-     * - 旧版机器人无 operation_id：退化为 mode 流转（见过 RELOCALIZING 后回 NAVIGATION 判成功）。
-     * 不换图：成功后不动 DB ACTIVE。
-     */
     public MapModeTaskVO relocalize(String mapName, double x, double y, double yaw) {
         requireIdleAndGates(MODE_NAVIGATION, true);
 
@@ -282,11 +239,6 @@ public class MapModeTaskService {
         return registerAndPublish(machine);
     }
 
-    /**
-     * 受理成功后关联机器人操作 ID：延长兜底 deadline（必须晚于机器人侧
-     * localization_operation_timeout_sec，默认 600s，否则上位机会抢跑误判 FAILED）、
-     * 绑定操作并立即查询一次补齐状态（话题可能先于服务响应到达或丢失，见接口文档 §2.5）。
-     */
     private void bindOperation(MapModeStateMachine machine, String operationId) {
         if (operationId == null || operationId.isBlank()) {
             log.info("robot accepted {} without operation_id (legacy bridge), fall back to mode tracking",
@@ -301,10 +253,6 @@ public class MapModeTaskService {
         operationTracker.refreshFromRobot(operationId);
     }
 
-    /**
-     * 保存建图并回到定位（调 /agv/save_map）。
-     * 成功（mode 回到 NAVIGATION 且 map_name=目标）后自动 get_map 同步栅格入库并激活。
-     */
     public MapModeTaskVO saveMap(String mapName) {
         String target = mapName == null ? "" : mapName.trim();
         requireValidRobotMapName(target);
@@ -329,17 +277,14 @@ public class MapModeTaskService {
         return registerAndPublish(machine);
     }
 
-    /** 当前任务（终态保留供查询，无任务返回 null）。 */
     public synchronized MapModeTaskVO currentTask() {
         return current == null ? null : MapModeTaskVO.from(current);
     }
 
-    /** 是否有非终态任务在途。 */
     public synchronized boolean hasActiveTask() {
         return current != null && !current.isTerminal();
     }
 
-    /** 最近 N 条任务历史（新在前）。 */
     public synchronized List<MapModeTaskVO> recent(int limit) {
         int bounded = Math.clamp(limit, 1, HISTORY_LIMIT);
         List<MapModeTaskVO> result = new ArrayList<>();
@@ -350,13 +295,6 @@ public class MapModeTaskService {
         return result;
     }
 
-    /**
-     * 轮询驱动状态机（500ms 一拍）：
-     * 1. 权威通道：tracker 中的定位操作记录（带 operation_id 的任务），终态唯一可信来源；
-     * 2. mode 流转：/agv/status 镜像（进度旁证 + 旧版机器人 fallback 终态）；
-     * 3. deadline 兜底。
-     * 进度（stage/message）变化时同样推送 map-task 事件，前端可实时展示阶段。
-     */
     @Scheduled(fixedDelay = 500)
     public void pollStatus() {
         MapModeStateMachine machine;
@@ -369,7 +307,6 @@ public class MapModeTaskService {
 
         Optional<MapModeStateMachine.Status> transition = Optional.empty();
 
-        // 1) 权威通道：机器人定位操作记录（RUNNING 刷进度，终态下结论）
         if (machine.hasOperation()) {
             LocalizationOperation operation = operationTracker.get(machine.getOperationId());
             if (operation != null) {
@@ -377,7 +314,6 @@ public class MapModeTaskService {
             }
         }
 
-        // 2) mode 流转（带 operation_id 时只贡献进度与抢占类失败，成功结论不经此通道）
         if (transition.isEmpty()) {
             SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
             long staleLimit = Math.max(props.getStatusFreshMs() * 6, 30_000L);
@@ -389,7 +325,6 @@ public class MapModeTaskService {
             }
         }
 
-        // 3) deadline 兜底
         if (transition.isEmpty()) {
             transition = machine.onDeadline(Instant.now());
         }
@@ -399,23 +334,16 @@ public class MapModeTaskService {
             return;
         }
 
-        // 进度变化（stage/机器人 message 更新）单独推送，避免 1s 心抖动刷屏
         if (machine.getProgressVersion() != lastPushedProgressVersion) {
             lastPushedProgressVersion = machine.getProgressVersion();
             ssePublisher.publishEvent("map-task", MapModeTaskVO.from(machine));
         }
     }
 
-    /** 公共闸门：无在途任务 + 连接正常 + 状态新鲜 + mode 等于要求值（全部读机器人镜像）。 */
     private void requireIdleAndGates(String requiredMode) {
         requireIdleAndGates(requiredMode, false);
     }
 
-    /**
-     * 公共闸门（放宽版）：allowUnlocalizedColdStart=true 时额外放行"未定位冷启动"——
-     * 机器人整机重启后既无建图也无定位（pose_initialized=false，mode 非 MAPPING/RELOCALIZING），
-     * 此时切图（load_map 拉起定位）/ 建图（start_mapping）恰恰是引导机器人口径的正确入口。
-     */
     private void requireIdleAndGates(String requiredMode, boolean allowUnlocalizedColdStart) {
         synchronized (this) {
             if (current != null && !current.isTerminal()) {
@@ -428,11 +356,6 @@ public class MapModeTaskService {
             throw new IllegalStateException("rosbridge 未连接，无法执行模式任务");
         }
         if (!telemetry.isStatusFresh(props.getStatusFreshMs())) {
-            // 注意区分两种完全不同的故障：websocket 断开（上面一档已拦）vs
-            // websocket 已连但收不到 /agv/status。后者才是"机器人未就绪"：
-            // agv_nav_server 没跑、rosbridge 白名单（topics_sub_glob）没放行
-            // /agv/status、或 status 话题名配置不一致。此检查不是多余的——
-            // 建图/切图服务就在 agv_nav_server 里，status 断流时强下发只会超时。
             log.info("websocket 已连接，但超过 {}s 未收到 /agv/status，机器人业务层不可达" +
                     "（agv_nav_server 未启动 / rosbridge topics_sub_glob 未放行 / status 话题名不匹配），拒绝执行", props.getStatusFreshMs() / 1000);
         }
@@ -457,7 +380,6 @@ public class MapModeTaskService {
         }
     }
 
-    /** 注册为当前任务并发布首条事件。 */
     private MapModeTaskVO registerAndPublish(MapModeStateMachine machine) {
         synchronized (this) {
             current = machine;
@@ -474,12 +396,9 @@ public class MapModeTaskService {
         return MapModeTaskVO.from(machine);
     }
 
-    /** 状态迁移副作用：成功后对齐 DB ACTIVE（对齐失败则任务降级为 FAILED），SSE 推送。 */
     private void publishAndFinalize(MapModeStateMachine machine) {
         if (machine.getStatus() == MapModeStateMachine.Status.SUCCEEDED
                 && machine.getNavMapId() != null) {
-            // SWITCH_MAP / DISCARD_MAPPING 成功后对齐档案（SAVE_MAP 的 navMapId 由同步阶段回填前为 null，
-            // 激活放在同步完成处；SWITCH_MAP 在此直接激活；DISCARD_MAPPING 机器人已回旧图，同步激活回旧图）
             if (machine.getType() == MapModeStateMachine.Type.SWITCH_MAP
                     || machine.getType() == MapModeStateMachine.Type.DISCARD_MAPPING) {
                 try {
@@ -500,13 +419,11 @@ public class MapModeTaskService {
 
         if (machine.getStatus() == MapModeStateMachine.Status.SUCCEEDED
                 && machine.getType() == MapModeStateMachine.Type.SAVE_MAP) {
-            // 保存成功的收尾：拉取栅格入库 + 激活，走 worker 线程避免阻塞调度
             worker.execute(() -> syncRobotMap(machine));
         }
         ssePublisher.publishEvent("map-task", MapModeTaskVO.from(machine));
     }
 
-    /** SAVE_MAP 成功后的机器人 -> 上位机同步：get_map 拉栅格 -> 入库(upsert) -> 激活。 */
     private void syncRobotMap(MapModeStateMachine machine) {
         String robotMapName = machine.getRobotMapName();
         try {
@@ -524,7 +441,6 @@ public class MapModeTaskService {
         }
     }
 
-    /** 机器人侧现有地图列表（maps_dir 下 pgm+yaml 齐全的地图名）。 */
     public List<String> listRobotMaps() {
         requireConnection();
         RosCommandDispatcher.ListMapsResult result;
@@ -540,13 +456,6 @@ public class MapModeTaskService {
         return result.mapNames();
     }
 
-    /**
-     * 手动从机器人导入地图（命令行 save_map、历史地图等场景）：
-     * get_map 拉栅格 -> 入库（同名 upsert，source=ROBOT_SYNC）。
-     * 激活策略：仅当机器人当前就在这张图上时才置 ACTIVE（机器人是唯一事实源，
-     * 导入一张机器人没在用的图不应改变部署状态）；否则保持 DRAFT，
-     * 由 {@link #alignActiveMapWithRobot()} 周期对账兜底。
-     */
     public NavMapVO importRobotMap(String robotMapName) {
         String target = robotMapName == null ? "" : robotMapName.trim();
         requireValidRobotMapName(target);
@@ -570,7 +479,6 @@ public class MapModeTaskService {
         }
         NavMapVO saved = navMapService.saveRobotGrid(target, target, grid);
 
-        // 激活策略：机器人当前就在这张图上才置 ACTIVE（机器人是唯一事实源）
         boolean robotOnThisMap = telemetry.isStatusFresh(props.getStatusFreshMs())
                 && telemetry.getStatus() != null
                 && target.equals(telemetry.getStatus().mapName());
@@ -580,10 +488,6 @@ public class MapModeTaskService {
         return result;
     }
 
-    /**
-     * 周期对账（对齐「机器人是唯一事实源」）：机器人 map_name 与 DB ACTIVE 不一致时，
-     * 若库中存在该地图档案则自动对齐；不存在则只暴露状态，由前端提示导入。
-     */
     @Scheduled(fixedDelay = 5000)
     public void alignActiveMapWithRobot() {
         if (!telemetry.isStatusFresh(props.getStatusFreshMs())) {
@@ -597,13 +501,13 @@ public class MapModeTaskService {
         NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
                 .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE).last("LIMIT 1"));
         if (active != null && robotMap.equals(active.getRobotMapName())) {
-            return; // 已对齐
+            return;
         }
         NavMap match = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
                 .eq(NavMap::getRobotMapName, robotMap)
                 .orderByDesc(NavMap::getId).last("LIMIT 1"));
         if (match == null) {
-            return; // 库里没有机器人当前地图，无法对齐（snapshot 会暴露 ROBOT_MAP_MISSING）
+            return;
         }
         navMapService.activate(match.getId());
         log.info("map aligned to robot truth: robotMap={} -> navMapId={} ACTIVE", robotMap, match.getId());
@@ -611,10 +515,6 @@ public class MapModeTaskService {
                 "aligned", true, "navMapId", match.getId(), "robotMapName", robotMap));
     }
 
-    /**
-     * 机器人当前地图与档案库的对齐状态（/robot/snapshot 的 map_align 字段）。
-     * state：ALIGNED / MISMATCH（库里匹配但非 ACTIVE）/ ROBOT_MAP_MISSING（库里没有）/ UNKNOWN（未上报或状态过期）
-     */
     public Map<String, Object> computeAlignment() {
         String robotMap = null;
         if (telemetry.isStatusFresh(props.getStatusFreshMs()) && telemetry.getStatus() != null) {
@@ -666,7 +566,6 @@ public class MapModeTaskService {
         return map.getMapName();
     }
 
-    /** 与机器人侧 MapFileManager::isValidMapName 同构：非空、无路径分隔符、无 ".."。 */
     private static void requireValidRobotMapName(String name) {
         if (name == null || name.isEmpty() || name.length() > 128
                 || name.contains("..") || name.contains("/") || name.contains("\\")) {

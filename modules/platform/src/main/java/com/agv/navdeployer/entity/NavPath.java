@@ -11,7 +11,6 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-/** 部署路线：有序边序列（nav_path_edge），按 seq 逐段执行。 */
 @TableName("nav_path")
 @Getter
 @Setter

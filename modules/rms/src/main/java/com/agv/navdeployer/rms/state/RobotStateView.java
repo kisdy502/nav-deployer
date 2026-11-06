@@ -21,32 +21,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * RMS 视角的机器人状态唯一出口（防烂铁律②：其他层不许直接读遥测拼状态）。
- * 聚合 SimAgvTelemetry（位姿/电量/模式）+ RmsTaskRegistry（在途任务）+ 配置。
- */
 @Component
 public class RobotStateView {
 
-    /**
-     * 仿真双电池包共用 ID（对齐真机报文样式）
-     */
     private static final String SIM_BATTERY_ID = "313536302D363033313";
-    /**
-     * 满电容量 mAh（capacity 按百分比折算）
-     */
     private static final double FULL_CAPACITY_MAH = 40000.0;
 
-    /**
-     * 电压线性模型 mV：45000 + 120*pct（21% ≈ 47.5V，满电 ≈ 57V）
-     */
     private static double voltageMv(double pct) {
         return 45000.0 + 120.0 * pct;
     }
 
-    /**
-     * 开机自检静态报告（真机格式，RMS 不解析、原样透传）
-     */
     private static final Map<String, Object> INSPECTION_REPORT = Map.ofEntries(
             Map.entry("end_time_ms", 0),
             Map.entry("format", "inspection_report_v2"),
@@ -65,14 +49,9 @@ public class RobotStateView {
     private final RmsTaskRegistry taskRegistry;
     private final RmsProperties props;
     private final HostStats hostStats;
-    /** 机械臂归位联锁（可空：无 Bean 时状态上报不带 arm 模块） */
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    /** 机器人运营状态（停用时 exceptionStatus 标记异常） */
     private final com.agv.navdeployer.service.RobotOperationalService operationalService;
 
-    /**
-     * RMS 分配的 robot_code（注册后由 Session 设置；null=用配置值）。落盘持久化。
-     */
     private volatile String effectiveRobotCode;
     private final Path codeStoreFile;
 
@@ -96,9 +75,6 @@ public class RobotStateView {
         persistCode(code);
     }
 
-    /**
-     * RMS 分配的 robot_code（优先）或配置值；给注册重试/状态上报/心跳统一取用。
-     */
     public String robotCode() {
         return (effectiveRobotCode != null && !effectiveRobotCode.isBlank())
                 ? effectiveRobotCode : props.getRobot().getRobotCode();
@@ -125,13 +101,9 @@ public class RobotStateView {
                 Files.writeString(codeStoreFile, code, StandardCharsets.UTF_8);
             }
         } catch (IOException exception) {
-            // 落盘失败不阻断：本次进程内 effectiveRobotCode 仍可用
         }
     }
 
-    /**
-     * 心跳 / 状态上报共用一份报文（心跳再加 heartbeat_at）。
-     */
     public RobotStatusReport snapshot() {
         RmsProperties.Robot identity = props.getRobot();
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
@@ -161,7 +133,6 @@ public class RobotStateView {
                 mapName,
                 "auto",
                 taskStatus,
-                // 停用时标记异常（RMS 不再派任务）
                 operationalService.isDecommissioned()
                         ? operationalService.getReason() : "normal",
                 "offline",
@@ -180,9 +151,6 @@ public class RobotStateView {
         );
     }
 
-    /**
-     * status/query 的 data（默认模块集：agv_status + position + battery + serial_num）。
-     */
     public BodyStatusData bodyStatusData() {
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
@@ -211,7 +179,6 @@ public class RobotStateView {
         return Math.round(v * 1000.0) / 1000.0;
     }
 
-    /** 电量百分比：数据无效（battery_data_valid=false）或缺失/NaN 时回退 100.0（与旧版仿真行为一致）。 */
     private static double batteryPct(SimAgvTelemetry.StatusSnapshot status) {
         if (status == null || Double.isNaN(status.battery())
                 || Boolean.FALSE.equals(status.batteryDataValid())) {
@@ -220,10 +187,6 @@ public class RobotStateView {
         return status.battery();
     }
 
-    /**
-     * 充电状态：机器人上报 charging=true（battery_simulator / 真机 BMS 真值）优先；
-     * 无该字段（旧版机器人）时回退任务推导（charge / replace_battery 执行中）。
-     */
     private static boolean isCharging(RmsTask active, SimAgvTelemetry.StatusSnapshot status) {
         if (status != null && Boolean.TRUE.equals(status.charging())) {
             return true;
@@ -234,9 +197,6 @@ public class RobotStateView {
     private final java.util.concurrent.atomic.AtomicLong statusSequence =
             new java.util.concurrent.atomic.AtomicLong(0);
 
-    /**
-     * 心跳 payload：简单身份信息（对齐 RMS 真机格式，不是完整状态报告）
-     */
     public HeartbeatPayload buildHeartbeatPayload() {
         RmsProperties.Robot robot = props.getRobot();
         return new HeartbeatPayload(
@@ -248,9 +208,6 @@ public class RobotStateView {
                 robot.getIp());
     }
 
-    /**
-     * 状态上报信封：{data: {真机模块集}, serial_num, timestamp}（对齐真机 status/report 报文）
-     */
     public StatusReportEnvelope buildStatusEnvelope() {
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
@@ -268,12 +225,10 @@ public class RobotStateView {
         double pct = batteryPct(status);
         String now = OffsetDateTime.now().toLocalDateTime().toString();
 
-        // 双电池包（id=1/2，同 ID 同百分比，电流充电为负、放电为正）
         List<BodyFullStatusData.Battery> battery = List.of(
                 batteryPack(2, pct, charging, now),
                 batteryPack(1, pct, charging, now));
 
-        // 急停/停用时：agv_status 标记异常状态码 + exceptions 填充错误详情
         boolean decommissioned = operationalService.isDecommissioned();
         String agvState = decommissioned ? operationalService.getReason() : taskStatus;
         int statusCode = decommissioned ? -1 : (active == null ? 0 : active.status().actionStatusCode());

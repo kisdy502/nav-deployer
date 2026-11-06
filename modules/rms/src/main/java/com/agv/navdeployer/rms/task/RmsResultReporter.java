@@ -10,13 +10,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
-/**
- * 任务结果上报出口：RmsRobotSession 建好通道后 attach，
- * 未就绪/发送失败时进入待发队列（上限 {@value #PENDING_MAX} 条），
- * attach 成功后按序重放——防止 zenoh 重连窗口内 result_report 丢失导致
- * 云端只能靠轮询收尾、质检分支拿不到 inspection_result。
- * 独立成组件是为了斩断 service ↔ session 的构造环。
- */
 @Component
 public class RmsResultReporter {
 
@@ -32,7 +25,6 @@ public class RmsResultReporter {
     }
 
     private volatile Sink sink;
-    /** attach 与 report 并发访问，重放需按序；容量上限防内存膨胀 */
     private final Deque<Pending> pending = new ArrayDeque<>();
 
     public RmsResultReporter(RmsProperties properties) {
@@ -73,14 +65,12 @@ public class RmsResultReporter {
             }
             current.publish(envelope, task.taskId());
         } catch (Exception exception) {
-            // 通道异常：入队等 attach/下次上报时重放
             enqueue(envelope, task.taskId());
             log.warn("failed to publish result_report, 已入待发队列 task_id={} pending={} msg={}",
                     task.taskId(), pending.size(), exception.getMessage());
         }
     }
 
-    /** 通道就绪后重放积压；单条失败即停（通道大概率又断了，剩余留待下次） */
     private void replayPending() {
         int replayed = 0;
         while (!pending.isEmpty() && sink != null) {

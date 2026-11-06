@@ -16,10 +16,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-/**
- * 仿真 AGV（rosbridge）装配：遥测采集 + 地图缓存 + 指令分发共用一条 WS 连接。
- * sim-agv.enabled=false 时仍创建 Bean（REST 可查遥测状态），只是不建立连接。
- */
 @Configuration
 @EnableScheduling
 @EnableConfigurationProperties(SimAgvProperties.class)
@@ -32,7 +28,6 @@ public class RosbridgeConfig {
         return new SimAgvTelemetryCollector(props);
     }
 
-    /** SSE 与 REST 快照读取的同一份遥测数据（由 collector 维护）。 */
     @Bean
     public SimAgvTelemetry simAgvTelemetry(SimAgvTelemetryCollector collector) {
         return collector.telemetry();
@@ -48,11 +43,6 @@ public class RosbridgeConfig {
         return new RosCommandDispatcher(props);
     }
 
-    /**
-     * 定位操作（切图/重定位）闭环跟踪：订阅 /agv/localization_operation 维护
-     * operation_id -> 进度/终态记录；重连后按 ID 查询补齐，不重发指令。
-     * 查询能力由 dispatcher 提供（dispatcher 先创建，无构造环）。
-     */
     @Bean
     public com.agv.navdeployer.sim.LocalizationOperationTracker localizationOperationTracker(
             SimAgvProperties props, RosCommandDispatcher dispatcher) {
@@ -62,7 +52,6 @@ public class RosbridgeConfig {
         return tracker;
     }
 
-    /** 机械臂归位联锁：/joint_states 对照归位姿态 + arm_move 在途 → 移动闸门（MoveTaskService/RmsTaskService）。 */
     @Bean
     public ArmStateMonitor armStateMonitor(SimAgvTelemetry telemetry,
                                            RosCommandDispatcher dispatcher,
@@ -70,7 +59,6 @@ public class RosbridgeConfig {
         return new ArmStateMonitor(telemetry, dispatcher::getArmMoveInFlight, props);
     }
 
-    /** /map 按需订阅闸门（MAPPING 模式或 /live 被轮询时才挂载，降低 rosbridge 小消息被挤的延迟）。 */
     @Bean
     public MapSubscriptionGuard mapSubscriptionGuard(SimAgvProperties props) {
         return new MapSubscriptionGuard(props);
@@ -92,20 +80,17 @@ public class RosbridgeConfig {
         return client;
     }
 
-    /** /map 专用通道：2~3MB 大消息与指令通道物理隔离，建图期间遥控也不受影响。 */
     @Bean(destroyMethod = "close")
     public RosbridgeClient mapRosbridgeClient(SimAgvProperties props, LiveMapCache liveMapCache) {
         return new RosbridgeClient(props.getWsUrl(), props.getReconnectDelayMs(), liveMapCache);
     }
 
-    /** 按 props 注册订阅与 advertise，最后建立连接（断线重连后自动恢复）。 */
     @Bean
     public ApplicationRunner rosbridgeBootstrap(SimAgvProperties props,
                                                 RosbridgeClient rosbridgeClient,
                                                 RosbridgeClient mapRosbridgeClient,
                                                 MapSubscriptionGuard mapSubscriptionGuard) {
         return args -> {
-            // 收发消息日志参数注入（指令全量 / 业务状态话题内容感知 / 传感器流固定节流）
             com.agv.navdeployer.sim.RosbridgeMessageLog.configure(
                     props.isWsMessageLogCommandsEnabled(), props.isWsMessageLogEnabled(),
                     props.getWsMessageLogMaxChars(), props.getWsMessageLogFullChars(),
@@ -128,21 +113,17 @@ public class RosbridgeConfig {
             if (props.isScanEnabled()) {
                 rosbridgeClient.subscribe(props.getScanTopic1(), props.getScanTopicType(), props.getScanThrottleMs(), 0);
                 rosbridgeClient.subscribe(props.getScanTopic2(), props.getScanTopicType(), props.getScanThrottleMs(), 0);
-                // 雷达安装变换（base_link → laser，平移+旋转）：点云投影的优先来源，缺失时回退 yaml 安装角
                 // transient_local：/tf_static 是 latched 话题，不声明收不到历史消息，
                 // 机器人自描述安装变换就丢了（换机器人要同步改上位机 yaml 的根因）
                 rosbridgeClient.subscribe(props.getTfStaticTopic(), props.getTfTopicType(), 0, 0, true);
             }
             if (props.isJointStatesEnabled()) {
-                // 关节角驱动前端 3D 模型（舵轮转向/机械臂），关节消息不大走主通道
                 rosbridgeClient.subscribe(props.getJointStatesTopic(), props.getJointStatesTopicType(), 100, 0);
             }
             // 定位操作闭环（切图/重定位的进度与终态）：reliable + transient_local，
             // 连接后立即收到 latched 的最新操作，约每秒还有心跳重发，500ms 轮询消费不丢终态
             rosbridgeClient.subscribe(props.getLocalizationOperationTopic(),
                     props.getLocalizationOperationTopicType(), 0, 0, true);
-            // /map 由 MapSubscriptionGuard 在 MAPPING 模式或 /live 被轮询时
-            // 挂载到专用通道（mapRosbridgeClient），主通道永远不见大消息
             mapSubscriptionGuard.attach(mapRosbridgeClient);
             rosbridgeClient.connect();
             mapRosbridgeClient.connect();

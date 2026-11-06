@@ -13,21 +13,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/**
- * 仿真 AGV 遥测 SSE 推送器（语义对齐 taskflow 的 TaskflowSseEventPublisher）。
- *
- * 前端接入：
- *   const es = new EventSource("/sse/agv");
- *   es.addEventListener("telemetry", e => console.log(JSON.parse(e.data)));
- *   es.addEventListener("scan", e => console.log(JSON.parse(e.data)));
- *   es.addEventListener("heartbeat", ...);
- *
- * 事件：
- *   connected  —— 接入即回一条（含时间戳）
- *   telemetry  —— 每 100ms 一条聚合快照（10Hz，状态/位姿/双雷达摘要/计数）
- *   scan       —— 收到新雷达帧时推送点云（base_link 系扁平 [x0,y0,x1,y1,...]，约 4Hz）
- *   heartbeat  —— 每 30s 一条
- */
 @Component
 public class SimAgvSsePublisher {
 
@@ -39,7 +24,6 @@ public class SimAgvSsePublisher {
     private final SimAgvTelemetry telemetry;
     private final SimAgvProperties props;
 
-    /** 上次推送过的 scan 快照引用（用于判断是否出现新帧，避免重复推送） */
     private volatile SimAgvTelemetry.ScanSnapshot lastPushedScan1;
     private volatile SimAgvTelemetry.ScanSnapshot lastPushedScan2;
 
@@ -68,7 +52,6 @@ public class SimAgvSsePublisher {
         publish("telemetry", buildSnapshot());
     }
 
-    /** 雷达点云推送：250ms 轮询，只有收到新帧（快照引用变化）才发（节流后每雷达 5Hz）。 */
     @Scheduled(fixedDelay = 250)
     public void pushScan() {
         if (subscriptions.isEmpty()) {
@@ -99,7 +82,6 @@ public class SimAgvSsePublisher {
         return subscriptions.size();
     }
 
-    /** 业务事件入口（如 move task 的 task 事件：创建 / 状态变更 / feedback 降频推送）。 */
     public void publishEvent(String eventName, Object payload) {
         if (subscriptions.isEmpty()) {
             return;
@@ -107,7 +89,6 @@ public class SimAgvSsePublisher {
         publish(eventName, payload);
     }
 
-    /** 最新聚合快照（供 /agv/snapshot 轮询兜底）。 */
     public ObjectNode buildSnapshot() {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("timestamp", Instant.now().toString());
@@ -122,10 +103,8 @@ public class SimAgvSsePublisher {
             node.put("pose_initialized", status.poseInitialized());
             node.put("active_command_id", status.activeCommandId());
             node.put("active_node_id", status.activeNodeId());
-            // v0.3.0+ 字段（旧版机器人为 null）：业务模式与当前地图
             node.put("mode", status.mode());
             node.put("map_name", status.mapName());
-            // 电量接入字段（battery_simulator / 真机 BMS 同格式；旧版机器人为 null）
             node.put("battery_state", status.batteryState());
             node.put("charging", status.charging());
             node.put("charge_connected", status.chargeConnected());
@@ -135,7 +114,6 @@ public class SimAgvSsePublisher {
         } else {
             root.putNull("status");
         }
-        // 镜像状态新鲜度：模式类操作（切图/建图/保存）的业务闸门
         root.put("status_fresh", telemetry.isStatusFresh(props.getStatusFreshMs()));
 
         var pose = telemetry.getMapPose();
@@ -145,7 +123,6 @@ public class SimAgvSsePublisher {
             node.put("y", round(pose.y()));
             node.put("yaw", round(pose.yaw()));
             node.put("yaw_deg", round(Math.toDegrees(pose.yaw())));
-            // 机器人上报的当前所在点位（/agv/pose topo_name；离开点位后为 null）
             String topoName = telemetry.getTopoName();
             if (topoName == null || topoName.isBlank()) {
                 node.putNull("topo_name");
@@ -156,8 +133,6 @@ public class SimAgvSsePublisher {
             root.putNull("pose");
         }
 
-        // /odom twist（车体系速度，全向底盘含横移 linear_y）：状态栏速度显示；
-        // 未启用 /odom 订阅（odom_enabled=false）时恒为 null，前端显示 '-'
         if (telemetry.getOdomCount() > 0) {
             ObjectNode velocity = root.putObject("velocity");
             velocity.put("linear_x", round(telemetry.getOdomLinearX()));
@@ -167,11 +142,9 @@ public class SimAgvSsePublisher {
             root.putNull("velocity");
         }
 
-        // 关节状态（舵轮转向/机械臂）：names 全量随包（10Hz 快照限频，几十字节/关节可接受）
         var joints = telemetry.getJointStates();
         if (joints != null) {
             ObjectNode node = root.putObject("joints");
-            // 反馈新鲜度判据（仿真侧 >2s 拒绝 arm_move，前端据此提前禁用点动）
             node.put("received_at", joints.receivedAt().toString());
             ArrayNode names = node.putArray("name");
             ArrayNode positions = node.putArray("position");
@@ -183,7 +156,6 @@ public class SimAgvSsePublisher {
             root.putNull("joints");
         }
 
-        // TF 树帧（前端按真实构型定位轮组/绘制臂骨架），数量封顶防异常膨胀
         var tfFrames = telemetry.getTfFrames();
         if (!tfFrames.isEmpty()) {
             ArrayNode frames = root.putArray("tf_frames");
@@ -226,7 +198,6 @@ public class SimAgvSsePublisher {
         node.put("max_range", round(scan.maxRange()));
     }
 
-    /** scan 事件用：摘要 + 点云扁平坐标数组 + 捕获时位姿（前端用它投影点云到地图） */
     private void appendScanCloud(ObjectNode root, String field, SimAgvTelemetry.ScanSnapshot scan) {
         if (scan == null) {
             root.putNull(field);
@@ -272,7 +243,6 @@ public class SimAgvSsePublisher {
             try {
                 subscription.emitter().complete();
             } catch (Exception ignored) {
-                // 连接已断开，忽略关闭异常
             }
             log.debug("remove closed sim agv sse subscription, reason={}", exception.getMessage());
         }

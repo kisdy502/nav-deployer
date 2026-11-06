@@ -17,7 +17,6 @@ import java.util.zip.GZIPInputStream;
 import java.io.ByteArrayInputStream;
 import java.util.zip.GZIPOutputStream;
 
-/** v2 地图栅格对象存取（gzip JSON → MinIO，沿用 nav-maps 桶，key 前缀 v2-maps/）。 */
 @Component
 public class GridObjectStore {
 

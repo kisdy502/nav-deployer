@@ -90,11 +90,6 @@ public class UserController {
         return ApiResponse.ok(userService.getAvatarUrl(id, buildMinioExternalEndpoint(request)));
     }
 
-    /**
-     * 计算预签名用的 MinIO 外部地址：
-     * 1. 配置了 minio.external-endpoint（如 https://minio.example.com）则固定使用（生产域名场景）
-     * 2. 否则按浏览器请求的 Host 动态推导（本机 IP/域名/localhost 访问自动适配）
-     */
     private String buildMinioExternalEndpoint(HttpServletRequest request) {
         if (StringUtils.hasText(minioExternalEndpoint)) {
             return minioExternalEndpoint;

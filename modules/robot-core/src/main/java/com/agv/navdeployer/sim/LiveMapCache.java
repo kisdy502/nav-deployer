@@ -6,10 +6,6 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 
-/**
- * /map（nav_msgs/OccupancyGrid）实时缓存：保留最新一帧栅格，供建图快照与实时预览接口使用。
- * 消息由 RosbridgeClient 订阅后分派到这里（分片已重组），解析运行在 WS IO 线程，仅做字段拷贝。
- */
 public class LiveMapCache implements RosbridgeHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LiveMapCache.class);
@@ -25,7 +21,6 @@ public class LiveMapCache implements RosbridgeHandler {
         return mapTopic;
     }
 
-    /** 最新一帧栅格（快照本身不可变），尚未收到时为 null。 */
     public OccupancyGrid snapshot() {
         return latest;
     }
@@ -42,7 +37,6 @@ public class LiveMapCache implements RosbridgeHandler {
         }
     }
 
-    /** 解析 OccupancyGrid：info（resolution/width/height/origin）+ data（int8 行优先数组）。 */
     public static OccupancyGrid parse(JsonNode msg) {
         JsonNode info = msg.path("info");
         JsonNode data = msg.path("data");
@@ -80,10 +74,6 @@ public class LiveMapCache implements RosbridgeHandler {
                 Instant.now());
     }
 
-    /**
-     * 一帧占用栅格。data 语义：-1 未知、0 空闲、1~100 占据；
-     * 第 0 行在世界坐标最下方（y 轴向上），渲染时 py = height - 1 - row。
-     */
     public record OccupancyGrid(
             String frameId,
             double resolution,
