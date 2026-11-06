@@ -4,12 +4,12 @@ import * as THREE from 'three'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { MapScene, type PickResult } from '@/three/MapScene'
 import { PointLayer } from '@/three/PointLayer'
-import { PathLayer, type PathRenderItem } from '@/three/PathLayer'
+import { PathLayer, type PathRenderItem, type RenderEdge } from '@/three/PathLayer'
 import { RobotLayer } from '@/three/RobotLayer'
 import { ScanLayer } from '@/three/ScanLayer'
 import Map3DViewer from './Map3DViewer.vue'
 import PointLegend from './PointLegend.vue'
-import { useEditorStore } from '@/stores/editor'
+import { useEditorStore, type PathEdgeDraft } from '@/stores/editor'
 import { useRobotStore } from '@/stores/robot'
 
 const emit = defineEmits<{
@@ -24,7 +24,8 @@ const editor = useEditorStore()
 const robot = useRobotStore()
 
 const containerRef = ref<HTMLDivElement>()
-const coordsText = ref('')
+/** 坐标显示直接写 DOM：走 ref 会让整个组件每次 pointermove 都重渲染 */
+const coordsEl = ref<HTMLSpanElement>()
 const show3d = ref(false)
 const map3dName = computed(() => editor.mapInfo?.robot_map_name || editor.mapInfo?.map_name || '')
 const hint = computed(() => {
@@ -53,10 +54,12 @@ let robotLayer: RobotLayer
 let scanLayer: ScanLayer
 
 // 拖拽状态
+// 控制点拖拽用非响应式边草稿：拖拽期间只做 pathLayer.updateEdge 单边重建，
+// 不写 store（updateControlPoint 会触发 pathItems 重算 → 所有路线全量重建），松手一次写回。
 type DragState =
   | { kind: 'point'; id: number; originX: number; originY: number; originYaw: number }
   | { kind: 'rotate'; id: number }
-  | { kind: 'control'; edgeIdx: number; cpIdx: number }
+  | { kind: 'control'; edgeIdx: number; cpIdx: number; edges: PathEdgeDraft[] }
 let drag: DragState | null = null
 let poseAnchor: { x: number; y: number } | null = null
 /** 重定位待确认位姿（两步交互：拖出后先看雷达预览匹配度，再应用） */
@@ -150,6 +153,43 @@ const pathEditHighlightIds = computed<Set<number> | null>(() => {
   return ids
 })
 
+/** 深拷贝当前路线编辑的边（非响应式草稿：拖拽期间修改不触发 pathItems 重算与全量重渲）。 */
+function copyEditEdges(): PathEdgeDraft[] {
+  return (editor.pathEdit?.edges ?? []).map((e) => ({
+    ...e,
+    control_points: e.control_points.map((c) => ({ ...c })),
+  }))
+}
+
+/** 拖拽控制点时的编辑中路线渲染项（读非响应式边草稿，不触发 pathItems 重算）。 */
+function editingItemFrom(edges: PathEdgeDraft[]): PathRenderItem {  const pe = editor.pathEdit
+  const byId = editor.pointsById
+  const list: RenderEdge[] = []
+  for (let i = 0; i < edges.length; i++) {
+    const e = edges[i]
+    const s = byId.get(e.source_point_id)
+    const t = byId.get(e.target_point_id)
+    if (!s || !t) continue
+    list.push({
+      edgeIdx: i,
+      sx: s.x,
+      sy: s.y,
+      tx: t.x,
+      ty: t.y,
+      edgeType: e.edge_type,
+      cps: e.control_points ?? [],
+      selected: editor.selectedEdgeIdx === i,
+    })
+  }
+  return {
+    id: pe?.pathId ?? -1,
+    status: editor.paths.find((p) => p.id === pe?.pathId)?.status ?? 'DRAFT',
+    editing: true,
+    selected: true,
+    edges: list,
+  }
+}
+
 // ---------- 生命周期 ----------
 onMounted(() => {
   const el = containerRef.value!
@@ -187,11 +227,11 @@ onMounted(() => {
 
   window.addEventListener('keydown', onKey)
 
-  // 指针移动显示坐标
+  // 指针移动显示坐标（直写 DOM，避免组件级重渲染）
   el.addEventListener('pointermove', (ev: PointerEvent) => {
     if (!scene) return
     const w = scene.screenToWorld(ev.clientX, ev.clientY)
-    coordsText.value = `${w.x.toFixed(2)} , ${w.y.toFixed(2)} m`
+    if (coordsEl.value) coordsEl.value.textContent = `${w.x.toFixed(2)} , ${w.y.toFixed(2)} m`
   })
 
   // 组件重挂载（如编辑器返回浏览页）时场景是新的，需主动同步一次已有数据
@@ -287,7 +327,8 @@ watch(
   { deep: false },
 )
 
-watch(pathItems, (items) => pathLayer?.render(items), { deep: true })
+// computed 每次重算都返回新数组引用，deep 遍历是纯开销，无需 deep
+watch(pathItems, (items) => pathLayer?.render(items))
 
 // 两颗雷达独立到帧；分开监听，避免其中一颗更新时把另一颗未变化的 Buffer 也重写一遍。
 watch(
@@ -380,7 +421,8 @@ function onDown(_hit: PickResult | null, world: THREE.Vector3, ev: PointerEvent)
     drag = { kind: 'rotate', id: hit.id }
   } else if (hit.type === 'control' && hit.edgeIdx != null && hit.cpIdx != null) {
     editor.selectedEdgeIdx = hit.edgeIdx
-    drag = { kind: 'control', edgeIdx: hit.edgeIdx, cpIdx: hit.cpIdx }
+    // 深拷贝边草稿（非响应式）：拖拽期间不写 store，仅单边轻量重建
+    drag = { kind: 'control', edgeIdx: hit.edgeIdx, cpIdx: hit.cpIdx, edges: copyEditEdges() }
   }
 }
 
@@ -405,7 +447,12 @@ function onMove(world: THREE.Vector3, _ev: PointerEvent) {
     const p = editor.pointsById.get(drag.id)
     if (p) pointLayer?.setPose(drag.id, p.x, p.y, Math.atan2(world.y - p.y, world.x - p.x))
   } else if (drag.kind === 'control') {
-    editor.updateControlPoint(drag.edgeIdx, drag.cpIdx, { x: world.x, y: world.y })
+    // 草稿拖拽：只改非响应式草稿 + pathLayer.updateEdge 单边重建，松手（onUp）才写回 store
+    const e = drag.edges[drag.edgeIdx]
+    if (e?.control_points?.[drag.cpIdx]) {
+      e.control_points[drag.cpIdx] = { x: +world.x.toFixed(4), y: +world.y.toFixed(4) }
+      pathLayer?.updateEdge(editingItemFrom(drag.edges), drag.edgeIdx)
+    }
   }
 }
 
@@ -438,6 +485,10 @@ async function onUp(_hit: PickResult | null, world: THREE.Vector3) {
         // 取图层上的最新朝向（拖拽中已更新）
         await editor.updatePoint(d.id, { yaw: +p.yaw.toFixed(4) })
       }
+    } else if (d.kind === 'control') {
+      // 松手一次性写回草稿（仅此刻做一次全量渲染）
+      const cp = d.edges[d.edgeIdx]?.control_points?.[d.cpIdx]
+      if (cp) editor.updateControlPoint(d.edgeIdx, d.cpIdx, cp)
     }
   } catch {
     if (d.kind === 'point') pointLayer?.setPose(d.id, d.originX, d.originY, d.originYaw)
@@ -511,6 +562,8 @@ async function onKey(ev: KeyboardEvent) {
       const d = drag
       drag = null
       if (d.kind === 'point') pointLayer?.setPose(d.id, d.originX, d.originY, d.originYaw)
+      // 控制点草稿拖拽取消：store 未被写过，按 computed 缓存（拖拽前快照）恢复渲染
+      if (d.kind === 'control') pathLayer?.render(pathItems.value)
       hidePreviews()
       return
     }
@@ -538,7 +591,7 @@ async function onKey(ev: KeyboardEvent) {
 <template>
   <div ref="containerRef" class="map-canvas" :class="`map-cursor-${editor.mode === 'idle' ? 'idle' : 'cross'}`">
     <div class="nd-overlay nd-overlay--tl">
-      <span class="nd-chip">{{ coordsText || '0.00 , 0.00 m' }}</span>
+      <span ref="coordsEl" class="nd-chip">0.00 , 0.00 m</span>
       <span v-if="hint" class="nd-chip nd-chip--hint">{{ hint }}</span>
       <span
         v-if="robot.status && !robot.status.pose_initialized

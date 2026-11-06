@@ -14,7 +14,15 @@ import Map3DViewer from '@/components/editor/Map3DViewer.vue'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { useRobotStore } from '@/stores/robot'
 import { useTasksStore } from '@/stores/tasks'
-import { WAYPOINT_TYPE_LABELS, WAYPOINT_CODE_PREFIX, type WaypointType } from '@/types/map2'
+import {
+  WAYPOINT_TYPE_LABELS,
+  WAYPOINT_CODE_PREFIX,
+  type PathV2VO,
+  type SegmentV2VO,
+  type ShelfV2VO,
+  type WaypointType,
+  type ZoneV2VO,
+} from '@/types/map2'
 
 /**
  * v2 多楼层地图画布：复用 v1 的 Three.js 场景与全部图层
@@ -35,7 +43,8 @@ const tasks = useTasksStore()
 const props = withDefaults(defineProps<{ editable?: boolean }>(), { editable: true })
 
 const containerRef = ref<HTMLDivElement>()
-const coordsText = ref('')
+/** 坐标显示直接写 DOM：走 ref 会让整个组件每次 pointermove 都重渲染 */
+const coordsEl = ref<HTMLSpanElement>()
 
 const ZONE_COLORS: Record<string, number> = {
   forbidden: 0xf56c6c,
@@ -77,14 +86,22 @@ let robotLayer: RobotLayer
 let scanLayer: ScanLayer
 
 // ---------- 拖拽状态 ----------
+// 拖拽中的路线段草稿（非响应式深拷贝）：拖拽期间每次 pointermove 只更新草稿 +
+// 图层单边/单实体轻量重建，不写响应式 store —— 否则 pathItems/polygonItems 重算
+// 会触发所有路线/多边形全量重建（几何销毁重建 + DOM 标签增删），是拖拽卡顿的主源。
+// 松手（onUp）才一次性写回 store 并持久化；Esc 取消时按 store 快照恢复渲染。
+interface PathDrag {
+  item: PathRenderItem
+  segments: SegmentV2VO[]
+}
 type DragState =
   | { kind: 'point'; id: number; originX: number; originY: number; originYaw: number; snappedX?: number; snappedY?: number }
   | { kind: 'rotate'; id: number }
   | { kind: 'rotateMaybe'; id: number; originX: number; originY: number; originYaw: number; pressYaw: number; settled?: 'rotate' | 'point'; snappedX?: number; snappedY?: number }
-  | { kind: 'control'; edgeIdx: number; cpIdx: number }
-  | { kind: 'endpointHandle'; edgeIdx: number; end: 'src' | 'tgt' }
-  | { kind: 'vertex'; kindOf: 'zone' | 'shelf'; id: number; vIdx: number }
-  | { kind: 'move'; kindOf: 'zone' | 'shelf'; id: number; anchor: { x: number; y: number }; snapshot: number[][] }
+  | ({ kind: 'control'; edgeIdx: number; cpIdx: number } & PathDrag)
+  | ({ kind: 'endpointHandle'; edgeIdx: number; end: 'src' | 'tgt' } & PathDrag)
+  | { kind: 'vertex'; kindOf: 'zone' | 'shelf'; id: number; vIdx: number; vertices: number[][] }
+  | { kind: 'move'; kindOf: 'zone' | 'shelf'; id: number; anchor: { x: number; y: number }; snapshot: number[][]; vertices: number[][] }
 let drag: DragState | null = null
 
 // 矩形绘制（zone/shelf 工具按下空白拖拽）
@@ -268,68 +285,75 @@ const pointLikes = computed<MapPointLike[]>(() =>
   })),
 )
 
-const pathItems = computed<PathRenderItem[]>(() => {
+/** 单条路线 → 渲染项（computed 与拖拽草稿共用；segments 传草稿即得到拖拽中的渲染数据）。 */
+function pathItemFrom(path: PathV2VO, segments: SegmentV2VO[]): PathRenderItem {
   const byId = store.waypointById
   const selected = store.selection?.kind === 'path' ? store.selection.id : null
-  return store.paths.map((path) => {
-    const isSelected = path.id === selected
-    const edges: RenderEdge[] = []
-    const segments = path.segments ?? []
-    for (let idx = 0; idx < segments.length; idx++) {
-      const segment = segments[idx]
-      const src = byId.get(segment.source_waypoint_id)
-      const tgt = byId.get(segment.target_waypoint_id)
-      if (!src || !tgt) continue
-      edges.push({
-        edgeIdx: idx,
-        sx: src.x,
-        sy: src.y,
-        tx: tgt.x,
-        ty: tgt.y,
-        edgeType: segment.segment_type,
-        cps: (segment.control_points ?? []).map((cp) => ({ x: cp[0], y: cp[1] })),
-        selected: false,
-      })
-    }
-    // editing=选中：路线加宽 + 显示段控制点手柄（可直接拖拽）
-    return {
-      id: path.id,
-      status: path.status,
-      editing: isSelected,
-      selected: isSelected,
-      bidirectional: path.is_bidirectional,
-      edges,
-    }
-  })
-})
+  const isSelected = path.id === selected
+  const edges: RenderEdge[] = []
+  for (let idx = 0; idx < segments.length; idx++) {
+    const segment = segments[idx]
+    const src = byId.get(segment.source_waypoint_id)
+    const tgt = byId.get(segment.target_waypoint_id)
+    if (!src || !tgt) continue
+    edges.push({
+      edgeIdx: idx,
+      sx: src.x,
+      sy: src.y,
+      tx: tgt.x,
+      ty: tgt.y,
+      edgeType: segment.segment_type,
+      cps: (segment.control_points ?? []).map((cp) => ({ x: cp[0], y: cp[1] })),
+      selected: false,
+    })
+  }
+  // editing=选中：路线加宽 + 显示段控制点手柄（可直接拖拽）
+  return {
+    id: path.id,
+    status: path.status,
+    editing: isSelected,
+    selected: isSelected,
+    bidirectional: path.is_bidirectional,
+    edges,
+  }
+}
+
+const pathItems = computed<PathRenderItem[]>(() => store.paths.map((p) => pathItemFrom(p, p.segments)))
+
+function zoneItemFrom(z: ZoneV2VO, vertices: number[][], selected: boolean): PolygonRenderItem {
+  const color = ZONE_COLORS[z.zone_type] ?? ZONE_COLORS.slowDown
+  return {
+    id: z.id,
+    kind: 'zone',
+    label: z.zone_type === 'forbidden' ? `${z.name}·禁行` : `${z.name} ≤${z.max_speed}m/s`,
+    vertices,
+    stroke: color,
+    fill: color,
+    fillOpacity: 0.14,
+    selected,
+  }
+}
+
+function shelfItemFrom(s: ShelfV2VO, vertices: number[][], selected: boolean): PolygonRenderItem {
+  return {
+    id: s.id,
+    kind: 'shelf',
+    label: `${s.name}·${s.layers?.length ?? 0}层`,
+    vertices,
+    stroke: SHELF_COLOR,
+    fill: SHELF_COLOR,
+    fillOpacity: 0.18,
+    selected,
+  }
+}
 
 const polygonItems = computed<PolygonRenderItem[]>(() => {
   const selectedZone = store.selection?.kind === 'zone' ? store.selection.id : null
   const selectedShelf = store.selection?.kind === 'shelf' ? store.selection.id : null
-  const zones: PolygonRenderItem[] = store.zones.map((z) => {
-    const color = ZONE_COLORS[z.zone_type] ?? ZONE_COLORS.slowDown
-    return {
-      id: z.id,
-      kind: 'zone',
-      label: z.zone_type === 'forbidden' ? `${z.name}·禁行` : `${z.name} ≤${z.max_speed}m/s`,
-      vertices: z.vertices,
-      stroke: color,
-      fill: color,
-      fillOpacity: 0.14,
-      selected: z.id === selectedZone,
-    }
-  })
-  const shelves: PolygonRenderItem[] = store.shelves.map((s) => ({
-    id: s.id,
-    kind: 'shelf',
-    label: `${s.name}·${s.layers?.length ?? 0}层`,
-    vertices: s.vertices,
-    stroke: SHELF_COLOR,
-    fill: SHELF_COLOR,
-    fillOpacity: 0.18,
-    selected: s.id === selectedShelf,
-  }))
-  return [...zones, ...shelves]
+  return [
+    ...store.zones.map((z) => zoneItemFrom(z, z.vertices, z.id === selectedZone)),
+    ...store.shelves.map((s) => shelfItemFrom(s, s.vertices, s.id === selectedShelf)),
+  ]
 })
 
 /** 画路线时链上点位的蓝色高亮环 */
@@ -393,7 +417,7 @@ onMounted(() => {
   el.addEventListener('pointermove', (ev: PointerEvent) => {
     if (!scene) return
     const w = scene.screenToWorld(ev.clientX, ev.clientY)
-    coordsText.value = `${w.x.toFixed(2)} , ${w.y.toFixed(2)} m`
+    if (coordsEl.value) coordsEl.value.textContent = `${w.x.toFixed(2)} , ${w.y.toFixed(2)} m`
   })
   // 浏览模式（主页）：复位编辑器遗留状态（退出编辑时可能停留在绘制工具/草稿中）
   if (!props.editable) {
@@ -496,9 +520,10 @@ watch(
   ([pts, sel, hi]) => pointLayer?.sync(pts, sel ?? null, props.editable, hi ?? undefined),
 )
 
-watch(pathItems, (items) => pathLayer?.render(items), { deep: true })
+// computed 每次重算都返回新数组引用，deep 遍历是纯开销，无需 deep
+watch(pathItems, (items) => pathLayer?.render(items))
 
-watch(polygonItems, (items) => polygonLayer?.render(items), { deep: true })
+watch(polygonItems, (items) => polygonLayer?.render(items))
 
 watch(
   () => [store.layers.map, store.layers.points, store.layers.paths, store.layers.zones, store.layers.shelves, store.layers.robot, store.layers.trail, store.layers.scan, store.livePreview] as const,
@@ -588,6 +613,33 @@ function hidePosePreview() {
   scanLayer?.setRelocalizePreview(null)
 }
 
+/** 深拷贝选中路线的段（非响应式草稿：拖拽期间修改不触发 pathItems 重算与全量重渲）。 */
+function copySegments(segments: SegmentV2VO[]): SegmentV2VO[] {
+  return segments.map((s) => ({
+    id: s.id,
+    seq: s.seq,
+    source_waypoint_id: s.source_waypoint_id,
+    target_waypoint_id: s.target_waypoint_id,
+    segment_type: s.segment_type,
+    control_points: s.control_points ? s.control_points.map((cp) => [...cp]) : null,
+    max_speed: s.max_speed,
+    back_up: s.back_up,
+    reverse: s.reverse,
+  }))
+}
+
+/** 拖拽中的区域/货架草稿渲染项：元数据读 store，顶点用草稿（拖拽中必然处于选中态）。 */
+function draftPolygonItem(kindOf: 'zone' | 'shelf', id: number, vertices: number[][]): PolygonRenderItem {
+  if (kindOf === 'zone') {
+    const z = store.zones.find((x) => x.id === id)
+    if (z) return zoneItemFrom(z, vertices, true)
+  } else {
+    const s = store.shelves.find((x) => x.id === id)
+    if (s) return shelfItemFrom(s, vertices, true)
+  }
+  return { id, kind: kindOf, label: '', vertices, stroke: 0, fill: 0, fillOpacity: 0, selected: true }
+}
+
 function onDown(hit: PickResult | null, world: THREE.Vector3) {
   if (!scene) return
   if (store.tool === 'initialPose') {
@@ -629,23 +681,51 @@ function onDown(hit: PickResult | null, world: THREE.Vector3) {
   } else if (hit.type === 'rotateHandle' && hit.id != null) {
     drag = { kind: 'rotate', id: hit.id }
   } else if (hit.type === 'control' && hit.edgeIdx != null && hit.cpIdx != null) {
-    drag = { kind: 'control', edgeIdx: hit.edgeIdx, cpIdx: hit.cpIdx }
+    const path = store.selectedPath
+    if (path?.segments?.length) {
+      const segments = copySegments(path.segments)
+      drag = {
+        kind: 'control',
+        edgeIdx: hit.edgeIdx,
+        cpIdx: hit.cpIdx,
+        segments,
+        item: pathItemFrom(path, segments),
+      }
+    }
   } else if (hit.type === 'endpointHandle' && hit.edgeIdx != null && hit.end) {
-    drag = { kind: 'endpointHandle', edgeIdx: hit.edgeIdx, end: hit.end as 'src' | 'tgt' }
+    const path = store.selectedPath
+    if (path?.segments?.length) {
+      const segments = copySegments(path.segments)
+      drag = {
+        kind: 'endpointHandle',
+        edgeIdx: hit.edgeIdx,
+        end: hit.end as 'src' | 'tgt',
+        segments,
+        item: pathItemFrom(path, segments),
+      }
+    }
   } else if ((hit.type === 'zoneVertex' || hit.type === 'shelfVertex') && hit.id != null && hit.vIdx != null) {
-    drag = { kind: 'vertex', kindOf: hit.type === 'zoneVertex' ? 'zone' : 'shelf', id: hit.id, vIdx: hit.vIdx }
+    const kindOf = hit.type === 'zoneVertex' ? 'zone' : 'shelf'
+    const entity = kindOf === 'zone'
+      ? store.zones.find((z) => z.id === hit.id)
+      : store.shelves.find((s) => s.id === hit.id)
+    if (entity?.vertices?.[hit.vIdx]) {
+      drag = { kind: 'vertex', kindOf, id: hit.id, vIdx: hit.vIdx, vertices: entity.vertices.map((v) => [...v]) }
+    }
   } else if ((hit.type === 'zoneMove' || hit.type === 'shelfMove') && hit.id != null) {
     const kindOf = hit.type === 'zoneMove' ? 'zone' : 'shelf'
     const entity = kindOf === 'zone'
       ? store.zones.find((z) => z.id === hit.id)
       : store.shelves.find((s) => s.id === hit.id)
     if (entity) {
+      const snapshot = (entity.vertices ?? []).map((v) => [...v])
       drag = {
         kind: 'move',
         kindOf,
         id: hit.id,
         anchor: { x: world.x, y: world.y },
-        snapshot: (entity.vertices ?? []).map((v) => [...v]),
+        snapshot,
+        vertices: snapshot.map((v) => [...v]),
       }
     }
   }
@@ -724,10 +804,11 @@ function onMove(world: THREE.Vector3) {
       if (Math.abs(yaw - snapRad) < (3 * Math.PI) / 180) yaw = snapRad
       pointLayer?.setPose(d.id, p.x, p.y, yaw)
     }
-  } else if (d.kind === 'control') {
-    const path = store.selectedPath
-    const segment = path?.segments?.[d.edgeIdx]
-    if (segment) {
+  } else if (d.kind === 'control' || d.kind === 'endpointHandle') {
+    // 路线草稿拖拽：只改非响应式草稿 + pathLayer.updateEdge 单边重建，不写 store
+    const segment = d.segments[d.edgeIdx]
+    if (!segment) return
+    if (d.kind === 'control') {
       // 直线段拖中点 → 即时转为曲线，在 1/4 和 3/4 位置生成两个控制点（始终 2 个）
       if (!segment.control_points || segment.control_points.length === 0) {
         segment.segment_type = 'CURVE'
@@ -746,17 +827,12 @@ function onMove(world: THREE.Vector3) {
           segment.control_points = [[+world.x.toFixed(4), +world.y.toFixed(4)], [+world.x.toFixed(4), +world.y.toFixed(4)]]
         }
       }
-      // 更新拖动中的控制点：替换整个 control_points 数组引用（确保 Vue 深层响应式可靠触发 → 曲线+虚线实时重绘）
-      const updated = segment.control_points.map((cp, i) =>
+      // 更新拖动中的控制点
+      segment.control_points = segment.control_points.map((cp, i) =>
         i === d.cpIdx ? [+world.x.toFixed(4), +world.y.toFixed(4)] : [...cp],
       )
-      segment.control_points = updated
-    }
-  } else if (d.kind === 'endpointHandle') {
-    // 端点切线手柄：拖动即把该段转为三次贝塞尔，拖动位置 = 该端的控制点
-    const path = store.selectedPath
-    const segment = path?.segments?.[d.edgeIdx]
-    if (segment) {
+    } else {
+      // 端点切线手柄：拖动即把该段转为三次贝塞尔，拖动位置 = 该端的控制点
       const cx = +world.x.toFixed(4)
       const cy = +world.y.toFixed(4)
       segment.segment_type = 'CURVE'
@@ -768,29 +844,28 @@ function onMove(world: THREE.Vector3) {
           ? [[cx, cy], [existing[0], existing[1]]]
           : [[existing[0], existing[1]], [cx, cy]]
       } else {
-        // 替换整个数组引用确保响应式可靠触发（曲线+虚线实时重绘）
         const idx = d.end === 'src' ? 0 : segment.control_points.length - 1
         segment.control_points = segment.control_points.map((cp, i) =>
           i === idx ? [cx, cy] : [...cp],
         )
       }
     }
+    const path = store.selectedPath
+    if (path) {
+      d.item = pathItemFrom(path, d.segments)
+      pathLayer?.updateEdge(d.item, d.edgeIdx)
+    }
   } else if (d.kind === 'vertex') {
-    const entity = d.kindOf === 'zone'
-      ? store.zones.find((z) => z.id === d.id)
-      : store.shelves.find((s) => s.id === d.id)
-    if (entity?.vertices && entity.vertices[d.vIdx]) {
-      entity.vertices[d.vIdx] = [+world.x.toFixed(4), +world.y.toFixed(4)]
+    // 区域/货架顶点草稿拖拽：polygonLayer.updateItem 单实体轻量刷新（标签 DOM 复用）
+    if (d.vertices[d.vIdx]) {
+      d.vertices[d.vIdx] = [+world.x.toFixed(4), +world.y.toFixed(4)]
+      polygonLayer?.updateItem(draftPolygonItem(d.kindOf, d.id, d.vertices))
     }
   } else if (d.kind === 'move') {
     const dx = world.x - d.anchor.x
     const dy = world.y - d.anchor.y
-    const entity = d.kindOf === 'zone'
-      ? store.zones.find((z) => z.id === d.id)
-      : store.shelves.find((s) => s.id === d.id)
-    if (entity) {
-      entity.vertices = d.snapshot.map(([x, y]) => [+(x + dx).toFixed(4), +(y + dy).toFixed(4)])
-    }
+    d.vertices = d.snapshot.map(([x, y]) => [+(x + dx).toFixed(4), +(y + dy).toFixed(4)])
+    polygonLayer?.updateItem(draftPolygonItem(d.kindOf, d.id, d.vertices))
   }
 }
 
@@ -859,11 +934,13 @@ async function onUp(_hit: PickResult | null, world: THREE.Vector3) {
       }
     } else if (d.kind === 'control' || d.kind === 'endpointHandle') {
       const path = store.selectedPath
-      if (path && path.segments?.length) {
-        // 始终保存全部控制点（含未拖动的默认位置 CP）——渲染层根据 CP2 是否在默认位置决定二阶/三阶
+      if (path && d.segments.length > 0) {
+        // 松手一次性写回草稿（仅此刻做一次全量渲染），始终保存全部控制点
+        // （含未拖动的默认位置 CP）——渲染层根据 CP2 是否在默认位置决定二阶/三阶
+        path.segments = d.segments
         await store.patchPath(path.id, {
           waypoint_ids: path.waypoint_ids,
-          segments: path.segments.map((segment) => ({
+          segments: d.segments.map((segment) => ({
             source_waypoint_id: segment.source_waypoint_id,
             target_waypoint_id: segment.target_waypoint_id,
             segment_type: segment.segment_type,
@@ -880,6 +957,8 @@ async function onUp(_hit: PickResult | null, world: THREE.Vector3) {
         ? store.zones.find((z) => z.id === d.id)
         : store.shelves.find((s) => s.id === d.id)
       if (entity) {
+        // 松手一次性写回草稿（一次原位渲染，标签 DOM 复用），再按原逻辑持久化
+        entity.vertices = d.vertices.map((v) => [...v])
         if (d.kindOf === 'zone') await store.saveZoneVertices(d.id, entity.vertices)
         else await store.saveShelfVertices(d.id, entity.vertices)
       }
@@ -1045,6 +1124,9 @@ async function onKey(ev: KeyboardEvent) {
       const d = drag
       drag = null
       if (d.kind === 'point') pointLayer?.setPose(d.id, d.originX, d.originY, d.originYaw)
+      // 草稿拖拽取消：拖拽期间未写过 store，computed 仍是拖拽前快照，按其恢复全量渲染
+      if (d.kind === 'control' || d.kind === 'endpointHandle') pathLayer?.render(pathItems.value)
+      if (d.kind === 'vertex' || d.kind === 'move') polygonLayer?.render(polygonItems.value)
       hidePosePreview()
       return
     }
@@ -1418,7 +1500,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
 <template>
   <div ref="containerRef" class="map-canvas">
     <div class="nd-overlay nd-overlay--tl">
-      <span class="nd-chip">{{ coordsText || '0.00 , 0.00 m' }}</span>
+      <span ref="coordsEl" class="nd-chip">0.00 , 0.00 m</span>
       <span v-if="hint" class="nd-chip nd-chip--hint">{{ hint }}</span>
       <span
         v-if="robot.status && !robot.status.pose_initialized

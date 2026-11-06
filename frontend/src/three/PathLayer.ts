@@ -141,33 +141,32 @@ function placeCenterArrow(
   }
 }
 
-/** 路线图层：有宽度条带（可点击选中），编辑中路线显示控制点与贝塞尔切点辅助虚线 */
+/** 递归释放对象子树的 geometry / material（Three.js 的 remove 不释放 GPU 资源） */
+function disposeObject(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh
+    m.geometry?.dispose()
+    const mat = m.material as THREE.Material | undefined
+    mat?.dispose()
+  })
+}
+
+/** 路线图层：有宽度条带（可点击选中），编辑中路线显示控制点与贝塞尔切点辅助虚线。
+ * 每条路线一个分组、每条边一个子分组（userData.edgeIdx 标记段索引），
+ * 支持拖拽控制点时 updateEdge 只重建单条边，而不是全部路线全量重建。 */
 export class PathLayer {
   readonly group = new THREE.Group()
+  private pathGroups = new Map<number, THREE.Group>()
 
   render(items: PathRenderItem[]) {
     this.clearGroup()
+    this.pathGroups.clear()
     for (const item of items) {
       if (!item.edges) continue
-      const base = item.editing ? EDITING_COLOR : (STATUS_COLORS[item.status] ?? STATUS_COLORS.DRAFT)
-      /** 选中路线（非编辑态）整体高亮 */
-      const pathColor = !item.editing && item.selected ? SELECTED_COLOR : base
+      const pathGroup = new THREE.Group()
       const nodeSet = new Set<string>()
       for (const e of item.edges) {
-        const color = e.selected ? SELECTED_COLOR : pathColor
-        const pts = this.sampleEdge(e)
-        if (pts.length < 2) continue
-        const mesh = new THREE.Mesh(
-          ribbonGeometry(pts, item.editing ? RIBBON_W_EDITING : RIBBON_W),
-          new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
-        )
-        mesh.position.z = 0.05
-        mesh.userData.pick = { type: 'path', id: item.id, edgeIdx: e.edgeIdx }
-        this.group.add(mesh)
-
-        // 段中方向箭头：单向 = 一个三角形；双向 = 菱形（底对底双三角）；与站点箭头同色系
-        placeCenterArrow(this.group, pts, 0x52667a, !!item.bidirectional)
-
+        pathGroup.add(this.buildEdge(item, e))
         // 选中路线的节点辅助点（去重后的顶点）
         if (!item.editing && item.selected) {
           for (const p of [
@@ -182,86 +181,134 @@ export class PathLayer {
               new THREE.MeshBasicMaterial({ color: CP_COLOR }),
             )
             dot.position.set(p.x, p.y, 0.09)
-            this.group.add(dot)
+            pathGroup.add(dot)
           }
-        }
-
-        if (!item.editing) continue
-        // ===== 曲线段控制点手柄（绿色，直径与路线同宽，可拖动调整弯曲） =====
-        if (e.edgeType === 'CURVE' && e.cps.length >= 1) {
-          const cpRadius = RIBBON_W / 2
-
-          // 判断是否为二阶模式（CP2 仍在默认 3/4 直线位置）
-          const defCp2x = e.sx + (e.tx - e.sx) * 0.75
-          const defCp2y = e.sy + (e.ty - e.sy) * 0.75
-          const isQuadratic = e.cps.length === 2
-            && Math.abs(e.cps[1].x - defCp2x) < 0.02
-            && Math.abs(e.cps[1].y - defCp2y) < 0.02
-
-          // CP1 手柄：在实际控制点位置
-          const cp1m = new THREE.Mesh(
-            new THREE.SphereGeometry(cpRadius, 14, 14),
-            new THREE.MeshBasicMaterial({ color: 0x67c23a }),
-          )
-          cp1m.position.set(e.cps[0].x, e.cps[0].y, 0.12)
-          cp1m.userData.pick = { type: 'control', edgeIdx: e.edgeIdx, cpIdx: 0 }
-          this.group.add(cp1m)
-
-          // CP2 手柄：二阶模式时显示在曲线上 t=0.75 处（跟随曲线移动），三阶模式在实际位置
-          if (e.cps.length >= 2) {
-            let cp2x = e.cps[1].x
-            let cp2y = e.cps[1].y
-            if (isQuadratic) {
-              // 二次贝塞尔曲线在 t=0.75 处的点（跟随 CP1 拖动后的曲线形态）
-              const t = 0.75
-              const mt = 1 - t
-              cp2x = mt * mt * e.sx + 2 * mt * t * e.cps[0].x + t * t * e.tx
-              cp2y = mt * mt * e.sy + 2 * mt * t * e.cps[0].y + t * t * e.ty
-            }
-            const cp2m = new THREE.Mesh(
-              new THREE.SphereGeometry(cpRadius, 14, 14),
-              new THREE.MeshBasicMaterial({ color: 0x67c23a }),
-            )
-            cp2m.position.set(cp2x, cp2y, 0.12)
-            cp2m.userData.pick = { type: 'control', edgeIdx: e.edgeIdx, cpIdx: 1 }
-            this.group.add(cp2m)
-          }
-
-          // 端点 → 控制点 → 控制点 → 端点 完整贝塞尔辅助连线（控制多边形）
-          this.group.add(dashedLine({ x: e.sx, y: e.sy }, e.cps[0]))
-          if (e.cps.length === 1) {
-            this.group.add(dashedLine(e.cps[0], { x: e.tx, y: e.ty }))
-          } else if (isQuadratic) {
-            // 二阶模式：CP2→终点 虚线用曲线上的显示位置
-            const t = 0.75
-            const mt = 1 - t
-            const cp2x = mt * mt * e.sx + 2 * mt * t * e.cps[0].x + t * t * e.tx
-            const cp2y = mt * mt * e.sy + 2 * mt * t * e.cps[0].y + t * t * e.ty
-            this.group.add(dashedLine(e.cps[0], { x: cp2x, y: cp2y }))
-            this.group.add(dashedLine({ x: cp2x, y: cp2y }, { x: e.tx, y: e.ty }))
-          } else {
-            // 三阶模式：起点→CP1→CP2→终点 完整控制多边形
-            this.group.add(dashedLine(e.cps[0], e.cps[1]))
-            this.group.add(dashedLine(e.cps[1], { x: e.tx, y: e.ty }))
-          }
-        }
-        // ===== 直线段：中点辅助手柄（绿色，拖动快速转曲线） =====
-        if (e.edgeType === 'STRAIGHT' || e.cps.length === 0) {
-          const mx = (e.sx + e.tx) / 2
-          const my = (e.sy + e.ty) / 2
-          const cpRadius = RIBBON_W / 2
-          const m = new THREE.Mesh(
-            new THREE.SphereGeometry(cpRadius, 14, 14),
-            new THREE.MeshBasicMaterial({ color: 0x67c23a }),
-          )
-          m.position.set(mx, my, 0.12)
-          m.userData.pick = { type: 'control', edgeIdx: e.edgeIdx, cpIdx: 0 }
-          this.group.add(m)
-          this.group.add(dashedLine({ x: e.sx, y: e.sy }, { x: mx, y: my }))
-          this.group.add(dashedLine({ x: mx, y: my }, { x: e.tx, y: e.ty }))
         }
       }
+      this.pathGroups.set(item.id, pathGroup)
+      this.group.add(pathGroup)
     }
+  }
+
+  /**
+   * 拖拽控制点/端点手柄时的单边轻量重建：只销毁并重建目标边的视觉
+   * （曲线条带 + 方向箭头 + 控制点手柄 + 辅助虚线），其余路线与边完全不动。
+   * item 为调用方维护的非响应式拖拽草稿（含最新控制点），edgeIdx 为段索引。
+   */
+  updateEdge(item: PathRenderItem, edgeIdx: number) {
+    const pathGroup = this.pathGroups.get(item.id)
+    if (!pathGroup) return
+    const prev = pathGroup.children.find((c) => c.userData.edgeIdx === edgeIdx)
+    if (prev) {
+      pathGroup.remove(prev)
+      disposeObject(prev)
+    }
+    const e = item.edges?.find((x) => x.edgeIdx === edgeIdx)
+    if (e) pathGroup.add(this.buildEdge(item, e))
+  }
+
+  /** 构建单条边的完整视觉（条带 + 方向箭头；编辑中附控制点手柄与辅助虚线）。 */
+  private buildEdge(item: PathRenderItem, e: RenderEdge): THREE.Group {
+    const g = new THREE.Group()
+    g.userData.edgeIdx = e.edgeIdx
+    const base = item.editing ? EDITING_COLOR : (STATUS_COLORS[item.status] ?? STATUS_COLORS.DRAFT)
+    /** 选中路线（非编辑态）整体高亮 */
+    const pathColor = !item.editing && item.selected ? SELECTED_COLOR : base
+    const color = e.selected ? SELECTED_COLOR : pathColor
+    const pts = this.sampleEdge(e)
+    if (pts.length >= 2) {
+      const mesh = new THREE.Mesh(
+        ribbonGeometry(pts, item.editing ? RIBBON_W_EDITING : RIBBON_W),
+        new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+      )
+      mesh.position.z = 0.05
+      mesh.userData.pick = { type: 'path', id: item.id, edgeIdx: e.edgeIdx }
+      g.add(mesh)
+
+      // 段中方向箭头：单向 = 一个三角形；双向 = 菱形（底对底双三角）；与站点箭头同色系
+      placeCenterArrow(g, pts, 0x52667a, !!item.bidirectional)
+    }
+    if (item.editing) g.add(this.buildEdgeHandles(e))
+    return g
+  }
+
+  /** 编辑中路线的辅助交互件：曲线控制点手柄 / 直线中点手柄 + 贝塞尔控制多边形虚线。 */
+  private buildEdgeHandles(e: RenderEdge): THREE.Group {
+    const g = new THREE.Group()
+    // ===== 曲线段控制点手柄（绿色，直径与路线同宽，可拖动调整弯曲） =====
+    if (e.edgeType === 'CURVE' && e.cps.length >= 1) {
+      const cpRadius = RIBBON_W / 2
+
+      // 判断是否为二阶模式（CP2 仍在默认 3/4 直线位置）
+      const defCp2x = e.sx + (e.tx - e.sx) * 0.75
+      const defCp2y = e.sy + (e.ty - e.sy) * 0.75
+      const isQuadratic = e.cps.length === 2
+        && Math.abs(e.cps[1].x - defCp2x) < 0.02
+        && Math.abs(e.cps[1].y - defCp2y) < 0.02
+
+      // CP1 手柄：在实际控制点位置
+      const cp1m = new THREE.Mesh(
+        new THREE.SphereGeometry(cpRadius, 14, 14),
+        new THREE.MeshBasicMaterial({ color: 0x67c23a }),
+      )
+      cp1m.position.set(e.cps[0].x, e.cps[0].y, 0.12)
+      cp1m.userData.pick = { type: 'control', edgeIdx: e.edgeIdx, cpIdx: 0 }
+      g.add(cp1m)
+
+      // CP2 手柄：二阶模式时显示在曲线上 t=0.75 处（跟随曲线移动），三阶模式在实际位置
+      if (e.cps.length >= 2) {
+        let cp2x = e.cps[1].x
+        let cp2y = e.cps[1].y
+        if (isQuadratic) {
+          // 二次贝塞尔曲线在 t=0.75 处的点（跟随 CP1 拖动后的曲线形态）
+          const t = 0.75
+          const mt = 1 - t
+          cp2x = mt * mt * e.sx + 2 * mt * t * e.cps[0].x + t * t * e.tx
+          cp2y = mt * mt * e.sy + 2 * mt * t * e.cps[0].y + t * t * e.ty
+        }
+        const cp2m = new THREE.Mesh(
+          new THREE.SphereGeometry(cpRadius, 14, 14),
+          new THREE.MeshBasicMaterial({ color: 0x67c23a }),
+        )
+        cp2m.position.set(cp2x, cp2y, 0.12)
+        cp2m.userData.pick = { type: 'control', edgeIdx: e.edgeIdx, cpIdx: 1 }
+        g.add(cp2m)
+      }
+
+      // 端点 → 控制点 → 控制点 → 端点 完整贝塞尔辅助连线（控制多边形）
+      g.add(dashedLine({ x: e.sx, y: e.sy }, e.cps[0]))
+      if (e.cps.length === 1) {
+        g.add(dashedLine(e.cps[0], { x: e.tx, y: e.ty }))
+      } else if (isQuadratic) {
+        // 二阶模式：CP2→终点 虚线用曲线上的显示位置
+        const t = 0.75
+        const mt = 1 - t
+        const cp2x = mt * mt * e.sx + 2 * mt * t * e.cps[0].x + t * t * e.tx
+        const cp2y = mt * mt * e.sy + 2 * mt * t * e.cps[0].y + t * t * e.ty
+        g.add(dashedLine(e.cps[0], { x: cp2x, y: cp2y }))
+        g.add(dashedLine({ x: cp2x, y: cp2y }, { x: e.tx, y: e.ty }))
+      } else {
+        // 三阶模式：起点→CP1→CP2→终点 完整控制多边形
+        g.add(dashedLine(e.cps[0], e.cps[1]))
+        g.add(dashedLine(e.cps[1], { x: e.tx, y: e.ty }))
+      }
+    }
+    // ===== 直线段：中点辅助手柄（绿色，拖动快速转曲线） =====
+    if (e.edgeType === 'STRAIGHT' || e.cps.length === 0) {
+      const mx = (e.sx + e.tx) / 2
+      const my = (e.sy + e.ty) / 2
+      const cpRadius = RIBBON_W / 2
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(cpRadius, 14, 14),
+        new THREE.MeshBasicMaterial({ color: 0x67c23a }),
+      )
+      m.position.set(mx, my, 0.12)
+      m.userData.pick = { type: 'control', edgeIdx: e.edgeIdx, cpIdx: 0 }
+      g.add(m)
+      g.add(dashedLine({ x: e.sx, y: e.sy }, { x: mx, y: my }))
+      g.add(dashedLine({ x: mx, y: my }, { x: e.tx, y: e.ty }))
+    }
+    return g
   }
 
   private sampleEdge(e: RenderEdge): THREE.Vector3[] {
@@ -314,13 +361,9 @@ export class PathLayer {
     for (const child of [...this.group.children]) {
       if (child === this.previewLine) continue
       this.group.remove(child)
-      child.traverse((o) => {
-        const m = o as THREE.Mesh
-        m.geometry?.dispose()
-        const mat = m.material as THREE.Material | undefined
-        mat?.dispose()
-      })
+      disposeObject(child)
     }
+    this.pathGroups.clear()
   }
 
   dispose() {

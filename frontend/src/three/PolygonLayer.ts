@@ -32,93 +32,157 @@ function centroid(vertices: number[][]): { x: number; y: number } {
   return { x: sum[0] / vertices.length, y: sum[1] / vertices.length }
 }
 
+/** 常驻实体视觉：几何/材质/标签 DOM 均长期复用，render 只做原位更新 */
+interface PolyVisual {
+  root: THREE.Group
+  fill: THREE.Mesh
+  outline: THREE.LineLoop
+  /** 顶点手柄（数量随 vertices 同步增减，非选中时整组隐藏） */
+  handles: THREE.Group
+  /** 中心整体平移手柄 */
+  mover: THREE.Mesh
+  label: CSS2DObject
+  labelInner: HTMLSpanElement
+}
+
 /**
  * 多边形图层（区域/货架）：半透明填充 + 描边 + CSS2D 标签；
  * 选中时显示顶点手柄（拖拽改轮廓）与中心手柄（拖拽整体平移）；
  * 另承载绘制草稿（多边形逐点 / 矩形拖拽预览 + 首点闭合吸附提示）。
+ * 实体按 `${kind}:${id}` 常驻复用（标签 DOM 不重建），支持拖拽中 updateItem 单实体轻量刷新。
  */
 export class PolygonLayer {
   readonly group = new THREE.Group()
+  private visuals = new Map<string, PolyVisual>()
+
+  private static key(item: PolygonRenderItem): string {
+    return `${item.kind}:${item.id}`
+  }
 
   // ---------- 实体渲染 ----------
   render(items: PolygonRenderItem[]) {
-    this.clearEntities()
+    const alive = new Set<string>()
     for (const item of items) {
       if (!item.vertices || item.vertices.length < 3) continue
-      const z = item.kind === 'zone' ? 0.028 : 0.034
-      const fill = new THREE.Mesh(
-        new THREE.ShapeGeometry(shapeFrom(item.vertices)),
-        new THREE.MeshBasicMaterial({
-          color: item.fill,
-          transparent: true,
-          opacity: item.fillOpacity,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-        }),
-      )
-      fill.position.z = z
-      fill.userData.pick = { type: item.kind, id: item.id }
-      this.group.add(fill)
-
-      const outline = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(
-          item.vertices.map(([x, y]) => new THREE.Vector3(x, y, 0)),
-        ),
-        new THREE.LineBasicMaterial({ color: item.stroke }),
-      )
-      outline.position.z = z + 0.012
-      this.group.add(outline)
-
-      const center = centroid(item.vertices)
-      // 选中：顶点手柄 + 中心移动手柄
-      if (item.selected) {
-        item.vertices.forEach(([x, y], vIdx) => {
-          const handle = new THREE.Mesh(
-            new THREE.SphereGeometry(0.09, 12, 12),
-            new THREE.MeshBasicMaterial({ color: item.stroke }),
-          )
-          handle.position.set(x, y, 0.14)
-          handle.userData.pick = { type: `${item.kind}Vertex`, id: item.id, vIdx }
-          this.group.add(handle)
-        })
-        const mover = new THREE.Mesh(
-          new THREE.BoxGeometry(0.22, 0.22, 0.06),
-          new THREE.MeshBasicMaterial({ color: 0xffffff }),
-        )
-        mover.position.set(center.x, center.y, 0.13)
-        mover.userData.pick = { type: `${item.kind}Move`, id: item.id }
-        this.group.add(mover)
+      const key = PolygonLayer.key(item)
+      alive.add(key)
+      let v = this.visuals.get(key)
+      if (!v) {
+        v = this.create(item)
+        this.visuals.set(key, v)
       }
-
-      // 名称标签
-      const el = document.createElement('div')
-      el.className = 'nd-label'
-      const inner = document.createElement('span')
-      inner.className = 'nd-label-inner'
-      inner.style.borderColor = `#${item.stroke.toString(16).padStart(6, '0')}`
-      inner.textContent = item.label
-      el.appendChild(inner)
-      const label = new CSS2DObject(el)
-      label.position.set(center.x, center.y, 0.2)
-      this.group.add(label)
+      this.applyItem(v, item)
+    }
+    for (const [key, v] of [...this.visuals]) {
+      if (!alive.has(key)) {
+        this.disposeVisual(v)
+        this.visuals.delete(key)
+      }
     }
   }
 
-  private clearEntities() {
-    for (const child of [...this.group.children]) {
-      if (this.draftObjects.has(child)) continue
-      this.group.remove(child)
-      if (child instanceof CSS2DObject) {
-        child.element.remove()
-        continue
+  /** 拖拽顶点/整体平移时的轻量单实体刷新：只重建该实体的填充几何与描边/手柄位置，标签 DOM 不动。 */
+  updateItem(item: PolygonRenderItem) {
+    const v = this.visuals.get(PolygonLayer.key(item))
+    if (v) this.applyItem(v, item)
+  }
+
+  private create(item: PolygonRenderItem): PolyVisual {
+    const root = new THREE.Group()
+    const fill = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false }),
+    )
+    fill.position.z = item.kind === 'zone' ? 0.028 : 0.034
+    const outline = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial())
+    outline.position.z = fill.position.z + 0.012
+    const handles = new THREE.Group()
+    handles.visible = false
+    const mover = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.22, 0.06),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    )
+    mover.position.z = 0.13
+    mover.visible = false
+    mover.userData.pick = { type: `${item.kind}Move`, id: item.id }
+
+    const el = document.createElement('div')
+    el.className = 'nd-label'
+    const inner = document.createElement('span')
+    inner.className = 'nd-label-inner'
+    el.appendChild(inner)
+    const label = new CSS2DObject(el)
+
+    root.add(fill, outline, handles, mover, label)
+    this.group.add(root)
+    return { root, fill, outline, handles, mover, label, labelInner: inner }
+  }
+
+  /** 把渲染项原位应用到既有视觉（填充几何随顶点重建三角化，其余全部复用）。 */
+  private applyItem(v: PolyVisual, item: PolygonRenderItem) {
+    v.fill.geometry.dispose()
+    v.fill.geometry = new THREE.ShapeGeometry(shapeFrom(item.vertices))
+    const fillMat = v.fill.material as THREE.MeshBasicMaterial
+    fillMat.color.setHex(item.fill)
+    fillMat.opacity = item.fillOpacity
+    v.fill.userData.pick = { type: item.kind, id: item.id }
+
+    // 描边：顶点数不变时原位写 buffer，变化时重建
+    const pos = v.outline.geometry.attributes.position as THREE.BufferAttribute | undefined
+    if (!pos || pos.count !== item.vertices.length) {
+      v.outline.geometry.dispose()
+      v.outline.geometry = new THREE.BufferGeometry().setFromPoints(
+        item.vertices.map(([x, y]) => new THREE.Vector3(x, y, 0)),
+      )
+    } else {
+      for (let i = 0; i < item.vertices.length; i++) {
+        pos.setXYZ(i, item.vertices[i][0], item.vertices[i][1], 0)
       }
-      child.traverse((o) => {
-        const m = o as THREE.Mesh
-        m.geometry?.dispose()
-        const mat = m.material as THREE.Material | undefined
-        mat?.dispose()
+      pos.needsUpdate = true
+    }
+    ;(v.outline.material as THREE.LineBasicMaterial).color.setHex(item.stroke)
+
+    // 顶点手柄：数量对齐后原位更新位置/颜色/拾取信息
+    while (v.handles.children.length < item.vertices.length) {
+      const handle = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), new THREE.MeshBasicMaterial())
+      handle.position.z = 0.14
+      v.handles.add(handle)
+    }
+    while (v.handles.children.length > item.vertices.length) {
+      const handle = v.handles.children[v.handles.children.length - 1] as THREE.Mesh
+      v.handles.remove(handle)
+      handle.geometry.dispose()
+      ;(handle.material as THREE.Material).dispose()
+    }
+    v.handles.visible = item.selected
+    if (item.selected) {
+      item.vertices.forEach(([x, y], vIdx) => {
+        const handle = v.handles.children[vIdx] as THREE.Mesh
+        handle.position.set(x, y, 0.14)
+        ;(handle.material as THREE.MeshBasicMaterial).color.setHex(item.stroke)
+        handle.userData.pick = { type: `${item.kind}Vertex`, id: item.id, vIdx }
       })
     }
+
+    // 中心手柄 + 名称标签（DOM 节点复用，只改文本/颜色/位置）
+    const center = centroid(item.vertices)
+    v.mover.visible = item.selected
+    v.mover.userData.pick = { type: `${item.kind}Move`, id: item.id }
+    v.mover.position.set(center.x, center.y, 0.13)
+    v.label.position.set(center.x, center.y, 0.2)
+    if (v.labelInner.textContent !== item.label) v.labelInner.textContent = item.label
+    v.labelInner.style.borderColor = `#${item.stroke.toString(16).padStart(6, '0')}`
+  }
+
+  private disposeVisual(v: PolyVisual) {
+    this.group.remove(v.root)
+    v.root.traverse((o) => {
+      const m = o as THREE.Mesh
+      m.geometry?.dispose()
+      const mat = m.material as THREE.Material | undefined
+      mat?.dispose()
+    })
+    v.label.element.remove()
   }
 
   // ---------- 绘制草稿（多边形逐点 / 矩形拖拽） ----------
@@ -229,7 +293,8 @@ export class PolygonLayer {
   }
 
   dispose() {
-    this.clearEntities()
+    for (const v of this.visuals.values()) this.disposeVisual(v)
+    this.visuals.clear()
     this.draftObjects.clear()
     this.group.clear()
   }
