@@ -151,6 +151,8 @@ export interface MapModeTaskVO {
   type: MapTaskType
   status: MapTaskStatus
   nav_map_id: number | null
+  /** V2 地图 id（v2 链路切图/放弃建图回图携带；v1 链路为 null） */
+  map_id_v2?: number | null
   map_name: string | null
   robot_map_name: string | null
   error_message: string | null
@@ -392,10 +394,14 @@ export interface TelemetrySnapshot {
   msg_scan2: number
 }
 
-/** map-sync 事件体（注意 navMapId 为 camelCase，后端 Map 键不受全局命名策略影响） */
+/** map-sync 事件体（注意 mapId/navMapId 为 camelCase，后端 Map 键不受全局命名策略影响） */
 export interface MapSyncEvent {
   success: boolean
+  /** v1 链路 */
   navMapId?: number
+  /** v2 链路：建图保存自动入库并发布的地图 id */
+  mapId?: number
+  mapName?: string
   robotMapName?: string
   message?: string
 }

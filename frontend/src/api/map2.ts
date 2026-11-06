@@ -32,6 +32,9 @@ export const updateMapV2 = (id: number, dto: { map_name?: string; robot_map_name
   put<MapV2VO>(`/maps/${id}`, dto)
 export const publishMapV2 = (id: number, modified_by?: string) =>
   post<MapV2VO>(`/maps/${id}/publish`, modified_by ? { modified_by } : {})
+/** 切换机器人地图：load_map 受理即返回，终态经 SSE map-task 推送，成功后自动发布 */
+export const switchMapV2 = (id: number, robot_map_name?: string) =>
+  post<import('@/types/api').MapModeTaskVO>(`/maps/${id}/switch`, robot_map_name ? { robot_map_name } : {})
 export const deleteMapV2 = (id: number) => del<void>(`/maps/${id}`)
 export const replaceGridFromLiveV2 = (id: number, modified_by?: string) =>
   post<MapV2VO>(`/maps/${id}/grid-from-live`, modified_by ? { modified_by } : {})

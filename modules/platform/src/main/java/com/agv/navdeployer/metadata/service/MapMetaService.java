@@ -292,6 +292,74 @@ public class MapMetaService {
         return snapshotLiveGrid();
     }
 
+    public MapMeta findPublished() {
+        return mapMetaMapper.selectOne(Wrappers.lambdaQuery(MapMeta.class)
+                .eq(MapMeta::getStatus, MapMeta.STATUS_PUBLISHED).last("LIMIT 1"));
+    }
+
+    public MapMeta getMeta(Long id) {
+        return mapMetaMapper.selectById(id);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public MapV2VO createFromRobotGrid(String robotMapName, LiveMapCache.OccupancyGrid grid) {
+        requireMapNameAvailable(robotMapName);
+        MapGridVO gridVO = toGridVO(grid);
+        String objectKey = storeGrid(gridVO);
+
+        MapMeta map = new MapMeta();
+        map.setMapName(robotMapName);
+        map.setRobotMapName(robotMapName);
+        map.setCoordinateSystem("map");
+        map.setUnit("meters");
+        map.setVersion("v0.0.1");
+        map.setStatus(MapMeta.STATUS_DRAFT);
+        map.setSource(MapMeta.SOURCE_ROBOT_SYNC);
+        map.setResolution(gridVO.getResolution());
+        map.setWidth(gridVO.getWidth());
+        map.setHeight(gridVO.getHeight());
+        map.setOriginX(gridVO.getOriginX());
+        map.setOriginY(gridVO.getOriginY());
+        map.setOriginYaw(gridVO.getOriginYaw());
+        map.setObjectKey(objectKey);
+        mapMetaMapper.insert(map);
+        createDefaultFloor(map.getId());
+        log.info("v2 map saved from robot grid: id={}, name={}, {}x{} res={}",
+                map.getId(), robotMapName, gridVO.getWidth(), gridVO.getHeight(), gridVO.getResolution());
+        return MapV2VO.from(map);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public MapV2VO replaceRobotGrid(Long mapId, String robotMapName, LiveMapCache.OccupancyGrid grid) {
+        MapMeta map = requireMap(mapId);
+        MapGridVO gridVO = toGridVO(grid);
+        String objectKey = storeGrid(gridVO);
+        String obsoleteKey = map.getObjectKey();
+        map.setRobotMapName(robotMapName);
+        map.setResolution(gridVO.getResolution());
+        map.setWidth(gridVO.getWidth());
+        map.setHeight(gridVO.getHeight());
+        map.setOriginX(gridVO.getOriginX());
+        map.setOriginY(gridVO.getOriginY());
+        map.setOriginYaw(gridVO.getOriginYaw());
+        map.setObjectKey(objectKey);
+        map.setDataSize(null);
+        map.setUpdatedAt(null);
+        mapMetaMapper.updateById(map);
+        if (obsoleteKey != null && !obsoleteKey.equals(objectKey)) {
+            afterCommitOrNow(() -> gridStore.removeQuietly(obsoleteKey));
+        }
+        ticker.touch(mapId, "map-mode-sync");
+        log.info("v2 map grid replaced from robot: id={}, name={}, robotMapName={}",
+                mapId, map.getMapName(), robotMapName);
+        return MapV2VO.from(mapMetaMapper.selectById(mapId));
+    }
+
+    private MapGridVO toGridVO(LiveMapCache.OccupancyGrid grid) {
+        return new MapGridVO(grid.frameId(), grid.resolution(), grid.width(), grid.height(),
+                grid.originX(), grid.originY(), grid.originYaw(), grid.data(), grid.receivedAt());
+    }
+
     private MapGridVO snapshotLiveGrid() {
         mapSubscriptionGuard.touch();
         LiveMapCache.OccupancyGrid grid = liveMapCache.snapshot();

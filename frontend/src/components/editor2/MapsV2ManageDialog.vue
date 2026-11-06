@@ -13,6 +13,7 @@ import {
   migrateLegacyMapV2,
   publishMapV2,
   replaceGridFromLiveV2,
+  switchMapV2,
 } from '@/api/map2'
 import { listMaps } from '@/api/maps'
 import type { MapV2VO } from '@/types/map2'
@@ -103,6 +104,16 @@ async function publish(map: MapV2VO) {
   await refresh()
 }
 
+async function switchMap(map: MapV2VO) {
+  await ElMessageBox.confirm(
+    `切换机器人地图到「${map.map_name}」？\n机器人将加载 ${map.robot_map_name ?? map.map_name} 并重启定位，成功后该地图自动发布`,
+    '切换地图',
+    { type: 'warning' },
+  )
+  await switchMapV2(map.id)
+  ElMessage.success('切图任务已下发，结果经消息推送')
+}
+
 async function replaceGrid(map: MapV2VO) {
   await ElMessageBox.confirm(`用当前实时栅格替换「${map.map_name}」底图？元数据不变，版本 +1`, '替换底图', { type: 'warning' })
   await replaceGridFromLiveV2(map.id, store.modifiedBy)
@@ -168,7 +179,8 @@ function statusTag(status: string) {
       <el-table-column label="操作" width="300" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" link @click="edit(row)">编辑</el-button>
-          <el-button size="small" type="success" link @click="publish(row)">发布</el-button>
+          <el-button v-if="row.status !== 'PUBLISHED'" size="small" type="success" link @click="publish(row)">发布</el-button>
+          <el-button v-if="row.status !== 'PUBLISHED'" size="small" type="success" link @click="switchMap(row)">切换</el-button>
           <el-button size="small" link @click="exportZip(row)">导出包</el-button>
           <el-button size="small" link @click="replaceGrid(row)">换底图</el-button>
           <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
