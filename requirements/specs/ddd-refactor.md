@@ -43,10 +43,10 @@ nav-deployer 现为典型三层（controller/service/mapper）模块化单体，
 V1 地图（nav_map/nav_point/nav_path/nav_path_edge、v1 编辑器、v1 API）已废弃：
 
 - **不断的功能**：FOLLOW_PATH 执行（V2 优先链路）、充电（纯 V2）、.lxmap 导出（数据源已是 V2）
-- **先迁移**：存量 V1 地图数据经 `/api/v2/maps/migrate/{navMapId}` 全量迁移
+- **存量数据不迁移**（用户决策）：V1 数据全部废弃，随下线故事直接 DROP 四表
 - **功能移植**（独立 story）：建图-切图-对账闭环 V2 化；to_waypoint 按 V2 点位导航；`/api/v2/maps/live` 等端点重建；RMS mapping/delete V2 化
 - **随 V1 消亡**：TO_POINT 旧语义、v1 编辑器页面与 store、旧六件套 schedule-zip 端点、V1 兜底分支、迁移入口
-- **收尾**：Flyway DROP 四表
+- **收尾**：下线故事内 Flyway DROP 四表（V7）
 
 ## 执行纪律
 

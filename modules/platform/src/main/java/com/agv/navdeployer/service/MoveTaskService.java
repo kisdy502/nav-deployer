@@ -2,11 +2,8 @@ package com.agv.navdeployer.service;
 
 import com.agv.navdeployer.dto.MoveTaskCreateDTO;
 import com.agv.navdeployer.entity.MoveTask;
-import com.agv.navdeployer.entity.NavPath;
-import com.agv.navdeployer.entity.NavPoint;
 import com.agv.navdeployer.exception.NotFoundException;
 import com.agv.navdeployer.mapper.MoveTaskMapper;
-import com.agv.navdeployer.mapper.NavPointMapper;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.RosCommandDispatcher.ControlPoint;
 import com.agv.navdeployer.sim.RosCommandDispatcher.FollowEdgeGoal;
@@ -15,7 +12,6 @@ import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvSsePublisher;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.agv.navdeployer.vo.MoveTaskVO;
-import com.agv.navdeployer.vo.PathEdgeVO;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -37,7 +33,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 public class MoveTaskService {
@@ -47,9 +42,6 @@ public class MoveTaskService {
     private static final long FORCE_FINALIZE_DELAY_MS = 15000L;
 
     private final MoveTaskMapper moveTaskMapper;
-    private final NavPointMapper navPointMapper;
-    private final NavPathService navPathService;
-    private final NavMapService navMapService;
     private final RosCommandDispatcher dispatcher;
     private final RosbridgeClient rosbridgeClient;
     private final SimAgvTelemetry telemetry;
@@ -73,9 +65,6 @@ public class MoveTaskService {
     private final Map<Long, TaskRuntime> activeRuntimes = new ConcurrentHashMap<>();
 
     public MoveTaskService(MoveTaskMapper moveTaskMapper,
-                           NavPointMapper navPointMapper,
-                           NavPathService navPathService,
-                           NavMapService navMapService,
                            RosCommandDispatcher dispatcher,
                            RosbridgeClient rosbridgeClient,
                            SimAgvTelemetry telemetry,
@@ -89,9 +78,6 @@ public class MoveTaskService {
                            RobotOperationalService operationalService,
                            MapAlignmentGuard mapAlignmentGuard) {
         this.moveTaskMapper = moveTaskMapper;
-        this.navPointMapper = navPointMapper;
-        this.navPathService = navPathService;
-        this.navMapService = navMapService;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
         this.telemetry = telemetry;
@@ -161,26 +147,6 @@ public class MoveTaskService {
         boolean endPointSingle;
 
         switch (dto.taskType()) {
-            case MoveTask.TYPE_TO_POINT -> {
-                if (dto.pointId() == null) {
-                    throw new IllegalArgumentException("TO_POINT 任务必须携带 point_id");
-                }
-                NavPoint point = navPointMapper.selectById(dto.pointId());
-                if (point == null) {
-                    throw new NotFoundException("点位 " + dto.pointId() + " 不存在");
-                }
-                long activeMapId = navMapService.requireActiveMap().getId();
-                if (point.getMapId() != activeMapId) {
-                    throw new IllegalStateException("点位 " + point.getPointCode()
-                            + " 不属于当前激活地图（map_id=" + point.getMapId() + "）");
-                }
-                task.setPointId(point.getId());
-                task.setGoalX(point.getX());
-                task.setGoalY(point.getY());
-                task.setGoalTheta(point.getYaw());
-                segments = List.of(singlePlan(point, dto));
-                endPointSingle = dto.endPoint() == null || dto.endPoint();
-            }
             case MoveTask.TYPE_TO_WAYPOINT -> {
                 if (dto.waypointId() == null) {
                     throw new IllegalArgumentException("TO_WAYPOINT 任务必须携带 waypoint_id");
@@ -241,15 +207,11 @@ public class MoveTaskService {
                     throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id");
                 }
                 com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(dto.pathId());
-                if (v2Path != null) {
-                    if (!com.agv.navdeployer.metadata.entity.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
-                        throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + v2Path.getStatus() + "）");
-                    }
-                } else {
-                    NavPath path = navPathService.requirePath(dto.pathId());
-                    if (!NavPath.STATUS_DEPLOYED.equals(path.getStatus())) {
-                        throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + path.getStatus() + "）");
-                    }
+                if (v2Path == null) {
+                    throw new NotFoundException("路线 " + dto.pathId() + " 不存在（V2 路线）");
+                }
+                if (!com.agv.navdeployer.metadata.entity.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
+                    throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + v2Path.getStatus() + "）");
                 }
                 segments = buildPathPlan(dto.pathId(), dto.maxSpeed());
                 if (segments.isEmpty()) {
@@ -472,39 +434,8 @@ public class MoveTaskService {
         List<SegmentPlan> v2Plan = buildV2PathPlan(pathId, maxSpeedOverride);
         if (!v2Plan.isEmpty()) {
             log.info("FOLLOW_PATH 使用 V2 路线: pathId={}, segments={}", pathId, v2Plan.size());
-            return v2Plan;
         }
-        List<PathEdgeVO> edges = navPathService.loadEdgeVOs(pathId);
-        if (edges.isEmpty()) {
-            return List.of();
-        }
-        List<Long> pointIds = edges.stream()
-                .flatMap(edge -> Stream.of(edge.getSourcePointId(), edge.getTargetPointId()))
-                .distinct()
-                .toList();
-        Map<Long, NavPoint> points = navPointMapper.selectBatchIds(pointIds).stream()
-                .collect(Collectors.toMap(NavPoint::getId, Function.identity()));
-        List<SegmentPlan> plans = new ArrayList<>(edges.size());
-        for (PathEdgeVO edge : edges) {
-            NavPoint source = points.get(edge.getSourcePointId());
-            NavPoint target = points.get(edge.getTargetPointId());
-            if (source == null || target == null) {
-                throw new IllegalStateException("路线边引用的点位不存在，数据不一致");
-            }
-            Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride : edge.getMaxSpeed();
-            List<ControlPoint> controlPoints = edge.getControlPoints() == null ? List.of()
-                    : edge.getControlPoints().stream()
-                    .map(point -> new ControlPoint(point.getX(), point.getY()))
-                    .toList();
-            plans.add(new SegmentPlan(edge.getSourcePointCode(), edge.getTargetPointCode(),
-                    target.getX(), target.getY(), target.getYaw(),
-                    edge.getEdgeType(), controlPoints,
-                    maxSpeed,
-                    Boolean.TRUE.equals(edge.getBackUp()),
-                    Boolean.TRUE.equals(edge.getReverse()),
-                    source.getX(), source.getY(), source.getYaw()));
-        }
-        return plans;
+        return v2Plan;
     }
 
     private List<SegmentPlan> buildV2PathPlan(Long pathId, Double maxSpeedOverride) {
@@ -623,13 +554,6 @@ public class MoveTaskService {
         double distStart = Math.hypot(robotX - first.sx(), robotY - first.sy());
         double distEnd = Math.hypot(robotX - last.x(), robotY - last.y());
         return distEnd < distStart;
-    }
-
-    private SegmentPlan singlePlan(NavPoint point, MoveTaskCreateDTO dto) {
-        return new SegmentPlan("", point.getPointCode(),
-                point.getX(), point.getY(), point.getYaw(),
-                "STRAIGHT", List.of(), dto.maxSpeed(), false, false,
-                Double.NaN, Double.NaN, Double.NaN);
     }
 
     private MoveTask findOrThrow(Long id) {

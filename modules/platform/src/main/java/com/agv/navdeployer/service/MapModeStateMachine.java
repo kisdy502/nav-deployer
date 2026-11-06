@@ -24,7 +24,6 @@ public final class MapModeStateMachine {
 
     private final long id;
     private final Type type;
-    private final Long navMapId;
     private final Long v2MapId;
     private final String mapName;
     private final String robotMapName;
@@ -42,16 +41,10 @@ public final class MapModeStateMachine {
     private Instant updatedAt = createdAt;
     private Instant finishedAt;
 
-    public MapModeStateMachine(long id, Type type, Long navMapId,
-                               String mapName, String robotMapName, Instant deadlineAt) {
-        this(id, type, navMapId, null, mapName, robotMapName, deadlineAt);
-    }
-
-    public MapModeStateMachine(long id, Type type, Long navMapId, Long v2MapId,
+    public MapModeStateMachine(long id, Type type, Long v2MapId,
                                String mapName, String robotMapName, Instant deadlineAt) {
         this.id = id;
         this.type = type;
-        this.navMapId = navMapId;
         this.v2MapId = v2MapId;
         this.mapName = mapName;
         this.robotMapName = robotMapName;
@@ -232,10 +225,6 @@ public final class MapModeStateMachine {
 
     public synchronized Status getStatus() {
         return status;
-    }
-
-    public synchronized Long getNavMapId() {
-        return navMapId;
     }
 
     public synchronized Long getV2MapId() {

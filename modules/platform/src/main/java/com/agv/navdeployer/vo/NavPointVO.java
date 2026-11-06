@@ -1,6 +1,5 @@
 package com.agv.navdeployer.vo;
 
-import com.agv.navdeployer.entity.NavPoint;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -33,10 +32,4 @@ public class NavPointVO {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
-
-    public static NavPointVO from(NavPoint point) {
-        return new NavPointVO(point.getId(), point.getMapId(), point.getPointCode(), point.getPointType(),
-                point.getX(), point.getY(), point.getYaw(), point.getRemark(),
-                point.getCreatedAt(), point.getUpdatedAt());
-    }
 }

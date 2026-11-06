@@ -14,42 +14,32 @@ import {
   Share,
   Tickets,
 } from '@element-plus/icons-vue'
-import MapCanvas from '@/components/editor/MapCanvas.vue'
 import MapCanvas2 from '@/components/editor2/MapCanvas2.vue'
 import V2BrowsePanel from '@/components/editor2/V2BrowsePanel.vue'
 import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
-import MappingPanel from '@/components/editor/MappingPanel.vue'
 import MappingPanel2 from '@/components/editor2/MappingPanel2.vue'
 import TeleopPanel from '@/components/editor/TeleopPanel.vue'
 import MapsV2ManageDialog from '@/components/editor2/MapsV2ManageDialog.vue'
-import BrowsePanel from '@/components/browse/BrowsePanel.vue'
-import { useEditorStore } from '@/stores/editor'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
-import { useMapListStore } from '@/stores/mapList'
 import { useRobotStore } from '@/stores/robot'
 import { getOperational, decommission, recommission } from '@/api/robot'
 import { useTasksStore } from '@/stores/tasks'
 import { startMapping } from '@/api/tasks'
-import { switchMap } from '@/api/maps'
-import { listMapsV2 } from '@/api/map2'
+import { listMapsV2, switchMapV2 } from '@/api/map2'
 import type { MapV2VO } from '@/types/map2'
-import type { PickResult } from '@/three/MapScene'
 import { onBeforeUnmount } from 'vue'
 
 const router = useRouter()
-const editor = useEditorStore()
 const editor2 = useMapEditor2Store()
-const mapStore = useMapListStore()
 const robot = useRobotStore()
 const tasks = useTasksStore()
 
-const mapCanvasRef = ref<InstanceType<typeof MapCanvas>>()
 const mapCanvas2Ref = ref<InstanceType<typeof MapCanvas2>>()
 
-// ---------- v2 地图切换（主页浏览新版多楼层地图，有 v2 地图时默认选中） ----------
+// ---------- v2 地图选择 ----------
 const v2Maps = ref<MapV2VO[]>([])
 const v2MapId = ref<number | null>(null)
-/** 用户手动清除过 v2 选择后不再自动兜底选中 */
+/** 用户手动清除过选择后不再自动兜底选中 */
 const v2ManualCleared = ref(false)
 /** 右侧地图信息面板默认折叠：画布优先，点边缘按钮展开 */
 const browsePanelVisible = ref(false)
@@ -66,7 +56,7 @@ watch(v2MapId, (id, was) => {
 async function loadV2Maps() {
   try {
     v2Maps.value = await listMapsV2()
-    // 首次进入：存在 v2 地图时默认选中（使用中优先，其次最新），主页直接展示新版地图
+    // 首次进入：存在地图时默认选中（使用中优先，其次最新）
     if (v2MapId.value == null && !v2ManualCleared.value && v2Maps.value.length > 0) {
       v2MapId.value = v2Maps.value.find((m) => m.status === 'PUBLISHED')?.id ?? v2Maps.value[0].id
     }
@@ -74,15 +64,25 @@ async function loadV2Maps() {
     /* http 层已提示 */
   }
 }
-const mappingVisible = ref(false)
-/** v2 建图面板（v2 地图选中时建图入口走它，实时预览进 v2 画布） */
+
+/** 下拉排序：机器人当前地图第一，其次使用中 */
+const sortedMaps = computed(() => {
+  const name = robot.status?.map_name
+  const score = (m: MapV2VO) => {
+    if (name && (name === m.map_name || name === m.robot_map_name)) return 0
+    return m.status === 'PUBLISHED' ? 1 : 2
+  }
+  return [...v2Maps.value].sort((a, b) => score(a) - score(b))
+})
+
+/** v2 建图面板（实时预览进 v2 画布） */
 const mapping2Visible = ref(false)
 /** 本次实时预览是否由建图模式自动开启（退出建图时自动关，手动开启的不动） */
 const v2AutoLive = ref(false)
 const teleopVisible = ref(false)
 const manage2Visible = ref(false)
 
-// v2 地图管理（导入/迁移/删除）关闭后刷新下拉列表
+// v2 地图管理（导入/删除）关闭后刷新下拉列表
 watch(manage2Visible, (visible, was) => {
   if (!visible && was) void loadV2Maps()
 })
@@ -122,76 +122,16 @@ async function toggleDecommission() {
     }
   } catch { /* 取消 */ }
 }
-/** 用户手动切换过地图后，不再自动跟随机器人地图 */
-const manualSelected = ref(false)
-
-// 地图下拉：机器人当前地图排第一，其次部署中
-const sortedMaps = computed(() => {
-  const name = robot.status?.map_name
-  const score = (m: { map_name: string; robot_map_name: string | null; status: string }) => {
-    if (name && (name === m.map_name || name === m.robot_map_name)) return 0
-    return m.status === 'ACTIVE' ? 1 : 2
-  }
-  return [...mapStore.maps].sort((a, b) => score(a) - score(b))
-})
-
-const currentMapId = computed({
-  get: () => editor.mapId || undefined,
-  set: (v: number | undefined) => {
-    if (v) selectMap(v)
-  },
-})
-
-/** 打开页面第一步：加载机器人默认地图（机器人当前 > 部署中 > 最新）；v2 已默认选中时跳过 v1 兜底 */
-async function pickDefaultMap() {
-  const maps = mapStore.maps
-  if (maps.length === 0) {
-    // v2 已选中：不弹空地图引导（引导是建图流程，v2 浏览不受影响）
-    if (v2MapId.value == null) guide.visible = true
-    return
-  }
-  const name = robot.status?.map_name
-  const target =
-    (name ? maps.find((m) => m.map_name === name || m.robot_map_name === name) : null) ??
-    maps.find((m) => m.status === 'ACTIVE') ??
-    maps[0]
-  if (!target) return
-  if (editor.mapId !== target.id || !editor.grid) {
-    await editor.loadMap(target.id)
-  }
-}
-
-function selectMap(id: number) {
-  manualSelected.value = true
-  void editor.loadMap(id)
-}
-
-// 机器人地图变化时（未手动选择过）自动跟随
-watch(
-  () => robot.status?.map_name,
-  (name) => {
-    if (!name || manualSelected.value || guide.visible) return
-    const m = mapStore.maps.find((x) => x.map_name === name || x.robot_map_name === name)
-    if (m && m.id !== editor.mapId) void editor.loadMap(m.id)
-  },
-)
 
 // 建图模式联动（刷新页面后恢复建图上下文）：
-// v2 地图选中 → v2 面板 + v2 画布实时预览（存档地图与点位/路线全部隐藏）；
-// 注意 SSE 的 MAPPING 状态可能先于 v2 地图列表加载到达（v2MapId 尚为 null 时走了 v1 分支），
-// 因此模式与 v2 选图任一变化都重新校准，避免画布停留在存档地图。
+// v2 地图选中 → v2 面板 + v2 画布实时预览（存档地图与点位/路线全部隐藏）
 function syncMappingMode() {
   const mode = robot.status?.mode
   if (mode === 'MAPPING') {
-    if (v2MapId.value != null) {
-      mapping2Visible.value = true
-      mappingVisible.value = false
-      if (!editor2.livePreview) {
-        editor2.startLivePreview()
-        v2AutoLive.value = true
-      }
-    } else {
-      mappingVisible.value = true
+    mapping2Visible.value = true
+    if (!editor2.livePreview) {
+      editor2.startLivePreview()
+      v2AutoLive.value = true
     }
   } else if (mode && v2AutoLive.value) {
     // 退出建图：自动开启的预览自动关（手动开启的不动）
@@ -201,15 +141,9 @@ function syncMappingMode() {
 }
 
 watch(() => robot.status?.mode, syncMappingMode, { immediate: true })
-watch(v2MapId, syncMappingMode)
 
-/** 建图入口 v2 感知：v2 地图开 v2 面板（实时预览进 v2 画布），否则 v1 面板。 */
 function toggleMappingPanel() {
-  if (v2MapId.value != null) {
-    mapping2Visible.value = !mapping2Visible.value
-  } else {
-    mappingVisible.value = !mappingVisible.value
-  }
+  mapping2Visible.value = !mapping2Visible.value
 }
 
 /** v2 建图保存为新地图后：主页直接切到新地图浏览。 */
@@ -219,42 +153,28 @@ function onV2MapCreated(id: number) {
 }
 
 onMounted(async () => {
-  await mapStore.load()
   tasks.refresh()
-  // 先加载 v2 列表（有 v2 地图则主页默认展示 v2），再决定是否需要 v1 兜底
   await loadV2Maps()
-  await pickDefaultMap()
+  if (v2Maps.value.length === 0) guide.visible = true
   void loadOperational()
 })
 
 function editMap() {
-  // 选中 v2 地图时直接进入 v2 编辑器
-  if (v2MapId.value) {
-    router.push({ name: 'map2-editor', params: { id: String(v2MapId.value) } })
-    return
-  }
-  if (!editor.mapId) {
+  if (!v2MapId.value) {
     ElMessage.warning('请先选择一张地图')
     return
   }
-  router.push({ name: 'editor', params: { id: String(editor.mapId) } })
+  router.push({ name: 'map2-editor', params: { id: String(v2MapId.value) } })
 }
 
 function toggleMeasure() {
-  if (v2MapId.value) {
-    editor2.setTool(editor2.tool === 'measure' ? 'select' : 'measure')
-    return
-  }
-  editor.setMode(editor.mode === 'measure' ? 'idle' : 'measure')
+  if (!v2MapId.value) return ElMessage.warning('请先选择地图')
+  editor2.setTool(editor2.tool === 'measure' ? 'select' : 'measure')
 }
 
 function toggleInitialPose() {
-  // v2 地图：切 v2 画布的重定位工具；v1 地图：保持原逻辑
-  if (v2MapId.value) {
-    editor2.setTool(editor2.tool === 'initialPose' ? 'select' : 'initialPose')
-    return
-  }
-  editor.setMode(editor.mode === 'initialPose' ? 'idle' : 'initialPose')
+  if (!v2MapId.value) return ElMessage.warning('请先选择地图')
+  editor2.setTool(editor2.tool === 'initialPose' ? 'select' : 'initialPose')
 }
 
 async function startMappingNow() {
@@ -301,11 +221,10 @@ watch(needsLocalization, (needed) => {
     return
   }
   if (guide.visible || locateGuide.dismissed) return
-  // 默认选中当前部署中（ACTIVE）的地图
-  locateGuide.mapId = editor.mapId
-    ?? mapStore.maps.find((m) => m.status === 'ACTIVE')?.id
-    ?? mapStore.maps[0]?.id
-  locateGuide.visible = mapStore.maps.length > 0
+  locateGuide.mapId = v2MapId.value
+    ?? v2Maps.value.find((m) => m.status === 'PUBLISHED')?.id
+    ?? v2Maps.value[0]?.id
+  locateGuide.visible = v2Maps.value.length > 0
 }, { immediate: true })
 
 async function deployAndLocalize() {
@@ -315,7 +234,7 @@ async function deployAndLocalize() {
   }
   locateGuide.switching = true
   try {
-    await switchMap(locateGuide.mapId)
+    await switchMapV2(locateGuide.mapId)
     locateGuide.visible = false
     locateGuide.dismissed = true
     ElMessage.success('已下发切图：机器人加载地图并启动定位，收敛后机器人将出现在地图上（必要时用「重定位」微调初始位姿）')
@@ -326,62 +245,7 @@ async function deployAndLocalize() {
   }
 }
 
-// ---------- 浏览态右键菜单：导航/定位/循线 ----------
-interface CtxItem {
-  label: string
-  danger?: boolean
-  action: () => void
-}
-const ctx = reactive({ visible: false, x: 0, y: 0, items: [] as CtxItem[] })
-
-function closeCtx() {
-  ctx.visible = false
-  window.removeEventListener('click', closeCtx)
-}
-
-function navToPoint(p: { id: number; x: number; y: number }) {
-  if (!robot.status?.pose_initialized) return ElMessage.warning('机器人位姿未初始化，无法导航')
-  if (tasks.moveTaskInFlight) return ElMessage.warning('已有执行中的移动任务，请先取消')
-  void tasks.navigateToPoint(p.id)
-}
-
-function followPathById(id: number) {
-  const path = editor.paths.find((x) => x.id === id)
-  if (!path) return
-  if (path.status !== 'DEPLOYED') return ElMessage.warning('只有已部署（DEPLOYED）的路线才能循线')
-  if (!robot.status?.pose_initialized) return ElMessage.warning('机器人位姿未初始化，无法循线')
-  if (tasks.moveTaskInFlight) return ElMessage.warning('已有执行中的移动任务，请先取消')
-  void tasks.followPath(path.id)
-}
-
-function openCtx(payload: { hit: PickResult | null; x: number; y: number; world: { x: number; y: number } }) {
-  const hit = payload.hit
-  const items: CtxItem[] = []
-  if (hit?.type === 'point' && hit.id != null) {
-    const p = editor.pointsById.get(hit.id)
-    if (p) {
-      editor.selectPoint(p.id)
-      items.push(
-        { label: '导航到此', action: () => navToPoint(p) },
-        { label: '定位到此', action: () => mapCanvasRef.value?.flyToPoint(p.x, p.y) },
-      )
-    }
-  } else if (hit?.type === 'path' && hit.id != null) {
-    editor.selectPath(hit.id)
-    void editor.ensurePathDetail(hit.id)
-    items.push({ label: '循线', action: () => followPathById(hit!.id!) })
-  } else {
-    items.push({ label: '适应视图', action: () => mapCanvasRef.value?.fitView() })
-  }
-  if (items.length === 0) return
-  ctx.items = items
-  ctx.x = payload.x
-  ctx.y = payload.y
-  ctx.visible = true
-  window.addEventListener('click', closeCtx, { once: true })
-}
-
-onBeforeUnmount(closeCtx)
+onBeforeUnmount(() => {})
 </script>
 
 <template>
@@ -393,38 +257,6 @@ onBeforeUnmount(closeCtx)
       </div>
 
       <div class="header-map">
-        <!-- v1 地图下拉：仅 v1 浏览模式（未选 v2 地图）显示，v2 为主流程时不再出现冗余禁用态 -->
-        <el-select
-          v-if="v2MapId == null"
-          v-model="currentMapId"
-          placeholder="选择地图"
-          size="default"
-          style="width: 200px"
-        >
-          <el-option
-            v-for="m in sortedMaps"
-            :key="m.id"
-            :value="m.id"
-            :label="m.map_name"
-          >
-            <div class="map-option">
-              <span>{{ m.map_name }}</span>
-              <el-tag
-                v-if="robot.status?.map_name && (robot.status.map_name === m.map_name || robot.status.map_name === m.robot_map_name)"
-                size="small"
-                type="success"
-                effect="light"
-              >机器人当前</el-tag>
-              <el-tag v-else-if="m.status === 'ACTIVE'" size="small" type="primary" effect="light">部署中</el-tag>
-            </div>
-          </el-option>
-        </el-select>
-        <el-tag v-if="editor.mapInfo && v2MapId == null" size="small" :type="editor.mapInfo.status === 'ACTIVE' ? 'success' : 'info'">
-          {{ editor.mapInfo.status === 'ACTIVE' ? '部署中' : editor.mapInfo.status }}
-        </el-tag>
-
-        <el-divider v-if="v2MapId == null && v2Maps.length > 0" direction="vertical" />
-
         <el-select
           v-if="v2Maps.length > 0"
           v-model="v2MapId"
@@ -434,7 +266,7 @@ onBeforeUnmount(closeCtx)
           :value-on-clear="null"
           style="width: 240px"
         >
-          <el-option v-for="m in v2Maps" :key="m.id" :value="m.id" :label="`${m.map_name} · ${m.version}`">
+          <el-option v-for="m in sortedMaps" :key="m.id" :value="m.id" :label="`${m.map_name} · ${m.version}`">
             <div class="map-option">
               <span>{{ m.map_name }}</span>
               <el-tag size="small" :type="m.status === 'PUBLISHED' ? 'success' : 'info'" effect="light">
@@ -477,7 +309,7 @@ onBeforeUnmount(closeCtx)
         <el-tooltip content="重定位" placement="right">
           <button
             class="rail-btn"
-            :class="{ active: v2MapId ? editor2.tool === 'initialPose' : editor.mode === 'initialPose' }"
+            :class="{ active: editor2.tool === 'initialPose' }"
             @click="toggleInitialPose"
           >
             <el-icon :size="18"><Aim /></el-icon>
@@ -492,14 +324,14 @@ onBeforeUnmount(closeCtx)
         <el-tooltip content="测量距离" placement="right">
           <button
             class="rail-btn"
-            :class="{ active: v2MapId ? editor2.tool === 'measure' : editor.mode === 'measure' }"
+            :class="{ active: editor2.tool === 'measure' }"
             @click="toggleMeasure"
           >
             <el-icon :size="18"><ScaleToOriginal /></el-icon>
           </button>
         </el-tooltip>
         <el-tooltip content="适应视图" placement="right">
-          <button class="rail-btn" @click="v2MapId ? mapCanvas2Ref?.fitView() : mapCanvasRef?.fitView()">
+          <button class="rail-btn" @click="mapCanvas2Ref?.fitView()">
             <el-icon :size="18"><FullScreen /></el-icon>
           </button>
         </el-tooltip>
@@ -521,10 +353,11 @@ onBeforeUnmount(closeCtx)
           ref="mapCanvas2Ref"
           :editable="false"
         />
-        <MapCanvas v-else ref="mapCanvasRef" :editable="false" @context="openCtx" />
+        <el-empty v-else description="暂无地图，请先建图或导入" />
 
         <!-- 右侧地图信息面板折叠开关（默认折叠，画布最大化） -->
         <button
+          v-if="v2MapId"
           class="panel-toggle"
           :title="browsePanelVisible ? '收起地图信息' : '展开地图信息'"
           @click="browsePanelVisible = !browsePanelVisible"
@@ -536,13 +369,11 @@ onBeforeUnmount(closeCtx)
         </button>
       </main>
 
-      <aside v-if="browsePanelVisible" class="browse-right">
+      <aside v-if="browsePanelVisible && v2MapId" class="browse-right">
         <V2BrowsePanel
-          v-if="v2MapId"
           @locate-point="(xy) => mapCanvas2Ref?.flyToPoint(xy.x, xy.y)"
           @locate-bounds="(pts) => mapCanvas2Ref?.flyToBounds(pts)"
         />
-        <BrowsePanel v-else @locate-point="(xy) => mapCanvasRef?.flyToPoint(xy.x, xy.y)" @locate-bounds="(pts) => mapCanvasRef?.flyToBounds(pts)" />
       </aside>
     </div>
 
@@ -550,7 +381,6 @@ onBeforeUnmount(closeCtx)
       <RobotStatusBar />
     </footer>
 
-    <MappingPanel v-if="mappingVisible" @close="mappingVisible = false" />
     <MappingPanel2
       v-if="mapping2Visible"
       @close="mapping2Visible = false"
@@ -560,19 +390,6 @@ onBeforeUnmount(closeCtx)
     <TeleopPanel v-if="teleopVisible" @close="teleopVisible = false" />
     <MapsV2ManageDialog v-model="manage2Visible" />
 
-    <!-- 浏览态右键菜单 -->
-    <div v-if="ctx.visible" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">
-      <div
-        v-for="(item, i) in ctx.items"
-        :key="i"
-        class="ctx-item"
-        :class="{ danger: item.danger }"
-        @click="item.action(); closeCtx()"
-      >
-        {{ item.label }}
-      </div>
-    </div>
-
     <!-- 空地图建图引导 -->
     <el-dialog v-model="guide.visible" title="欢迎使用 Nav Deployer" width="460px" :close-on-click-modal="false">
       <div class="guide-body">
@@ -580,8 +397,8 @@ onBeforeUnmount(closeCtx)
         <div class="guide-steps">
           <div>1. 点击「开始建图」，机器人进入在线建图模式；</div>
           <div>2. 遥控机器人走遍作业区域，地图实时预览；</div>
-          <div>3. 建图完成后在「建图」面板点击「保存并入库」；</div>
-          <div>4. 入库成功后即可在本页浏览、标注点位与路线。</div>
+          <div>3. 建图完成后在「建图」面板保存，地图自动入库并发布；</div>
+          <div>4. 发布后即可在本页浏览、编辑点位与路线。</div>
         </div>
       </div>
       <template #footer>
@@ -746,32 +563,6 @@ onBeforeUnmount(closeCtx)
 
 .browse-footer {
   height: 36px;
-}
-
-.ctx-menu {
-  position: fixed;
-  z-index: 3000;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 4px;
-  min-width: 130px;
-}
-
-.ctx-item {
-  padding: 7px 12px;
-  font-size: 13px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.ctx-item:hover {
-  background: #f5f7fa;
-}
-
-.ctx-item.danger {
-  color: #f56c6c;
 }
 
 .guide-body {

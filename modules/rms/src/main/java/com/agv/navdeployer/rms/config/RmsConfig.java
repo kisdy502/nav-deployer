@@ -1,11 +1,10 @@
 package com.agv.navdeployer.rms.config;
 
-import com.agv.navdeployer.mapper.NavMapMapper;
+import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.gateway.RmsCommandGateway;
 import com.agv.navdeployer.rms.gateway.RmsReportGateway;
 import com.agv.navdeployer.rms.gateway.RmsServiceGateway;
 import com.agv.navdeployer.rms.map.RmsInspectionUploader;
-import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.map.RmsMapState;
 import com.agv.navdeployer.rms.map.RmsTelemetryService;
 import com.agv.navdeployer.rms.protocol.keys.RmsCommandKeys;
@@ -16,7 +15,6 @@ import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.rms.task.RmsResultReporter;
 import com.agv.navdeployer.rms.task.RmsTaskService;
 import com.agv.navdeployer.service.MapModeTaskService;
-import com.agv.navdeployer.service.NavMapService;
 import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -82,14 +80,11 @@ public class RmsConfig {
                                                RmsInspectionUploader inspectionUploader,
                                                com.agv.navdeployer.rms.log.RmsLogCollector logCollector,
                                                com.agv.navdeployer.rms.teach.RmsTeachCollector teachCollector,
-                                               com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
-                                               com.agv.navdeployer.service.NavPointService navPointService,
-                                               com.agv.navdeployer.service.NavPathService navPathService,
                                                RmsTaskService taskService,
                                                ObjectMapper mapper, RmsCommandKeys keys,
                                                RmsProperties rmsProperties) {
         return new RmsCommandGateway(taskService, mapService, telemetryService,
-                inspectionUploader, logCollector, teachCollector, scheduleAdapter, navPointService, navPathService,
+                inspectionUploader, logCollector, teachCollector,
                 mapper, keys, rmsProperties.getReport().getPeriodicLogIntervalMs());
     }
 
@@ -120,14 +115,12 @@ public class RmsConfig {
 
     @Bean
     public RmsMapService rmsMapService(MapModeTaskService mapTaskService,
-                                       NavMapService navMapService,
-                                       NavMapMapper navMapMapper,
                                        SimAgvTelemetry telemetry,
                                        RmsMapState mapState,
                                        com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
                                        com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService,
                                        com.agv.navdeployer.rms.map.NativeMapClient nativeMaps) {
-        return new RmsMapService(mapTaskService, navMapService, navMapMapper,
+        return new RmsMapService(mapTaskService,
                 telemetry, mapState, mapMetaService, mapPackageService, nativeMaps);
     }
 

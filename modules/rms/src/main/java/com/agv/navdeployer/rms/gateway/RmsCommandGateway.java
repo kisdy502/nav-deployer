@@ -30,9 +30,6 @@ public class RmsCommandGateway {
     private final RmsInspectionUploader inspectionUploader;
     private final RmsLogCollector logCollector;
     private final com.agv.navdeployer.rms.teach.RmsTeachCollector teachCollector;
-    private final com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter;
-    private final com.agv.navdeployer.service.NavPointService navPointService;
-    private final com.agv.navdeployer.service.NavPathService navPathService;
     private final ObjectMapper mapper;
     private volatile RmsCommandKeys keys;
     private volatile ZenohChannel currentChannel;
@@ -43,9 +40,6 @@ public class RmsCommandGateway {
                              RmsInspectionUploader inspectionUploader,
                              RmsLogCollector logCollector,
                              com.agv.navdeployer.rms.teach.RmsTeachCollector teachCollector,
-                             com.agv.navdeployer.exchange.ScheduleMapAdapter scheduleAdapter,
-                             com.agv.navdeployer.service.NavPointService navPointService,
-                             com.agv.navdeployer.service.NavPathService navPathService,
                              ObjectMapper mapper, RmsCommandKeys keys,
                              long periodicLogIntervalMs) {
         this.taskService = taskService;
@@ -54,9 +48,6 @@ public class RmsCommandGateway {
         this.inspectionUploader = inspectionUploader;
         this.logCollector = logCollector;
         this.teachCollector = teachCollector;
-        this.scheduleAdapter = scheduleAdapter;
-        this.navPointService = navPointService;
-        this.navPathService = navPathService;
         this.mapper = mapper;
         this.keys = keys;
         this.periodicLogIntervalMs = periodicLogIntervalMs;
@@ -251,8 +242,7 @@ public class RmsCommandGateway {
             case MAPPING_GET_CURRENT -> mapService.getCurrentMap();
             case MAPPING_DELETE -> mapService.deleteMap(parseMapNameRequest(rawPayload));
             case MAPPING_DOWNLOAD -> mapService.downloadMap(rawPayload, mapper);
-            case MAPPING_GET ->
-                    mapService.exportMap(rawPayload, mapper, scheduleAdapter, navPointService, navPathService);
+            case MAPPING_GET -> mapService.exportMap(rawPayload, mapper);
             case AGV_RELOCATE -> mapService.relocate(parseRelocateRequest(rawPayload));
             case MODE_SET -> mapService.modeSet();
             case MODE_GET -> mapService.modeGet();

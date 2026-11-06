@@ -28,7 +28,7 @@ function symbolGeometry(type: string): THREE.BufferGeometry {
   return new THREE.ShapeGeometry(shape)
 }
 
-/** 点位渲染输入：v1 NavPointVO 与 v2 WaypointV2VO（映射后）均结构兼容 */
+/** 点位渲染输入（v2 WaypointV2VO 映射后结构兼容） */
 export interface MapPointLike {
   id: number
   x: number

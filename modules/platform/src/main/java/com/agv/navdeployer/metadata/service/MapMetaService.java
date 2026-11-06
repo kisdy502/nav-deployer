@@ -1,17 +1,8 @@
 package com.agv.navdeployer.metadata.service;
 
-import com.agv.navdeployer.entity.NavMap;
-import com.agv.navdeployer.entity.NavPath;
-import com.agv.navdeployer.entity.NavPathEdge;
-import com.agv.navdeployer.entity.NavPoint;
 import com.agv.navdeployer.exception.NotFoundException;
-import com.agv.navdeployer.mapper.NavMapMapper;
-import com.agv.navdeployer.mapper.NavPathEdgeMapper;
-import com.agv.navdeployer.mapper.NavPathMapper;
-import com.agv.navdeployer.mapper.NavPointMapper;
 import com.agv.navdeployer.metadata.MetadataJson;
 import com.agv.navdeployer.metadata.dto.MapCreateFromLiveDTO;
-import com.agv.navdeployer.metadata.dto.MapMigrateDTO;
 import com.agv.navdeployer.metadata.dto.MapUpdateDTO;
 import com.agv.navdeployer.metadata.entity.MapFloor;
 import com.agv.navdeployer.metadata.entity.MapInterFloorConn;
@@ -42,7 +33,6 @@ import com.agv.navdeployer.metadata.vo.PathV2VO;
 import com.agv.navdeployer.metadata.vo.ShelfVO;
 import com.agv.navdeployer.metadata.vo.WaypointVO;
 import com.agv.navdeployer.metadata.vo.ZoneVO;
-import com.agv.navdeployer.service.NavMapService;
 import com.agv.navdeployer.sim.LiveMapCache;
 import com.agv.navdeployer.sim.MapSubscriptionGuard;
 import com.agv.navdeployer.vo.MapGridVO;
@@ -77,11 +67,6 @@ public class MapMetaService {
     private final MapPathMapper pathMapper;
     private final MapPathSegmentMapper pathSegmentMapper;
     private final MapInterFloorConnMapper connMapper;
-    private final NavMapMapper navMapMapper;
-    private final NavPointMapper navPointMapper;
-    private final NavPathMapper navPathMapper;
-    private final NavPathEdgeMapper navPathEdgeMapper;
-    private final NavMapService navMapService;
     private final LiveMapCache liveMapCache;
     private final MapSubscriptionGuard mapSubscriptionGuard;
     private final GridObjectStore gridStore;
@@ -98,11 +83,6 @@ public class MapMetaService {
                           MapPathMapper pathMapper,
                           MapPathSegmentMapper pathSegmentMapper,
                           MapInterFloorConnMapper connMapper,
-                          NavMapMapper navMapMapper,
-                          NavPointMapper navPointMapper,
-                          NavPathMapper navPathMapper,
-                          NavPathEdgeMapper navPathEdgeMapper,
-                          NavMapService navMapService,
                           LiveMapCache liveMapCache,
                           MapSubscriptionGuard mapSubscriptionGuard,
                           GridObjectStore gridStore,
@@ -118,11 +98,6 @@ public class MapMetaService {
         this.pathMapper = pathMapper;
         this.pathSegmentMapper = pathSegmentMapper;
         this.connMapper = connMapper;
-        this.navMapMapper = navMapMapper;
-        this.navPointMapper = navPointMapper;
-        this.navPathMapper = navPathMapper;
-        this.navPathEdgeMapper = navPathEdgeMapper;
-        this.navMapService = navMapService;
         this.liveMapCache = liveMapCache;
         this.mapSubscriptionGuard = mapSubscriptionGuard;
         this.gridStore = gridStore;
@@ -455,152 +430,6 @@ public class MapMetaService {
         }
         return mapMetaMapper.selectOne(Wrappers.lambdaQuery(MapMeta.class)
                 .eq(MapMeta::getMapName, mapName).last("LIMIT 1"));
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public MapV2VO migrateFromNavMap(Long navMapId, MapMigrateDTO dto) {
-        NavMap legacy = navMapMapper.selectById(navMapId);
-        if (legacy == null) {
-            throw new NotFoundException("旧版地图 " + navMapId + " 不存在");
-        }
-        String mapName = dto != null && dto.mapName() != null && !dto.mapName().isBlank()
-                ? dto.mapName().trim() : legacy.getMapName();
-        requireMapNameAvailable(mapName);
-
-        MapMeta map = new MapMeta();
-        map.setMapName(mapName);
-        map.setCoordinateSystem("map");
-        map.setUnit("meters");
-        map.setVersion("v0.0.1");
-        map.setStatus(MapMeta.STATUS_DRAFT);
-        map.setModifiedBy(dto != null ? dto.modifiedBy() : null);
-        map.setSource(MapMeta.SOURCE_MIGRATED);
-        map.setRobotMapName(legacy.getRobotMapName());
-        map.setResolution(legacy.getResolution());
-        map.setWidth(legacy.getWidth());
-        map.setHeight(legacy.getHeight());
-        map.setOriginX(legacy.getOriginX());
-        map.setOriginY(legacy.getOriginY());
-        map.setOriginYaw(legacy.getOriginYaw());
-        try {
-            byte[] json = navMapService.getGridData(legacy.getId()).json();
-            byte[] compressed = GridObjectStore.gzip(json);
-            String objectKey = "v2-maps/" + UUID.randomUUID() + "/grid.json.gz";
-            gridStore.put(objectKey, compressed);
-            map.setObjectKey(objectKey);
-            map.setDataSize((long) compressed.length);
-        } catch (Exception e) {
-            throw new IllegalStateException("复制旧地图栅格失败: " + e.getMessage(), e);
-        }
-        mapMetaMapper.insert(map);
-        createDefaultFloor(map.getId());
-        MapFloor floor = floorMapper.selectList(Wrappers.lambdaQuery(MapFloor.class)
-                .eq(MapFloor::getMapId, map.getId())).get(0);
-
-        Map<Long, Long> pointIdToWaypointId = new HashMap<>();
-        for (NavPoint point : navPointMapper.selectList(Wrappers.lambdaQuery(NavPoint.class)
-                .eq(NavPoint::getMapId, navMapId).orderByAsc(NavPoint::getId))) {
-            MapWaypoint waypoint = new MapWaypoint();
-            waypoint.setMapId(map.getId());
-            waypoint.setFloorId(floor.getId());
-            waypoint.setWaypointCode(point.getPointCode());
-            waypoint.setName(point.getPointCode());
-            waypoint.setWpType(legacyWaypointType(point.getPointType()));
-            waypoint.setX(point.getX());
-            waypoint.setY(point.getY());
-            waypoint.setYaw(point.getYaw());
-            waypoint.setRemark(point.getRemark());
-            waypointMapper.insert(waypoint);
-            pointIdToWaypointId.put(point.getId(), waypoint.getId());
-        }
-
-        int migratedPaths = 0;
-        for (NavPath legacyPath : navPathMapper.selectList(Wrappers.lambdaQuery(NavPath.class)
-                .eq(NavPath::getMapId, navMapId).orderByAsc(NavPath::getId))) {
-            List<NavPathEdge> edges = navPathEdgeMapper.selectList(
-                    Wrappers.lambdaQuery(NavPathEdge.class)
-                            .eq(NavPathEdge::getPathId, legacyPath.getId())
-                            .orderByAsc(NavPathEdge::getSeq));
-            if (edges.isEmpty()) {
-                continue;
-            }
-            List<Long> chain = new ArrayList<>();
-            chain.add(edges.get(0).getSourcePointId());
-            edges.forEach(edge -> chain.add(edge.getTargetPointId()));
-            List<Long> mappedChain = new ArrayList<>(chain.size());
-            boolean complete = true;
-            for (Long legacyPointId : chain) {
-                Long waypointId = pointIdToWaypointId.get(legacyPointId);
-                if (waypointId == null) {
-                    complete = false;
-                    break;
-                }
-                mappedChain.add(waypointId);
-            }
-            if (!complete) {
-                log.warn("migrate skip path {}（边引用了地图外点位）: navPathId={}",
-                        legacyPath.getPathCode(), legacyPath.getId());
-                continue;
-            }
-            MapPath path = new MapPath();
-            path.setMapId(map.getId());
-            path.setFloorId(floor.getId());
-            path.setPathCode(legacyPath.getPathCode());
-            path.setName(legacyPath.getPathName());
-            path.setFromWaypointId(mappedChain.get(0));
-            path.setToWaypointId(mappedChain.get(mappedChain.size() - 1));
-            path.setIsBidirectional(false);
-            path.setMaxSpeed(null);
-            path.setEnableObstacleAvoidance(true);
-            path.setStatus(legacyPath.getStatus());
-            pathMapper.insert(path);
-            int seq = 1;
-            for (NavPathEdge edge : edges) {
-                MapPathSegment segment = new MapPathSegment();
-                segment.setPathId(path.getId());
-                segment.setSeq(seq++);
-                segment.setSourceWaypointId(pointIdToWaypointId.get(edge.getSourcePointId()));
-                segment.setTargetWaypointId(pointIdToWaypointId.get(edge.getTargetPointId()));
-                segment.setSegmentType(edge.getEdgeType());
-                segment.setControlPoints(convertControlPoints(edge.getControlPoints()));
-                segment.setMaxSpeed(edge.getMaxSpeed());
-                segment.setBackUp(edge.getBackUp());
-                segment.setReverse(edge.getReverse());
-                pathSegmentMapper.insert(segment);
-            }
-            migratedPaths++;
-        }
-        log.info("legacy nav_map migrated: navMapId={} -> v2 mapId={}, points={}, paths={}",
-                navMapId, map.getId(), pointIdToWaypointId.size(), migratedPaths);
-        return MapV2VO.from(map);
-    }
-
-    private static String convertControlPoints(String legacyJson) {
-        if (legacyJson == null || legacyJson.isBlank()) {
-            return null;
-        }
-        try {
-            JsonNode array = MetadataJson.MAPPER.readTree(legacyJson);
-            List<double[]> points = new ArrayList<>();
-            for (JsonNode node : array) {
-                points.add(new double[]{node.path("x").asDouble(), node.path("y").asDouble()});
-            }
-            return points.isEmpty() ? null : MapZoneService.toJson(points);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static String legacyWaypointType(String legacyType) {
-        if (legacyType == null) {
-            return MapWaypoint.TYPE_PATH;
-        }
-        return switch (legacyType.toUpperCase()) {
-            case "WORK" -> MapWaypoint.TYPE_WORKSTATION;
-            case "CHARGER" -> MapWaypoint.TYPE_CHARGE;
-            case "HOME" -> MapWaypoint.TYPE_PARKING;
-            default -> MapWaypoint.TYPE_PATH;
-        };
     }
 
     private void requireMapNameAvailable(String mapName) {

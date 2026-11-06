@@ -1,6 +1,5 @@
 package com.agv.navdeployer.vo;
 
-import com.agv.navdeployer.entity.NavPath;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -30,14 +29,4 @@ public class NavPathVO {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
-
-    public static NavPathVO from(NavPath path) {
-        return new NavPathVO(path.getId(), path.getMapId(), path.getPathCode(), path.getPathName(),
-                path.getStatus(), null, path.getCreatedAt(), path.getUpdatedAt());
-    }
-
-    public static NavPathVO from(NavPath path, List<PathEdgeVO> edges) {
-        return new NavPathVO(path.getId(), path.getMapId(), path.getPathCode(), path.getPathName(),
-                path.getStatus(), edges, path.getCreatedAt(), path.getUpdatedAt());
-    }
 }

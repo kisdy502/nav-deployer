@@ -4,9 +4,6 @@ import type {
   MapTaskType,
   MoveTaskStatus,
   MoveTaskType,
-  NavMapStatus,
-  PathStatus,
-  PointType,
 } from '@/types/api'
 
 export const fmtTime = (s: string | null | undefined) => (s ? dayjs(s).format('YYYY-MM-DD HH:mm:ss') : '-')
@@ -25,24 +22,7 @@ export const nextAutoCode = (existingCodes: string[], prefix: string): string =>
   return `${prefix}${i}`
 }
 
-export const MAP_STATUS_TAG: Record<NavMapStatus, { label: string; type: 'success' | 'info' | 'warning' }> = {
-  ACTIVE: { label: '部署中', type: 'success' },
-  DRAFT: { label: '草稿', type: 'info' },
-  ARCHIVED: { label: '已归档', type: 'warning' },
-}
-
-export const PATH_STATUS_TAG: Record<PathStatus, { label: string; type: 'success' | 'info' | 'warning' }> = {
-  DEPLOYED: { label: '已部署', type: 'success' },
-  DRAFT: { label: '草稿', type: 'info' },
-  DISABLED: { label: '已停用', type: 'warning' },
-}
-
 export const POINT_TYPE_LABEL: Record<string, string> = {
-  NORMAL: '普通点',
-  WORK: '作业点',
-  CHARGER: '充电点',
-  HOME: '待命点',
-  // v2 词表（11 类，与 pointStyle.ts 的 label 一致，两套 key 并存兼容 v1/v2）
   path: '路径点',
   charge: '充电点',
   pickup: '取货点',
@@ -102,10 +82,3 @@ export const MOVE_TASK_STATUS_TAG: Record<MoveTaskStatus, { label: string; type:
   CANCELLED: { label: '已取消', type: 'info' },
   TIMEOUT: { label: '超时', type: 'danger' },
 }
-
-/** 待命点使用 Home，避免与作业点 W 混淆。 */
-export const POINT_CODE_PREFIX: Record<PointType, string> = {
-  NORMAL: 'P', CHARGER: 'C', WORK: 'W', HOME: 'Home',
-}
-export const nextPointCode = (codes: string[], type: PointType): string =>
-  nextAutoCode(codes, POINT_CODE_PREFIX[type])

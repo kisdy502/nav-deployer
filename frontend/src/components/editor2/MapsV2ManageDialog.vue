@@ -10,14 +10,11 @@ import {
   downloadMapPackageV2,
   importMapZipV2,
   listMapsV2,
-  migrateLegacyMapV2,
   publishMapV2,
   replaceGridFromLiveV2,
   switchMapV2,
 } from '@/api/map2'
-import { listMaps } from '@/api/maps'
 import type { MapV2VO } from '@/types/map2'
-import type { NavMapVO as LegacyMapVO } from '@/types/api'
 
 /** v2 地图管理：从实时建图 / 导入新格式 zip / 迁移旧地图 / 发布 / 导出 / 删除。 */
 const props = defineProps<{ modelValue: boolean }>()
@@ -26,13 +23,11 @@ const router = useRouter()
 const store = useMapEditor2Store()
 
 const maps = ref<MapV2VO[]>([])
-const legacyMaps = ref<LegacyMapVO[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const createName = ref('')
 const importName = ref('')
 const fileRef = ref<UploadFile | null>(null)
-const migrateNavMapId = ref<number | null>(null)
 
 const visible = computed({
   get: () => props.modelValue,
@@ -43,7 +38,6 @@ async function refresh() {
   loading.value = true
   try {
     maps.value = await listMapsV2()
-    legacyMaps.value = await listMaps()
   } finally {
     loading.value = false
   }
@@ -82,14 +76,6 @@ async function importZip(uploadFile: UploadFile) {
 
 function beforeUpload() {
   return false
-}
-
-async function migrate() {
-  if (!migrateNavMapId.value) return ElMessage.warning('请选择旧地图')
-  await migrateLegacyMapV2(migrateNavMapId.value, { modified_by: store.modifiedBy })
-  ElMessage.success('旧地图已迁移为 v2 格式（点位类型映射 + 路线曲线保留）')
-  migrateNavMapId.value = null
-  await refresh()
 }
 
 function edit(map: MapV2VO) {
@@ -151,13 +137,6 @@ function statusTag(status: string) {
       <el-upload :show-file-list="false" :auto-upload="false" :on-change="importZip" :before-upload="beforeUpload" accept=".zip">
         <el-button>导入新格式 zip</el-button>
       </el-upload>
-
-      <el-divider direction="vertical" />
-
-      <el-select v-model="migrateNavMapId" placeholder="选择旧版地图" style="width: 200px" clearable filterable>
-        <el-option v-for="m in legacyMaps" :key="m.id" :value="m.id" :label="m.map_name" />
-      </el-select>
-      <el-button @click="migrate">迁移为 v2</el-button>
     </div>
 
     <el-table :data="maps" v-loading="loading" size="default" border>

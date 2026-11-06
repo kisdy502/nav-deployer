@@ -1,7 +1,5 @@
 package com.agv.navdeployer.service;
 
-import com.agv.navdeployer.entity.NavMap;
-import com.agv.navdeployer.mapper.NavMapMapper;
 import com.agv.navdeployer.metadata.entity.MapMeta;
 import com.agv.navdeployer.metadata.mapper.MapMetaMapper;
 import com.agv.navdeployer.sim.SimAgvProperties;
@@ -19,16 +17,13 @@ public class MapAlignmentGuard {
     private final SimAgvTelemetry telemetry;
     private final SimAgvProperties props;
     private final MapMetaMapper v2MapMapper;
-    private final NavMapMapper navMapMapper;
 
     public MapAlignmentGuard(SimAgvTelemetry telemetry,
                              SimAgvProperties props,
-                             MapMetaMapper v2MapMapper,
-                             NavMapMapper navMapMapper) {
+                             MapMetaMapper v2MapMapper) {
         this.telemetry = telemetry;
         this.props = props;
         this.v2MapMapper = v2MapMapper;
-        this.navMapMapper = navMapMapper;
     }
 
     public record Alignment(String state, String robotMapName, String refMapName,
@@ -57,16 +52,6 @@ public class MapAlignmentGuard {
             }
             return mismatch(robotMap, ref,
                     "v2 已发布地图「" + published.getMapName() + "」(PUBLISHED)");
-        }
-        NavMap active = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
-                .eq(NavMap::getStatus, NavMap.STATUS_ACTIVE).last("LIMIT 1"));
-        if (active != null && !isBlank(active.getRobotMapName())) {
-            String ref = active.getRobotMapName().trim();
-            if (robotMap.equals(ref)) {
-                return new Alignment(Alignment.ALIGNED, robotMap, ref,
-                        "v1 激活地图「" + active.getMapName() + "」", null);
-            }
-            return mismatch(robotMap, ref, "v1 激活地图「" + active.getMapName() + "」(ACTIVE)");
         }
         return new Alignment(Alignment.UNKNOWN, robotMap, null, null,
                 "上位机导航基准图未关联机器人地图名（robot_map_name 为空），无法校验地图一致性；"

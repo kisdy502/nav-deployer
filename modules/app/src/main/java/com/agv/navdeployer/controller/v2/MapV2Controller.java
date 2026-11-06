@@ -2,7 +2,6 @@ package com.agv.navdeployer.controller.v2;
 
 import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.metadata.dto.MapCreateFromLiveDTO;
-import com.agv.navdeployer.metadata.dto.MapMigrateDTO;
 import com.agv.navdeployer.metadata.dto.MapPublishDTO;
 import com.agv.navdeployer.metadata.dto.MapUpdateDTO;
 import com.agv.navdeployer.metadata.exchange.MapPackageService;
@@ -89,14 +88,6 @@ public class MapV2Controller {
             throw new ResponseStatusException(exception.conflict() ? HttpStatus.CONFLICT : HttpStatus.BAD_GATEWAY,
                     exception.getMessage(), exception);
         }
-    }
-
-    @Operation(summary = "旧版地图迁移", description = "nav_map → v2 多楼层格式；点位类型映射、路线曲线字段完整保留")
-    @PostMapping("/migrate/{navMapId}")
-    public ResponseEntity<ApiResponse<MapV2VO>> migrate(@PathVariable Long navMapId,
-                                                        @RequestBody(required = false) MapMigrateDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.ok(mapMetaService.migrateFromNavMap(navMapId, dto)));
     }
 
     @Operation(summary = "地图详情")

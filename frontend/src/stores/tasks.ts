@@ -4,8 +4,6 @@ import { ElMessage } from 'element-plus'
 import { cancelMoveTask, createMoveTask, getActiveMoveTask, getCurrentMapTask } from '@/api/tasks'
 import { cancelCharge, getActiveCharge, rescueCharge, startCharge } from '@/api/charge'
 import { MAP_TASK_STATUS_TAG, MAP_TASK_TYPE_LABEL } from '@/utils/format'
-import { useEditorStore } from './editor'
-import { useMapListStore } from './mapList'
 import type { ChargeTaskVO, MapModeTaskVO, MapSyncEvent, MoveTaskCreateDTO, MoveTaskVO } from '@/types/api'
 
 const TERMINAL_MOVE: MoveTaskVO['status'][] = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMEOUT']
@@ -97,10 +95,6 @@ export const useTasksStore = defineStore('tasks', () => {
       const label = MAP_TASK_TYPE_LABEL[t.type]
       if (t.status === 'SUCCEEDED') ElMessage.success(`${label}成功`)
       else ElMessage.error(`${label}失败：${t.error_message ?? '未知原因'}`)
-      // 切图成功：激活状态变了，刷新地图列表让徽标同步
-      if (t.status === 'SUCCEEDED' && t.type === 'SWITCH_MAP') {
-        void useMapListStore().load()
-      }
     }
   }
 
@@ -112,15 +106,7 @@ export const useTasksStore = defineStore('tasks', () => {
         ElMessage.success(`机器人地图已入库并发布（${e.mapName ?? e.robotMapName ?? e.mapId}）`)
         return
       }
-      ElMessage.success(`机器人地图已入库并激活（navMapId=${e.navMapId ?? '-'}）`)
-      // 界面同步：左侧列表刷新（新图变 ACTIVE）+ 编辑器加载新激活地图。
-      // 必须先停实时预览（不回灌旧图），否则 1s 轮询会把 loadMap 的结果再覆盖回实时帧
-      void useMapListStore().load()
-      if (e.navMapId) {
-        const editor = useEditorStore()
-        editor.stopLivePolling(false)
-        editor.loadMap(e.navMapId).catch(() => {})
-      }
+      ElMessage.success('机器人地图已入库')
     } else {
       ElMessage.error(`机器人地图入库失败：${e.message ?? '未知原因'}`)
     }
@@ -142,15 +128,7 @@ export const useTasksStore = defineStore('tasks', () => {
       .catch(() => {})
   }
 
-  async function navigateToPoint(pointId: number, maxSpeed?: number) {
-    const dto: MoveTaskCreateDTO = { task_type: 'TO_POINT', point_id: pointId }
-    if (maxSpeed) dto.max_speed = maxSpeed
-    activeMoveTask.value = await createMoveTask(dto)
-    ElMessage.success('导航任务已下发')
-    return activeMoveTask.value
-  }
-
-  /** 按位姿导航（v2 点位等无 v1 point_id 的场景）：GOAL + x/y/theta。 */
+  /** 按位姿导航：GOAL + x/y/theta */
   async function navigateToPose(x: number, y: number, theta: number, maxSpeed?: number) {
     const dto: MoveTaskCreateDTO = { task_type: 'GOAL', x, y, theta }
     if (maxSpeed) dto.max_speed = maxSpeed
@@ -204,7 +182,6 @@ export const useTasksStore = defineStore('tasks', () => {
     onMapTask,
     onMapSync,
     refresh,
-    navigateToPoint,
     navigateToPose,
     navigateToWaypoint,
     freeNavigate,

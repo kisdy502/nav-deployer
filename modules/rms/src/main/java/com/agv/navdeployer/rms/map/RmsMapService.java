@@ -1,15 +1,11 @@
 package com.agv.navdeployer.rms.map;
 
-import com.agv.navdeployer.entity.NavMap;
-import com.agv.navdeployer.mapper.NavMapMapper;
 import com.agv.navdeployer.rms.protocol.dto.command.MapNameRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.MapReplyData;
 import com.agv.navdeployer.rms.protocol.dto.command.RelocateRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.service.MapModeTaskService;
-import com.agv.navdeployer.service.NavMapService;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,8 +25,6 @@ public class RmsMapService {
     private static final long STALE_GRACE_MS = 5_000L;
 
     private final MapModeTaskService mapTaskService;
-    private final NavMapService navMapService;
-    private final NavMapMapper navMapMapper;
     private final SimAgvTelemetry telemetry;
     private final RmsMapState mapState;
     private final com.agv.navdeployer.metadata.service.MapMetaService mapMetaService;
@@ -38,16 +32,12 @@ public class RmsMapService {
     private final NativeMapClient nativeMaps;
 
     public RmsMapService(MapModeTaskService mapTaskService,
-                         NavMapService navMapService,
-                         NavMapMapper navMapMapper,
                          SimAgvTelemetry telemetry,
                          RmsMapState mapState,
                          com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
                          com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService,
                          NativeMapClient nativeMaps) {
         this.mapTaskService = mapTaskService;
-        this.navMapService = navMapService;
-        this.navMapMapper = navMapMapper;
         this.telemetry = telemetry;
         this.mapState = mapState;
         this.mapMetaService = mapMetaService;
@@ -114,16 +104,11 @@ public class RmsMapService {
         }
         try {
             var v2Map = mapMetaService.findByUploadName(mapName);
-            com.agv.navdeployer.vo.MapModeTaskVO task;
-            if (v2Map != null && v2Map.getRobotMapName() != null) {
-                task = mapTaskService.switchNativeMap(v2Map.getMapName(), v2Map.getRobotMapName());
-            } else {
-                NavMap map = findMapByName(mapName);
-                if (map == null) {
-                    return BodyReply.failure(404, "找不到可切换的机器人地图: " + mapName);
-                }
-                task = mapTaskService.switchMap(map.getId(), null);
+            if (v2Map == null || v2Map.getRobotMapName() == null) {
+                return BodyReply.failure(404, "找不到可切换的机器人地图: " + mapName);
             }
+            com.agv.navdeployer.vo.MapModeTaskVO task =
+                    mapTaskService.switchNativeMap(v2Map.getMapName(), v2Map.getRobotMapName());
             BodyReply finalReply = awaitMapTaskTerminal(task.id(), 100_000L, "change map");
             if (finalReply.status() == 0 && v2Map != null && v2Map.getRobotMapName() != null
                     && !com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED.equals(v2Map.getStatus())) {
@@ -171,14 +156,6 @@ public class RmsMapService {
         SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
         String mapName = status == null ? null : status.mapName();
         if (mapName == null || mapName.isBlank()) {
-            try {
-                NavMap active = navMapService.requireActiveMap();
-                mapName = active.getRobotMapName() != null ? active.getRobotMapName() : active.getMapName();
-            } catch (Exception ignored) {
-                mapName = null;
-            }
-        }
-        if (mapName == null || mapName.isBlank()) {
             return BodyReply.failure(404, "当前无激活地图");
         }
         return BodyReply.success("ok", new MapReplyData.MapNameData(mapName));
@@ -191,24 +168,15 @@ public class RmsMapService {
         }
         try {
             var v2Map = mapMetaService.findByUploadName(mapName);
-            if (v2Map != null) {
-                try {
-                    mapMetaService.delete(v2Map.getId());
-                } catch (IllegalStateException conflict) {
-                    return BodyReply.failure(400, conflict.getMessage());
-                }
-                log.info("RMS mapping/delete done, mapName={} mapId={}(v2)", mapName, v2Map.getId());
-                return BodyReply.success("delete map accepted: " + mapName, null);
-            }
-            if (isActiveMap(mapName)) {
-                return BodyReply.failure(400, "当前使用中的地图不可删除: " + mapName);
-            }
-            NavMap map = findMapByName(mapName);
-            if (map == null) {
+            if (v2Map == null) {
                 return BodyReply.failure(404, "地图不存在: " + mapName);
             }
-            navMapService.delete(map.getId());
-            log.info("RMS mapping/delete done, mapName={} navMapId={}", mapName, map.getId());
+            try {
+                mapMetaService.delete(v2Map.getId());
+            } catch (IllegalStateException conflict) {
+                return BodyReply.failure(400, conflict.getMessage());
+            }
+            log.info("RMS mapping/delete done, mapName={} mapId={}(v2)", mapName, v2Map.getId());
             return BodyReply.success("delete map accepted: " + mapName, null);
         } catch (Exception exception) {
             return failure("delete map failed", exception);
@@ -240,10 +208,7 @@ public class RmsMapService {
     }
 
     public BodyReply exportMap(String rawPayload,
-                               com.fasterxml.jackson.databind.ObjectMapper mapper,
-                               com.agv.navdeployer.exchange.ScheduleMapAdapter adapter,
-                               com.agv.navdeployer.service.NavPointService navPointService,
-                               com.agv.navdeployer.service.NavPathService navPathService) {
+                               com.fasterxml.jackson.databind.ObjectMapper mapper) {
         try {
             var root = mapper.readTree(rawPayload == null || rawPayload.isBlank() ? "{}" : rawPayload);
             String mapName = text(root, "map_name");
@@ -253,41 +218,19 @@ public class RmsMapService {
             }
 
             var v2Map = mapMetaService.findByUploadName(mapName);
-            if (v2Map != null) {
-                byte[] nativePackage = nativeMaps.exportIfConfigured(v2Map.getMapName(), v2Map.getRobotMapName());
-                byte[] zip = mapPackageService.exportZip(v2Map.getId(), nativePackage);
-                if (nativePackage != null && zip.length > MAX_DOWNLOAD_BYTES) {
-                    return BodyReply.failure(413, "整机地图 ZIP 超过 160 MiB");
-                }
-                uploadZipToUrl(uploadUrl, v2Map.getMapName(), zip);
-                log.info("RMS mapping/get 新格式上传成功: map={} size={}bytes native={}",
-                        mapName, zip.length, nativePackage != null);
-                return BodyReply.success("map exported: " + mapName,
-                        Map.of("native_included", nativePackage != null));
-            }
-
-            NavMap map = findMapByName(mapName);
-            if (map == null) {
+            if (v2Map == null) {
                 return BodyReply.failure(404, "地图不存在: " + mapName);
             }
-            if (nativeMaps.enabled()) {
-                return BodyReply.failure(422, "Lightning 整机同步需要先将旧版地图迁移为 V2");
+            byte[] nativePackage = nativeMaps.exportIfConfigured(v2Map.getMapName(), v2Map.getRobotMapName());
+            byte[] zip = mapPackageService.exportZip(v2Map.getId(), nativePackage);
+            if (nativePackage != null && zip.length > MAX_DOWNLOAD_BYTES) {
+                return BodyReply.failure(413, "整机地图 ZIP 超过 160 MiB");
             }
-
-            var grid = mapper.readValue(navMapService.getGridData(map.getId()).json(),
-                    com.agv.navdeployer.vo.MapGridVO.class);
-            var points = navPointService.list(map.getId());
-            var paths = navPathService.list(map.getId());
-            var edgesByPath = new java.util.LinkedHashMap<Long, java.util.List<com.agv.navdeployer.vo.PathEdgeVO>>();
-            for (var path : paths) {
-                edgesByPath.put(path.getId(), navPathService.loadEdgeVOs(path.getId()));
-            }
-            byte[] zip = adapter.exportZip(map.getMapName(), grid, points, paths, edgesByPath);
-
-            uploadZipToUrl(uploadUrl, map.getMapName(), zip);
-
-            log.info("RMS mapping/get 上传成功: map={} url={} size={}bytes", mapName, uploadUrl, zip.length);
-            return BodyReply.success("map exported: " + mapName, null);
+            uploadZipToUrl(uploadUrl, v2Map.getMapName(), zip);
+            log.info("RMS mapping/get 新格式上传成功: map={} size={}bytes native={}",
+                    mapName, zip.length, nativePackage != null);
+            return BodyReply.success("map exported: " + mapName,
+                    Map.of("native_included", nativePackage != null));
         } catch (Exception exception) {
             log.warn("RMS mapping/get 失败: {}", exception.getMessage());
             return BodyReply.failure(500, "map export failed: " + exception.getMessage());
@@ -394,28 +337,6 @@ public class RmsMapService {
     private String text(com.fasterxml.jackson.databind.JsonNode node, String field) {
         String value = node.path(field).asText(null);
         return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private NavMap findMapByName(String mapName) {
-        NavMap byRobotName = navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
-                .eq(NavMap::getRobotMapName, mapName)
-                .last("LIMIT 1"));
-        if (byRobotName != null) {
-            return byRobotName;
-        }
-        return navMapMapper.selectOne(Wrappers.lambdaQuery(NavMap.class)
-                .eq(NavMap::getMapName, mapName)
-                .last("LIMIT 1"));
-    }
-
-    private boolean isActiveMap(String mapName) {
-        try {
-            NavMap active = navMapService.requireActiveMap();
-            return active != null && (mapName.equals(active.getRobotMapName())
-                    || mapName.equals(active.getMapName()));
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 
     private BodyReply failure(String action, Throwable exception) {

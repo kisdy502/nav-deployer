@@ -1,5 +1,7 @@
 import * as THREE from 'three'
-import type { EdgeType, PathStatus } from '@/types/api'
+
+export type EdgeType = 'STRAIGHT' | 'CURVE'
+export type PathStatus = 'DRAFT' | 'DEPLOYED' | 'DISABLED'
 
 export interface RenderEdge {
   edgeIdx: number
