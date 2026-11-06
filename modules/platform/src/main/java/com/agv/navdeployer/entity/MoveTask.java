@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 public class MoveTask {
 
     public static final String TYPE_TO_POINT = "TO_POINT";
+    public static final String TYPE_TO_WAYPOINT = "TO_WAYPOINT";
     public static final String TYPE_GOAL = "GOAL";
     public static final String TYPE_FOLLOW_PATH = "FOLLOW_PATH";
     public static final String TYPE_FREE = "FREE";
@@ -40,6 +41,8 @@ public class MoveTask {
     private String status;
 
     private Long pointId;
+
+    private Long waypointId;
 
     private Long pathId;
 

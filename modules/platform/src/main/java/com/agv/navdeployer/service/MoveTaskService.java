@@ -59,6 +59,7 @@ public class MoveTaskService {
     private final com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper;
     private final com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper;
     private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
+    private final com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper;
     private final RobotOperationalService operationalService;
     private final MapAlignmentGuard mapAlignmentGuard;
 
@@ -84,6 +85,7 @@ public class MoveTaskService {
                            com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper,
                            com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper,
                            com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper,
+                           com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper,
                            RobotOperationalService operationalService,
                            MapAlignmentGuard mapAlignmentGuard) {
         this.moveTaskMapper = moveTaskMapper;
@@ -99,6 +101,7 @@ public class MoveTaskService {
         this.v2PathMapper = v2PathMapper;
         this.v2SegmentMapper = v2SegmentMapper;
         this.v2WaypointMapper = v2WaypointMapper;
+        this.v2MapMapper = v2MapMapper;
         this.operationalService = operationalService;
         this.mapAlignmentGuard = mapAlignmentGuard;
     }
@@ -176,6 +179,36 @@ public class MoveTaskService {
                 task.setGoalY(point.getY());
                 task.setGoalTheta(point.getYaw());
                 segments = List.of(singlePlan(point, dto));
+                endPointSingle = dto.endPoint() == null || dto.endPoint();
+            }
+            case MoveTask.TYPE_TO_WAYPOINT -> {
+                if (dto.waypointId() == null) {
+                    throw new IllegalArgumentException("TO_WAYPOINT 任务必须携带 waypoint_id");
+                }
+                com.agv.navdeployer.metadata.entity.MapWaypoint waypoint = v2WaypointMapper.selectById(dto.waypointId());
+                if (waypoint == null) {
+                    throw new NotFoundException("点位 " + dto.waypointId() + " 不存在");
+                }
+                com.agv.navdeployer.metadata.entity.MapMeta published = v2MapMapper.selectOne(
+                        Wrappers.lambdaQuery(com.agv.navdeployer.metadata.entity.MapMeta.class)
+                                .eq(com.agv.navdeployer.metadata.entity.MapMeta::getStatus,
+                                        com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED)
+                                .last("LIMIT 1"));
+                if (published == null) {
+                    throw new IllegalStateException("当前无 PUBLISHED 状态的 V2 地图，无法执行点位导航");
+                }
+                if (!published.getId().equals(waypoint.getMapId())) {
+                    throw new IllegalStateException("点位 " + waypoint.getWaypointCode()
+                            + " 不属于当前 PUBLISHED 地图「" + published.getMapName() + "」");
+                }
+                task.setWaypointId(waypoint.getId());
+                task.setGoalX(waypoint.getX());
+                task.setGoalY(waypoint.getY());
+                task.setGoalTheta(waypoint.getYaw());
+                segments = List.of(new SegmentPlan("", waypoint.getWaypointCode(),
+                        waypoint.getX(), waypoint.getY(), waypoint.getYaw(),
+                        "STRAIGHT", List.of(), dto.maxSpeed(), false, false,
+                        Double.NaN, Double.NaN, Double.NaN));
                 endPointSingle = dto.endPoint() == null || dto.endPoint();
             }
             case MoveTask.TYPE_GOAL -> {

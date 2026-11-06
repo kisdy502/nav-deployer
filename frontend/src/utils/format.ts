@@ -87,6 +87,7 @@ export const MAP_TASK_STATUS_TAG: Record<MapTaskStatus, { label: string; type: '
 
 export const MOVE_TASK_TYPE_LABEL: Record<MoveTaskType, string> = {
   TO_POINT: '去点位',
+  TO_WAYPOINT: '去点位',
   GOAL: '去目标点',
   FOLLOW_PATH: '循线',
   FREE: '自由到点',

@@ -18,7 +18,7 @@ export type LocStage =
   | 'STARTING_LOCALIZATION'
   | 'WAITING_LOCALIZATION'
   | 'FINISHED'
-export type MoveTaskType = 'TO_POINT' | 'GOAL' | 'FOLLOW_PATH' | 'FREE'
+export type MoveTaskType = 'TO_POINT' | 'TO_WAYPOINT' | 'GOAL' | 'FOLLOW_PATH' | 'FREE'
 export type MoveTaskStatus =
   | 'CREATED'
   | 'DISPATCHED'
@@ -172,6 +172,8 @@ export interface MoveTaskVO {
   task_type: MoveTaskType
   status: MoveTaskStatus
   point_id: number | null
+  /** TO_WAYPOINT 任务目标点位（map_waypoint.id）；其余任务为 null */
+  waypoint_id: number | null
   path_id: number | null
   goal_x: number | null
   goal_y: number | null
@@ -193,6 +195,7 @@ export interface MoveTaskVO {
 export interface MoveTaskCreateDTO {
   task_type: MoveTaskType
   point_id?: number
+  waypoint_id?: number
   path_id?: number
   x?: number
   y?: number

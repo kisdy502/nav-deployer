@@ -24,6 +24,8 @@ public class MoveTaskVO {
 
     private Long pointId;
 
+    private Long waypointId;
+
     private Long pathId;
 
     private Double goalX;
@@ -56,7 +58,7 @@ public class MoveTaskVO {
 
     public static MoveTaskVO from(MoveTask task) {
         return new MoveTaskVO(task.getId(), task.getTaskNo(), task.getTaskType(), task.getStatus(),
-                task.getPointId(), task.getPathId(),
+                task.getPointId(), task.getWaypointId(), task.getPathId(),
                 task.getGoalX(), task.getGoalY(), task.getGoalTheta(),
                 task.getCurrentX(), task.getCurrentY(), task.getCurrentTheta(),
                 task.getAgvState(), task.getSegmentSeq(), task.getSegmentTotal(), task.getErrorMessage(),

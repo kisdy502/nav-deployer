@@ -1405,7 +1405,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
         items.push({
           label: '直线导航',
           action: () => {
-            if (guardNav()) void tasks.navigateToPose(waypoint.x, waypoint.y, waypoint.yaw)
+            if (guardNav()) void tasks.navigateToWaypoint(waypoint.id)
           },
         })
         // 自由到点：同空白处右键，但目标为点位位姿（朝向取点位朝向）

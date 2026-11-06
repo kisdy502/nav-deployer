@@ -7,9 +7,10 @@ import jakarta.validation.constraints.Pattern;
 
 public record MoveTaskCreateDTO(
         @NotNull(message = "task_type 不能为空")
-        @Pattern(regexp = "TO_POINT|GOAL|FOLLOW_PATH|FREE", message = "task_type 只能是 TO_POINT/GOAL/FOLLOW_PATH/FREE")
+        @Pattern(regexp = "TO_POINT|TO_WAYPOINT|GOAL|FOLLOW_PATH|FREE", message = "task_type 只能是 TO_POINT/TO_WAYPOINT/GOAL/FOLLOW_PATH/FREE")
         String taskType,
         Long pointId,
+        Long waypointId,
         Long pathId,
         Double x,
         Double y,

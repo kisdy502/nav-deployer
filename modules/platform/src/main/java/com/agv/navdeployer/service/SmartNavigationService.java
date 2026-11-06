@@ -101,12 +101,12 @@ public class SmartNavigationService {
 
     public MoveTaskVO createFollowPathTask(long pathId, String source) {
         return moveTaskService.create(new MoveTaskCreateDTO(
-                "FOLLOW_PATH", null, pathId, null, null, null, null, null), source);
+                "FOLLOW_PATH", null, null, pathId, null, null, null, null, null), source);
     }
 
     public MoveTaskVO createGoalTask(double x, double y, double yaw, String source) {
         return moveTaskService.create(new MoveTaskCreateDTO(
-                "GOAL", null, null, x, y, yaw, null, Boolean.TRUE), source);
+                "GOAL", null, null, null, x, y, yaw, null, Boolean.TRUE), source);
     }
 
     private record NearestWaypoint(com.agv.navdeployer.metadata.entity.MapWaypoint waypoint, double distance) {

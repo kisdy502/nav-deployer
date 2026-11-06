@@ -31,7 +31,8 @@ public class MoveTaskController {
     }
 
     @Operation(summary = "创建并下发移动任务",
-            description = "TO_POINT 需 point_id（须位于 ACTIVE 地图）；GOAL 需 x/y/theta；FOLLOW_PATH 需 path_id（须 DEPLOYED）")
+            description = "TO_POINT 需 point_id（须位于 ACTIVE 地图）；TO_WAYPOINT 需 waypoint_id（须位于 PUBLISHED 地图，坐标创建时快照）；"
+                    + "GOAL 需 x/y/theta；FOLLOW_PATH 需 path_id（须 DEPLOYED）")
     @PostMapping
     public ResponseEntity<ApiResponse<MoveTaskVO>> create(@Valid @RequestBody MoveTaskCreateDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(moveTaskService.create(dto)));

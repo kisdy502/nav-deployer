@@ -154,6 +154,15 @@ export const useTasksStore = defineStore('tasks', () => {
     return activeMoveTask.value
   }
 
+  /** 按 V2 命名点位直线导航：后端校验点位属于当前 PUBLISHED 地图并快照坐标 */
+  async function navigateToWaypoint(waypointId: number, maxSpeed?: number) {
+    const dto: MoveTaskCreateDTO = { task_type: 'TO_WAYPOINT', waypoint_id: waypointId }
+    if (maxSpeed) dto.max_speed = maxSpeed
+    activeMoveTask.value = await createMoveTask(dto)
+    ElMessage.success('导航任务已下发')
+    return activeMoveTask.value
+  }
+
   /** 自由到点：机器人自主规划路径到目标（edge_type=FREE，走 Nav2 planner） */
   async function freeNavigate(x: number, y: number, theta = 0, maxSpeed?: number) {
     const dto: MoveTaskCreateDTO = { task_type: 'FREE', x, y, theta }
@@ -192,6 +201,7 @@ export const useTasksStore = defineStore('tasks', () => {
     refresh,
     navigateToPoint,
     navigateToPose,
+    navigateToWaypoint,
     freeNavigate,
     followPath,
     goCharge,
