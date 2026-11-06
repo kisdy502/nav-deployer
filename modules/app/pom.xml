@@ -15,6 +15,14 @@
     <dependencies>
         <dependency>
             <groupId>com.agv</groupId>
+            <artifactId>nav-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-user</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.agv</groupId>
             <artifactId>nav-robot-core</artifactId>
         </dependency>
         <dependency>

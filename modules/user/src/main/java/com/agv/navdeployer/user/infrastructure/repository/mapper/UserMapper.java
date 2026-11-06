@@ -1,6 +1,6 @@
-package com.agv.navdeployer.mapper;
+package com.agv.navdeployer.user.infrastructure.repository.mapper;
 
-import com.agv.navdeployer.entity.User;
+import com.agv.navdeployer.user.domain.User;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 

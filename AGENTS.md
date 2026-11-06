@@ -23,6 +23,7 @@ nav-deployer：仿真机器人上位机（AGV 调度部署系统）。功能：�
 - 错误码：`BusinessException` + `ErrorCode` 接口在 nav-common，各 BC 自持 enum 实现
 - 领域事件默认不引入；需要解耦用同步 `@EventListener` 且监听器内重查库；`@Async` 仅限时序无关场景
 - 出参命名 `XxxDTO`（放 application/dto/），入参 `XxxCmd`，查询 `XxxQuery`
+- 新 BC 模块脚手架照抄 `modules/user`：pom 依赖 nav-common/web/validation/cache/mybatis-plus/springdoc（按需 minio、mapstruct+processor）；Mapper 加 `@Mapper` 即被扫描（无全局 @MapperScan）；包根 `com.agv.navdeployer.{bc}` 与主应用同根包，免配置装配
 
 ## RESTful Local Overrides（响应与 URL 现状，勿"纠正"）
 

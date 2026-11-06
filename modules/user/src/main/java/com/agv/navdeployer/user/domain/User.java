@@ -1,4 +1,4 @@
-package com.agv.navdeployer.entity;
+package com.agv.navdeployer.user.domain;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
 import com.baomidou.mybatisplus.annotation.IdType;
@@ -11,10 +11,10 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 
-@TableName("users")
 @Getter
 @Setter
 @NoArgsConstructor
+@TableName("users")
 public class User {
 
     @TableId(value = "id", type = IdType.AUTO)
@@ -31,4 +31,29 @@ public class User {
 
     @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+
+    public User(String name, Integer age) {
+        this.name = name;
+        this.age = age;
+    }
+
+    public void updateProfile(String name, Integer age) {
+        this.name = name;
+        this.age = age;
+        this.updatedAt = null;
+    }
+
+    /**
+     * @return 被替换的旧头像对象 key（无旧头像返回 null，供上层清理）
+     */
+    public String changeAvatar(String objectKey) {
+        String oldKey = this.avatarKey;
+        this.avatarKey = objectKey;
+        this.updatedAt = null;
+        return oldKey;
+    }
+
+    public boolean checkHasAvatar() {
+        return avatarKey != null;
+    }
 }

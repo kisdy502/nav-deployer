@@ -16,6 +16,8 @@
     <description>仿真机器人上位机：模块化单体（robot-core 机器人接入 / platform 平台领域 / rms 云端协议 / app 装配与 Web）</description>
 
     <modules>
+        <module>modules/common</module>
+        <module>modules/user</module>
         <module>modules/robot-core</module>
         <module>modules/platform</module>
         <module>modules/rms</module>
@@ -28,10 +30,21 @@
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <springdoc.version>2.6.0</springdoc.version>
         <lombok.version>1.18.34</lombok.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.agv</groupId>
+                <artifactId>nav-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.agv</groupId>
+                <artifactId>nav-user</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>com.agv</groupId>
                 <artifactId>nav-robot-core</artifactId>
@@ -46,6 +59,11 @@
                 <groupId>com.agv</groupId>
                 <artifactId>nav-rms</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.baomidou</groupId>
