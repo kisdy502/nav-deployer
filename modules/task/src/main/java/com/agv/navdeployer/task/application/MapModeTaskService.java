@@ -40,7 +40,7 @@ public class MapModeTaskService {
     private static final int HISTORY_LIMIT = 100;
     private static final String MODE_NAVIGATION = "NAVIGATION";
 
-    private final com.agv.navdeployer.metadata.service.MapMetaService mapMetaService;
+    private final com.agv.navdeployer.map.application.MapMetaService mapMetaService;
     private final RosCommandDispatcher dispatcher;
     private final RobotConnectionPort robotConnection;
     private final SimAgvTelemetry telemetry;
@@ -67,7 +67,7 @@ public class MapModeTaskService {
         worker.shutdownNow();
     }
 
-    public MapModeTaskService(com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
+    public MapModeTaskService(com.agv.navdeployer.map.application.MapMetaService mapMetaService,
                               RosCommandDispatcher dispatcher,
                               RobotConnectionPort robotConnection,
                               SimAgvTelemetry telemetry,
@@ -88,7 +88,7 @@ public class MapModeTaskService {
     public MapModeTaskDTO switchV2Map(Long mapId, String robotMapNameOverride) {
         requireIdleAndGates(MODE_NAVIGATION, true);
 
-        com.agv.navdeployer.metadata.entity.MapMeta map = mapMetaService.getMeta(mapId);
+        com.agv.navdeployer.map.domain.MapMeta map = mapMetaService.getMeta(mapId);
         if (map == null) {
             throw new BusinessException(com.agv.navdeployer.task.domain.movetask.TaskErrorCode.MOVE_TASK_NOT_FOUND, "地图 " + mapId + " 不存在");
         }
@@ -169,14 +169,14 @@ public class MapModeTaskService {
         String target = mappingPreMapName;
         Long targetV2MapId = null;
         if (target == null) {
-            com.agv.navdeployer.metadata.entity.MapMeta published = mapMetaService.findPublished();
+            com.agv.navdeployer.map.domain.MapMeta published = mapMetaService.findPublished();
             if (published != null) {
                 target = published.getRobotMapName() != null && !published.getRobotMapName().isBlank()
                         ? published.getRobotMapName() : published.getMapName();
                 targetV2MapId = published.getId();
             }
         } else {
-            com.agv.navdeployer.metadata.entity.MapMeta v2Match = mapMetaService.findByUploadName(target);
+            com.agv.navdeployer.map.domain.MapMeta v2Match = mapMetaService.findByUploadName(target);
             if (v2Match != null) {
                 targetV2MapId = v2Match.getId();
             }
@@ -428,8 +428,8 @@ public class MapModeTaskService {
         String robotMapName = machine.getRobotMapName();
         try {
             LiveMapCache.OccupancyGrid grid = fetchRobotGrid(robotMapName);
-            com.agv.navdeployer.metadata.entity.MapMeta existing = mapMetaService.findByUploadName(robotMapName);
-            com.agv.navdeployer.metadata.vo.MapV2VO saved;
+            com.agv.navdeployer.map.domain.MapMeta existing = mapMetaService.findByUploadName(robotMapName);
+            com.agv.navdeployer.map.application.dto.MapV2DTO saved;
             if (existing != null) {
                 saved = mapMetaService.replaceRobotGrid(existing.getId(), robotMapName, grid);
             } else {
@@ -499,7 +499,7 @@ public class MapModeTaskService {
         if (robotMap == null || robotMap.isBlank()) {
             return;
         }
-        com.agv.navdeployer.metadata.entity.MapMeta published = mapMetaService.findPublished();
+        com.agv.navdeployer.map.domain.MapMeta published = mapMetaService.findPublished();
         if (published == null) {
             return;
         }
@@ -508,7 +508,7 @@ public class MapModeTaskService {
         if (robotMap.equals(ref)) {
             return;
         }
-        com.agv.navdeployer.metadata.entity.MapMeta match = mapMetaService.findByUploadName(robotMap);
+        com.agv.navdeployer.map.domain.MapMeta match = mapMetaService.findByUploadName(robotMap);
         if (match == null || match.getId().equals(published.getId())) {
             return;
         }
@@ -530,7 +530,7 @@ public class MapModeTaskService {
             robotMap = telemetry.getStatus().mapName();
         }
 
-        com.agv.navdeployer.metadata.entity.MapMeta published = mapMetaService.findPublished();
+        com.agv.navdeployer.map.domain.MapMeta published = mapMetaService.findPublished();
         String ref = published == null ? null
                 : (published.getRobotMapName() != null && !published.getRobotMapName().isBlank()
                         ? published.getRobotMapName() : published.getMapName());

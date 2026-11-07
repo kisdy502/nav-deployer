@@ -50,10 +50,10 @@ public class MoveTaskService {
     private final SimAgvProperties props;
     private final SimAgvSsePublisher ssePublisher;
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    private final com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper;
-    private final com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper;
-    private final com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper;
-    private final com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper;
+    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathMapper v2PathMapper;
+    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathSegmentMapper v2SegmentMapper;
+    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper v2WaypointMapper;
+    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper v2MapMapper;
     private final RobotOperationalService operationalService;
     private final MapAlignmentGuard mapAlignmentGuard;
 
@@ -74,10 +74,10 @@ public class MoveTaskService {
                            SimAgvProperties props,
                            SimAgvSsePublisher ssePublisher,
                            com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
-                           com.agv.navdeployer.metadata.mapper.MapPathMapper v2PathMapper,
-                           com.agv.navdeployer.metadata.mapper.MapPathSegmentMapper v2SegmentMapper,
-                           com.agv.navdeployer.metadata.mapper.MapWaypointMapper v2WaypointMapper,
-                           com.agv.navdeployer.metadata.mapper.MapMetaMapper v2MapMapper,
+                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathMapper v2PathMapper,
+                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathSegmentMapper v2SegmentMapper,
+                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper v2WaypointMapper,
+                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper v2MapMapper,
                            RobotOperationalService operationalService,
                            MapAlignmentGuard mapAlignmentGuard) {
         this.moveTaskRepository = moveTaskRepository;
@@ -149,14 +149,14 @@ public class MoveTaskService {
                 if (dto.waypointId() == null) {
                     throw new IllegalArgumentException("TO_WAYPOINT 任务必须携带 waypoint_id");
                 }
-                com.agv.navdeployer.metadata.entity.MapWaypoint waypoint = v2WaypointMapper.selectById(dto.waypointId());
+                com.agv.navdeployer.map.domain.MapWaypoint waypoint = v2WaypointMapper.selectById(dto.waypointId());
                 if (waypoint == null) {
                     throw new BusinessException(TaskErrorCode.WAYPOINT_NOT_FOUND, "点位 " + dto.waypointId() + " 不存在");
                 }
-                com.agv.navdeployer.metadata.entity.MapMeta published = v2MapMapper.selectOne(
-                        Wrappers.lambdaQuery(com.agv.navdeployer.metadata.entity.MapMeta.class)
-                                .eq(com.agv.navdeployer.metadata.entity.MapMeta::getStatus,
-                                        com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED)
+                com.agv.navdeployer.map.domain.MapMeta published = v2MapMapper.selectOne(
+                        Wrappers.lambdaQuery(com.agv.navdeployer.map.domain.MapMeta.class)
+                                .eq(com.agv.navdeployer.map.domain.MapMeta::getStatus,
+                                        com.agv.navdeployer.map.domain.MapMeta.STATUS_PUBLISHED)
                                 .last("LIMIT 1"));
                 if (published == null) {
                     throw new IllegalStateException("当前无 PUBLISHED 状态的 V2 地图，无法执行点位导航");
@@ -204,11 +204,11 @@ public class MoveTaskService {
                 if (dto.pathId() == null) {
                     throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id");
                 }
-                com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(dto.pathId());
+                com.agv.navdeployer.map.domain.MapPath v2Path = v2PathMapper.selectById(dto.pathId());
                 if (v2Path == null) {
                     throw new BusinessException(TaskErrorCode.PATH_NOT_FOUND, "路线 " + dto.pathId() + " 不存在（V2 路线）");
                 }
-                if (!com.agv.navdeployer.metadata.entity.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
+                if (!com.agv.navdeployer.map.domain.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
                     throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + v2Path.getStatus() + "）");
                 }
                 segments = buildPathPlan(dto.pathId(), dto.maxSpeed());
@@ -417,14 +417,14 @@ public class MoveTaskService {
     }
 
     private List<SegmentPlan> buildV2PathPlan(Long pathId, Double maxSpeedOverride) {
-        com.agv.navdeployer.metadata.entity.MapPath v2Path = v2PathMapper.selectById(pathId);
+        com.agv.navdeployer.map.domain.MapPath v2Path = v2PathMapper.selectById(pathId);
         if (v2Path == null) {
             return List.of();
         }
-        List<com.agv.navdeployer.metadata.entity.MapPathSegment> segments = v2SegmentMapper.selectList(
-                Wrappers.lambdaQuery(com.agv.navdeployer.metadata.entity.MapPathSegment.class)
-                        .eq(com.agv.navdeployer.metadata.entity.MapPathSegment::getPathId, pathId)
-                        .orderByAsc(com.agv.navdeployer.metadata.entity.MapPathSegment::getSeq));
+        List<com.agv.navdeployer.map.domain.MapPathSegment> segments = v2SegmentMapper.selectList(
+                Wrappers.lambdaQuery(com.agv.navdeployer.map.domain.MapPathSegment.class)
+                        .eq(com.agv.navdeployer.map.domain.MapPathSegment::getPathId, pathId)
+                        .orderByAsc(com.agv.navdeployer.map.domain.MapPathSegment::getSeq));
         if (segments.isEmpty()) {
             return List.of();
         }
@@ -433,11 +433,11 @@ public class MoveTaskService {
             waypointIds.add(segment.getSourceWaypointId());
             waypointIds.add(segment.getTargetWaypointId());
         }
-        Map<Long, com.agv.navdeployer.metadata.entity.MapWaypoint> waypoints =
+        Map<Long, com.agv.navdeployer.map.domain.MapWaypoint> waypoints =
                 v2WaypointMapper.selectBatchIds(waypointIds.stream().distinct().toList())
                         .stream()
                         .collect(Collectors.toMap(
-                                com.agv.navdeployer.metadata.entity.MapWaypoint::getId,
+                                com.agv.navdeployer.map.domain.MapWaypoint::getId,
                                 Function.identity()));
 
         List<SegmentPlan> plans = new ArrayList<>(segments.size());
@@ -465,7 +465,7 @@ public class MoveTaskService {
             return List.of();
         }
         try {
-            JsonNode array = com.agv.navdeployer.metadata.MetadataJson.MAPPER.readTree(json);
+            JsonNode array = com.agv.navdeployer.map.application.MetadataJson.MAPPER.readTree(json);
             List<ControlPoint> points = new ArrayList<>();
             for (JsonNode node : array) {
                 if (node.isArray() && node.size() >= 2) {

@@ -1,15 +1,15 @@
 package com.agv.navdeployer.controller.v2;
 
 import com.agv.navdeployer.common.ApiResponse;
-import com.agv.navdeployer.metadata.dto.MapCreateFromLiveDTO;
-import com.agv.navdeployer.metadata.dto.MapPublishDTO;
-import com.agv.navdeployer.metadata.dto.MapUpdateDTO;
-import com.agv.navdeployer.metadata.exchange.MapPackageService;
-import com.agv.navdeployer.metadata.service.MapMetaService;
-import com.agv.navdeployer.metadata.vo.MapFullVO;
-import com.agv.navdeployer.metadata.vo.MapV2VO;
-import com.agv.navdeployer.rms.map.NativeMapClient;
-import com.agv.navdeployer.vo.MapGridVO;
+import com.agv.navdeployer.map.application.cmd.MapCreateFromLiveCmd;
+import com.agv.navdeployer.map.application.cmd.MapPublishCmd;
+import com.agv.navdeployer.map.application.cmd.MapUpdateCmd;
+import com.agv.navdeployer.map.application.MapPackageService;
+import com.agv.navdeployer.map.application.MapMetaService;
+import com.agv.navdeployer.map.application.dto.MapFullDTO;
+import com.agv.navdeployer.map.application.dto.MapV2DTO;
+import com.agv.navdeployer.sim.NativeMapClient;
+import com.agv.navdeployer.map.application.dto.MapGridDTO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -57,26 +57,26 @@ public class MapV2Controller {
 
     @Operation(summary = "地图列表")
     @GetMapping
-    public ApiResponse<List<MapV2VO>> list() {
+    public ApiResponse<List<MapV2DTO>> list() {
         return ApiResponse.ok(mapMetaService.list());
     }
 
     @Operation(summary = "实时栅格", description = "/map 最新一帧（OccupancyGrid 展平视图）")
     @GetMapping("/live")
-    public ApiResponse<MapGridVO> live() {
+    public ApiResponse<MapGridDTO> live() {
         return ApiResponse.ok(mapMetaService.liveGrid());
     }
 
     @Operation(summary = "从实时快照建图", description = "保存当前 /map 栅格为新地图，自动创建默认楼层 F1")
     @PostMapping("/from-live")
-    public ResponseEntity<ApiResponse<MapV2VO>> createFromLive(@Valid @RequestBody MapCreateFromLiveDTO dto) {
+    public ResponseEntity<ApiResponse<MapV2DTO>> createFromLive(@Valid @RequestBody MapCreateFromLiveCmd dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(mapMetaService.createFromLive(dto)));
     }
 
     @Operation(summary = "导入新格式地图包", description = "zip 含 map-info.json + global.yaml/pgm（png 可选），全量还原多楼层元数据")
     @PostMapping(value = "/import-zip", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<MapV2VO>> importZip(
+    public ResponseEntity<ApiResponse<MapV2DTO>> importZip(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "map_name", required = false) String mapName,
             @RequestParam(value = "modified_by", required = false) String modifiedBy) throws Exception {
@@ -92,20 +92,20 @@ public class MapV2Controller {
 
     @Operation(summary = "地图详情")
     @GetMapping("/{id}")
-    public ApiResponse<MapV2VO> get(@PathVariable Long id) {
+    public ApiResponse<MapV2DTO> get(@PathVariable Long id) {
         return ApiResponse.ok(mapMetaService.get(id));
     }
 
     @Operation(summary = "地图全量树", description = "一次拉取：地图 + 各楼层（点位/区域/货架/路线）+ 楼层间连接（编辑器初始化用）")
     @GetMapping("/{id}/full")
-    public ApiResponse<MapFullVO> getFull(@PathVariable Long id) {
+    public ApiResponse<MapFullDTO> getFull(@PathVariable Long id) {
         return ApiResponse.ok(mapMetaService.loadFull(id));
     }
 
     @Operation(summary = "地图栅格数据", description = "保存的 OccupancyGrid JSON（application/json，前端画布渲染）")
     @GetMapping("/{id}/grid")
     public ResponseEntity<byte[]> grid(@PathVariable Long id) throws Exception {
-        MapGridVO grid = mapMetaService.getGrid(id);
+        MapGridDTO grid = mapMetaService.getGrid(id);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(objectMapper.writeValueAsBytes(grid));
@@ -113,14 +113,14 @@ public class MapV2Controller {
 
     @Operation(summary = "更新地图元信息", description = "重命名 / 机器人地图名（版本 +1）")
     @PutMapping("/{id}")
-    public ApiResponse<MapV2VO> update(@PathVariable Long id, @Valid @RequestBody MapUpdateDTO dto) {
+    public ApiResponse<MapV2DTO> update(@PathVariable Long id, @Valid @RequestBody MapUpdateCmd dto) {
         return ApiResponse.ok(mapMetaService.update(id, dto));
     }
 
     @Operation(summary = "发布地图", description = "设为使用中（全局唯一 PUBLISHED，其余归档），版本 +1")
     @PostMapping("/{id}/publish")
-    public ApiResponse<MapV2VO> publish(@PathVariable Long id,
-                                        @RequestBody(required = false) MapPublishDTO dto) {
+    public ApiResponse<MapV2DTO> publish(@PathVariable Long id,
+                                        @RequestBody(required = false) MapPublishCmd dto) {
         return ApiResponse.ok(mapMetaService.publish(id, dto == null ? null : dto.modifiedBy()));
     }
 
@@ -136,15 +136,15 @@ public class MapV2Controller {
 
     @Operation(summary = "替换底图为实时栅格", description = "用当前 /map 栅格替换地图底图，元数据保持不变，版本 +1")
     @PostMapping("/{id}/grid-from-live")
-    public ApiResponse<MapV2VO> replaceGridFromLive(@PathVariable Long id,
-                                                    @RequestBody(required = false) MapPublishDTO dto) {
+    public ApiResponse<MapV2DTO> replaceGridFromLive(@PathVariable Long id,
+                                                    @RequestBody(required = false) MapPublishCmd dto) {
         return ApiResponse.ok(mapMetaService.replaceGridFromLive(id, dto == null ? null : dto.modifiedBy()));
     }
 
     @Operation(summary = "导出新格式地图包", description = "栅格及地图元数据，配置 Lightning 传输时包含原生定位包")
     @GetMapping("/{id}/package")
     public ResponseEntity<byte[]> exportPackage(@PathVariable Long id) {
-        MapV2VO map = mapMetaService.get(id);
+        MapV2DTO map = mapMetaService.get(id);
         byte[] nativePackage;
         try {
             nativePackage = nativeMaps.exportIfConfigured(map.mapName(), map.robotMapName());

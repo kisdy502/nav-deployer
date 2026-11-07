@@ -1,7 +1,7 @@
 package com.agv.navdeployer.task.application;
 
-import com.agv.navdeployer.metadata.entity.MapMeta;
-import com.agv.navdeployer.metadata.mapper.MapMetaMapper;
+import com.agv.navdeployer.map.domain.MapMeta;
+import com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper;
 import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;

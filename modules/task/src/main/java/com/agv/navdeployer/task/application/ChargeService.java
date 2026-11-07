@@ -1,7 +1,7 @@
 package com.agv.navdeployer.task.application;
 
-import com.agv.navdeployer.metadata.entity.MapWaypoint;
-import com.agv.navdeployer.metadata.mapper.MapWaypointMapper;
+import com.agv.navdeployer.map.domain.MapWaypoint;
+import com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.SimAgvSsePublisher;
 import com.agv.navdeployer.sim.SimAgvTelemetry;

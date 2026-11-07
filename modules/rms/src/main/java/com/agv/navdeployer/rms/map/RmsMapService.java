@@ -1,5 +1,7 @@
 package com.agv.navdeployer.rms.map;
 
+import com.agv.navdeployer.sim.NativeMapClient;
+
 import com.agv.navdeployer.rms.protocol.dto.command.MapNameRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.MapReplyData;
 import com.agv.navdeployer.rms.protocol.dto.command.RelocateRequest;
@@ -27,15 +29,15 @@ public class RmsMapService {
     private final MapModeTaskService mapTaskService;
     private final SimAgvTelemetry telemetry;
     private final RmsMapState mapState;
-    private final com.agv.navdeployer.metadata.service.MapMetaService mapMetaService;
-    private final com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService;
+    private final com.agv.navdeployer.map.application.MapMetaService mapMetaService;
+    private final com.agv.navdeployer.map.application.MapPackageService mapPackageService;
     private final NativeMapClient nativeMaps;
 
     public RmsMapService(MapModeTaskService mapTaskService,
                          SimAgvTelemetry telemetry,
                          RmsMapState mapState,
-                         com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
-                         com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService,
+                         com.agv.navdeployer.map.application.MapMetaService mapMetaService,
+                         com.agv.navdeployer.map.application.MapPackageService mapPackageService,
                          NativeMapClient nativeMaps) {
         this.mapTaskService = mapTaskService;
         this.telemetry = telemetry;
@@ -111,7 +113,7 @@ public class RmsMapService {
                     mapTaskService.switchNativeMap(v2Map.getMapName(), v2Map.getRobotMapName());
             BodyReply finalReply = awaitMapTaskTerminal(task.id(), 100_000L, "change map");
             if (finalReply.status() == 0 && v2Map != null && v2Map.getRobotMapName() != null
-                    && !com.agv.navdeployer.metadata.entity.MapMeta.STATUS_PUBLISHED.equals(v2Map.getStatus())) {
+                    && !com.agv.navdeployer.map.domain.MapMeta.STATUS_PUBLISHED.equals(v2Map.getStatus())) {
                 mapMetaService.publish(v2Map.getId(), "RMS");
             }
             log.info("RMS mapping/change 终态回包: map={} taskId={} status={} msg={}",

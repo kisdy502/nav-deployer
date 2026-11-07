@@ -1,0 +1,269 @@
+package com.agv.navdeployer.map.application;
+
+import com.agv.navdeployer.common.error.NotFoundException;
+import com.agv.navdeployer.map.application.cmd.ShelfEdgeCmd;
+import com.agv.navdeployer.map.application.cmd.ShelfLayerCmd;
+import com.agv.navdeployer.map.application.cmd.ShelfSaveCmd;
+import com.agv.navdeployer.map.application.cmd.ShelfSlotCmd;
+import com.agv.navdeployer.map.domain.MapFloor;
+import com.agv.navdeployer.map.domain.MapShelf;
+import com.agv.navdeployer.map.domain.MapShelfLayer;
+import com.agv.navdeployer.map.domain.MapShelfSlot;
+import com.agv.navdeployer.map.infrastructure.repository.mapper.MapFloorMapper;
+import com.agv.navdeployer.map.infrastructure.repository.mapper.MapShelfLayerMapper;
+import com.agv.navdeployer.map.infrastructure.repository.mapper.MapShelfMapper;
+import com.agv.navdeployer.map.infrastructure.repository.mapper.MapShelfSlotMapper;
+import com.agv.navdeployer.map.application.dto.ShelfEdgeDTO;
+import com.agv.navdeployer.map.application.dto.ShelfLayerDTO;
+import com.agv.navdeployer.map.application.dto.ShelfSlotDTO;
+import com.agv.navdeployer.map.application.dto.ShelfDTO;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Service
+public class MapShelfService {
+
+    private static final double[] DEFAULT_SLOT_SIZE = {0.4, 0.6, 0.3};
+
+    private final MapShelfMapper shelfMapper;
+    private final MapShelfLayerMapper layerMapper;
+    private final MapShelfSlotMapper slotMapper;
+    private final MapFloorMapper floorMapper;
+    private final MapVersionTicker ticker;
+
+    public MapShelfService(MapShelfMapper shelfMapper,
+                           MapShelfLayerMapper layerMapper,
+                           MapShelfSlotMapper slotMapper,
+                           MapFloorMapper floorMapper,
+                           MapVersionTicker ticker) {
+        this.shelfMapper = shelfMapper;
+        this.layerMapper = layerMapper;
+        this.slotMapper = slotMapper;
+        this.floorMapper = floorMapper;
+        this.ticker = ticker;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ShelfDTO create(ShelfSaveCmd dto) {
+        if (dto.mapId() == null || dto.floorId() == null) {
+            throw new IllegalArgumentException("新建货架必须携带 mapId 与 floorId");
+        }
+        if (dto.shelfCode() == null || dto.shelfCode().isBlank()) {
+            throw new IllegalArgumentException("新建货架必须携带 shelfCode");
+        }
+        requireFloorOfMap(dto.floorId(), dto.mapId());
+        String code = dto.shelfCode().trim();
+        if (shelfMapper.selectCount(Wrappers.lambdaQuery(MapShelf.class)
+                .eq(MapShelf::getMapId, dto.mapId())
+                .eq(MapShelf::getShelfCode, code)) > 0) {
+            throw new IllegalStateException("货架编码已存在: " + code);
+        }
+        MapShelf shelf = new MapShelf();
+        shelf.setMapId(dto.mapId());
+        shelf.setFloorId(dto.floorId());
+        shelf.setShelfCode(code);
+        applyFields(shelf, dto);
+        shelfMapper.insert(shelf);
+        insertLayers(shelf, dto.layers());
+        ticker.touch(dto.mapId(), dto.modifiedBy());
+        return get(shelf.getId());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ShelfDTO update(Long id, ShelfSaveCmd dto) {
+        MapShelf shelf = requireShelf(id);
+        if (dto.name() != null) {
+            shelf.setName(dto.name().isBlank() ? shelf.getShelfCode() : dto.name().trim());
+        }
+        if (dto.height() != null) {
+            shelf.setHeight(dto.height());
+        }
+        if (dto.vertices() != null && !dto.vertices().isEmpty()) {
+            applyVertices(shelf, dto);
+        }
+        shelf.setUpdatedAt(null);
+        shelfMapper.updateById(shelf);
+        if (dto.layers() != null) {
+            layerMapper.delete(Wrappers.lambdaQuery(MapShelfLayer.class)
+                    .eq(MapShelfLayer::getShelfId, id));
+            insertLayers(shelf, dto.layers());
+        }
+        ticker.touch(shelf.getMapId(), dto.modifiedBy());
+        return get(id);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(Long id) {
+        MapShelf shelf = requireShelf(id);
+        shelfMapper.deleteById(id); // 层/格位经外键级联删除
+        ticker.touch(shelf.getMapId(), null);
+    }
+
+    public ShelfDTO get(Long id) {
+        MapShelf shelf = requireShelf(id);
+        List<ShelfLayerDTO> layers = loadLayers(List.of(id)).get(id);
+        return ShelfDTO.from(shelf, parseEdges(shelf.getEdges()), layers == null ? List.of() : layers);
+    }
+
+    public List<ShelfDTO> list(Long mapId) {
+        List<MapShelf> shelves = shelfMapper.selectList(Wrappers.lambdaQuery(MapShelf.class)
+                .eq(MapShelf::getMapId, mapId).orderByAsc(MapShelf::getId));
+        return assemble(shelves);
+    }
+
+    public List<ShelfDTO> listByFloor(Long floorId) {
+        List<MapShelf> shelves = shelfMapper.selectList(Wrappers.lambdaQuery(MapShelf.class)
+                .eq(MapShelf::getFloorId, floorId).orderByAsc(MapShelf::getId));
+        return assemble(shelves);
+    }
+
+    private List<ShelfDTO> assemble(List<MapShelf> shelves) {
+        if (shelves.isEmpty()) {
+            return List.of();
+        }
+        List<Long> shelfIds = shelves.stream().map(MapShelf::getId).toList();
+        Map<Long, List<ShelfLayerDTO>> layersByShelf = loadLayers(shelfIds);
+        return shelves.stream()
+                .map(shelf -> ShelfDTO.from(shelf, parseEdges(shelf.getEdges()),
+                        layersByShelf.getOrDefault(shelf.getId(), List.of())))
+                .toList();
+    }
+
+    private Map<Long, List<ShelfLayerDTO>> loadLayers(List<Long> shelfIds) {
+        List<MapShelfLayer> layers = layerMapper.selectList(Wrappers.lambdaQuery(MapShelfLayer.class)
+                .in(MapShelfLayer::getShelfId, shelfIds)
+                .orderByAsc(MapShelfLayer::getLayerIndex));
+        if (layers.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> layerIds = layers.stream().map(MapShelfLayer::getId).toList();
+        Map<Long, List<MapShelfSlot>> slotsByLayer = slotMapper.selectList(
+                        Wrappers.lambdaQuery(MapShelfSlot.class)
+                                .in(MapShelfSlot::getLayerId, layerIds)
+                                .orderByAsc(MapShelfSlot::getSlotIndex))
+                .stream().collect(Collectors.groupingBy(MapShelfSlot::getLayerId));
+        Map<Long, List<ShelfLayerDTO>> result = new java.util.LinkedHashMap<>();
+        for (MapShelfLayer layer : layers) {
+            List<ShelfSlotDTO> slots = slotsByLayer.getOrDefault(layer.getId(), List.of()).stream()
+                    .map(slot -> new ShelfSlotDTO(slot.getId(), slot.getSlotIndex(),
+                            new double[]{slot.getX(), slot.getY(), slot.getZ()},
+                            new double[]{slot.getWidth(), slot.getDepth(), slot.getHeight()},
+                            slot.getProductId(), slot.getProductName()))
+                    .toList();
+            result.computeIfAbsent(layer.getShelfId(), key -> new ArrayList<>())
+                    .add(new ShelfLayerDTO(layer.getId(), layer.getLayerIndex(), layer.getElevation(),
+                            layer.getAccessEdge(), layer.getNumSlots(), slots));
+        }
+        return result;
+    }
+
+    private void applyFields(MapShelf shelf, ShelfSaveCmd dto) {
+        applyVertices(shelf, dto);
+        shelf.setName(dto.name() == null || dto.name().isBlank()
+                ? shelf.getShelfCode() : dto.name().trim());
+        shelf.setHeight(dto.height() != null ? dto.height() : 1.8);
+    }
+
+    private void applyVertices(MapShelf shelf, ShelfSaveCmd dto) {
+        if (dto.vertices() == null || dto.vertices().size() < 3) {
+            throw new IllegalArgumentException("货架占地多边形至少需要 3 个顶点");
+        }
+        for (double[] vertex : dto.vertices()) {
+            if (vertex == null || vertex.length != 2) {
+                throw new IllegalArgumentException("货架顶点必须是 [x,y] 二维坐标");
+            }
+        }
+        shelf.setVertices(MapZoneService.toJson(dto.vertices()));
+        shelf.setEdges(MapZoneService.toJson(normalizeEdges(dto.edges(), dto.vertices().size())));
+    }
+
+    private List<ShelfEdgeCmd> normalizeEdges(List<ShelfEdgeCmd> edges, int vertexCount) {
+        if (edges == null || edges.isEmpty()) {
+            List<ShelfEdgeCmd> auto = new ArrayList<>(vertexCount);
+            for (int i = 0; i < vertexCount; i++) {
+                auto.add(new ShelfEdgeCmd(i, i, (i + 1) % vertexCount, null));
+            }
+            return auto;
+        }
+        for (ShelfEdgeCmd edge : edges) {
+            if (edge.vertexStart() < 0 || edge.vertexStart() >= vertexCount
+                    || edge.vertexEnd() < 0 || edge.vertexEnd() >= vertexCount) {
+                throw new IllegalArgumentException("货架边引用了不存在的顶点索引: edgeIndex="
+                        + edge.edgeIndex() + "（共 " + vertexCount + " 个顶点）");
+            }
+        }
+        return edges;
+    }
+
+    private List<ShelfEdgeDTO> parseEdges(String edgesJson) {
+        if (edgesJson == null || edgesJson.isBlank()) {
+            return List.of();
+        }
+        return com.agv.navdeployer.map.application.dto.ZoneDTO.parseJson(edgesJson,
+                new com.fasterxml.jackson.core.type.TypeReference<List<ShelfEdgeDTO>>() {
+                });
+    }
+
+    private void insertLayers(MapShelf shelf, List<ShelfLayerCmd> layers) {
+        if (layers == null || layers.isEmpty()) {
+            return;
+        }
+        int index = 0;
+        for (ShelfLayerCmd layerDto : layers) {
+            MapShelfLayer layer = new MapShelfLayer();
+            layer.setShelfId(shelf.getId());
+            layer.setLayerIndex(layerDto.layerIndex() != null ? layerDto.layerIndex() : index);
+            layer.setElevation(layerDto.elevation());
+            layer.setAccessEdge(layerDto.accessEdge() != null ? layerDto.accessEdge() : 0);
+            List<ShelfSlotCmd> slots = layerDto.slots() == null ? List.of() : layerDto.slots();
+            layer.setNumSlots(slots.size());
+            layerMapper.insert(layer);
+            for (ShelfSlotCmd slotDto : slots) {
+                MapShelfSlot slot = new MapShelfSlot();
+                slot.setLayerId(layer.getId());
+                slot.setShelfId(shelf.getId());
+                slot.setSlotIndex(slotDto.slotIndex());
+                double[] position = slotDto.position();
+                if (position == null || position.length != 3) {
+                    throw new IllegalArgumentException("格位 position 必须是 [x,y,z] 三维坐标");
+                }
+                slot.setX(position[0]);
+                slot.setY(position[1]);
+                slot.setZ(position[2]);
+                double[] size = slotDto.size() == null || slotDto.size().length != 3
+                        ? DEFAULT_SLOT_SIZE : slotDto.size();
+                slot.setWidth(size[0]);
+                slot.setDepth(size[1]);
+                slot.setHeight(size[2]);
+                slot.setProductId(slotDto.productId());
+                slot.setProductName(slotDto.productName());
+                slotMapper.insert(slot);
+            }
+            index++;
+        }
+    }
+
+    private MapShelf requireShelf(Long id) {
+        MapShelf shelf = shelfMapper.selectById(id);
+        if (shelf == null) {
+            throw new NotFoundException("货架 " + id + " 不存在");
+        }
+        return shelf;
+    }
+
+    private void requireFloorOfMap(Long floorId, Long mapId) {
+        MapFloor floor = floorMapper.selectById(floorId);
+        if (floor == null) {
+            throw new NotFoundException("楼层 " + floorId + " 不存在");
+        }
+        if (!floor.getMapId().equals(mapId)) {
+            throw new IllegalArgumentException("楼层 " + floorId + " 不属于地图 " + mapId);
+        }
+    }
+}

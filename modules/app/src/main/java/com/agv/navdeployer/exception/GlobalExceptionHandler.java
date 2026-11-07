@@ -2,6 +2,7 @@ package com.agv.navdeployer.exception;
 
 import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.common.error.BusinessException;
+import com.agv.navdeployer.common.error.NotFoundException;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,5 +1,7 @@
 package com.agv.navdeployer.rms.config;
 
+import com.agv.navdeployer.sim.NativeMapClient;
+
 import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.gateway.RmsCommandGateway;
 import com.agv.navdeployer.rms.gateway.RmsReportGateway;
@@ -117,19 +119,19 @@ public class RmsConfig {
     public RmsMapService rmsMapService(MapModeTaskService mapTaskService,
                                        SimAgvTelemetry telemetry,
                                        RmsMapState mapState,
-                                       com.agv.navdeployer.metadata.service.MapMetaService mapMetaService,
-                                       com.agv.navdeployer.metadata.exchange.MapPackageService mapPackageService,
-                                       com.agv.navdeployer.rms.map.NativeMapClient nativeMaps) {
+                                       com.agv.navdeployer.map.application.MapMetaService mapMetaService,
+                                       com.agv.navdeployer.map.application.MapPackageService mapPackageService,
+                                       com.agv.navdeployer.sim.NativeMapClient nativeMaps) {
         return new RmsMapService(mapTaskService,
                 telemetry, mapState, mapMetaService, mapPackageService, nativeMaps);
     }
 
     @Bean
-    public com.agv.navdeployer.rms.map.NativeMapClient nativeMapClient(
+    public com.agv.navdeployer.sim.NativeMapClient nativeMapClient(
             SimAgvProperties robot,
             @org.springframework.beans.factory.annotation.Value("${native-map.token:${NATIVE_MAP_TOKEN:}}") String nativeMapToken) {
         String baseUrl = nativeMapToken.isBlank() ? "" : robot.robotHttpUri(8091).toString();
-        return new com.agv.navdeployer.rms.map.NativeMapClient(baseUrl, nativeMapToken);
+        return new com.agv.navdeployer.sim.NativeMapClient(baseUrl, nativeMapToken);
     }
 
     @Bean(destroyMethod = "shutdown")

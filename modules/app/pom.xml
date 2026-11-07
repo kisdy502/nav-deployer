@@ -23,6 +23,10 @@
         </dependency>
         <dependency>
             <groupId>com.agv</groupId>
+            <artifactId>nav-map</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.agv</groupId>
             <artifactId>nav-robot-core</artifactId>
         </dependency>
         <dependency>

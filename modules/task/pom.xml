@@ -23,7 +23,7 @@
         </dependency>
         <dependency>
             <groupId>com.agv</groupId>
-            <artifactId>nav-platform</artifactId>
+            <artifactId>nav-map</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
