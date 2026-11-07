@@ -20,6 +20,7 @@
         <module>modules/user</module>
         <module>modules/robot-core</module>
         <module>modules/platform</module>
+        <module>modules/task</module>
         <module>modules/rms</module>
         <module>modules/app</module>
     </modules>
@@ -43,6 +44,11 @@
             <dependency>
                 <groupId>com.agv</groupId>
                 <artifactId>nav-user</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.agv</groupId>
+                <artifactId>nav-task</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

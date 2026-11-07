@@ -50,7 +50,7 @@ public class RobotStateView {
     private final RmsProperties props;
     private final HostStats hostStats;
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    private final com.agv.navdeployer.service.RobotOperationalService operationalService;
+    private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
 
     private volatile String effectiveRobotCode;
     private final Path codeStoreFile;
@@ -58,7 +58,7 @@ public class RobotStateView {
     public RobotStateView(SimAgvTelemetry telemetry, RmsTaskRegistry taskRegistry,
                           RmsProperties props, HostStats hostStats,
                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
-                          com.agv.navdeployer.service.RobotOperationalService operationalService) {
+                          com.agv.navdeployer.task.application.RobotOperationalService operationalService) {
         this.telemetry = telemetry;
         this.taskRegistry = taskRegistry;
         this.props = props;

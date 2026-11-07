@@ -22,6 +22,10 @@
             <artifactId>nav-platform</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.agv</groupId>
+            <artifactId>nav-task</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
         </dependency>

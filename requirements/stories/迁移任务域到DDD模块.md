@@ -1,6 +1,6 @@
 # 迁移任务域到DDD模块
 
-状态: 规划中
+状态: 测试中
 
 ## 背景与动机
 
@@ -31,7 +31,7 @@ As a 开发者，I want 任务域以 DDD 四层独立成模块，So that 任务�
 - AC2: TO_POINT/GOAL/FOLLOW_PATH/to_waypoint/FREE 五种任务仿真冒烟全部执行成功
 - AC3: 任务取消、看门狗超时收口行为与重构前一致（对照冒烟清单）
 - AC4: 充电任务（含 RMS 入口）冒烟通过
-- AC5: nav-task 无对 rosbridge 实现类的编译依赖（仅端口接口）
+- AC5: nav-task 的 domain 与 application 无对 rosbridge 协议类（RosbridgeClient）的 import（仅端口 RobotConnectionPort；RosCommandDispatcher/Telemetry 等 robot-core 门面经构造注入，端口化在"迁移机器人接入域"story 一次成型——本条为口径修订，原"模块零编译依赖"在过渡期不可达成）
 - AC6: `mvnw compile -DskipTests` 通过，fat jar 启动无错
 
 ## 范围外

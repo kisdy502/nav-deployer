@@ -41,13 +41,13 @@ public class MapV2Controller {
     private final MapPackageService mapPackageService;
     private final ObjectMapper objectMapper;
     private final NativeMapClient nativeMaps;
-    private final com.agv.navdeployer.service.MapModeTaskService mapModeTaskService;
+    private final com.agv.navdeployer.task.application.MapModeTaskService mapModeTaskService;
 
     public MapV2Controller(MapMetaService mapMetaService,
                            MapPackageService mapPackageService,
                            ObjectMapper objectMapper,
                            NativeMapClient nativeMaps,
-                           com.agv.navdeployer.service.MapModeTaskService mapModeTaskService) {
+                           com.agv.navdeployer.task.application.MapModeTaskService mapModeTaskService) {
         this.mapMetaService = mapMetaService;
         this.mapPackageService = mapPackageService;
         this.objectMapper = objectMapper;
@@ -127,10 +127,10 @@ public class MapV2Controller {
     @Operation(summary = "切换机器人地图", description = "调 /agv/load_map 加载该地图对应机器人地图名（受理即返回），"
             + "终态以机器人定位操作记录为权威结论，经 SSE map-task 事件推送；成功后该地图自动发布为 PUBLISHED")
     @PostMapping("/{id}/switch")
-    public ApiResponse<com.agv.navdeployer.vo.MapModeTaskVO> switchMap(
+    public ApiResponse<com.agv.navdeployer.task.application.dto.MapModeTaskDTO> switchMap(
             @PathVariable Long id,
             @org.springframework.web.bind.annotation.RequestBody(required = false)
-            com.agv.navdeployer.dto.MapSwitchDTO dto) {
+            com.agv.navdeployer.task.application.cmd.MapSwitchCmd dto) {
         return ApiResponse.ok(mapModeTaskService.switchV2Map(id, dto == null ? null : dto.robotMapName()));
     }
 

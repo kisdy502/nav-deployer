@@ -4,7 +4,7 @@ import com.agv.navdeployer.rms.protocol.dto.command.MapNameRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.MapReplyData;
 import com.agv.navdeployer.rms.protocol.dto.command.RelocateRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
-import com.agv.navdeployer.service.MapModeTaskService;
+import com.agv.navdeployer.task.application.MapModeTaskService;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,7 +107,7 @@ public class RmsMapService {
             if (v2Map == null || v2Map.getRobotMapName() == null) {
                 return BodyReply.failure(404, "找不到可切换的机器人地图: " + mapName);
             }
-            com.agv.navdeployer.vo.MapModeTaskVO task =
+            com.agv.navdeployer.task.application.dto.MapModeTaskDTO task =
                     mapTaskService.switchNativeMap(v2Map.getMapName(), v2Map.getRobotMapName());
             BodyReply finalReply = awaitMapTaskTerminal(task.id(), 100_000L, "change map");
             if (finalReply.status() == 0 && v2Map != null && v2Map.getRobotMapName() != null
@@ -188,7 +188,7 @@ public class RmsMapService {
             return BodyReply.failure(400, "重定位参数不完整：需要 x / y / theta");
         }
         try {
-            com.agv.navdeployer.vo.MapModeTaskVO task =
+            com.agv.navdeployer.task.application.dto.MapModeTaskDTO task =
                     mapTaskService.relocalize(null, request.x(), request.y(), request.theta());
             BodyReply finalReply = awaitMapTaskTerminal(task.id(), 120_000L, "relocate");
             log.info("RMS relocate 终态回包: taskId={} status={} msg={}",

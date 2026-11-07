@@ -4,8 +4,8 @@ import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.dto.InitialPoseDTO;
 import com.agv.navdeployer.dto.RobotControlDTO;
 import com.agv.navdeployer.dto.TeleopCommandDTO;
-import com.agv.navdeployer.service.MapAlignmentGuard;
-import com.agv.navdeployer.service.MapModeTaskService;
+import com.agv.navdeployer.task.application.MapAlignmentGuard;
+import com.agv.navdeployer.task.application.MapModeTaskService;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.RosCommandDispatcher.SetControlResult;
 import com.agv.navdeployer.sim.RosbridgeClient;
@@ -39,8 +39,8 @@ public class RobotController {
     private final SimAgvTelemetry telemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
     private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    private final com.agv.navdeployer.service.RobotOperationalService operationalService;
-    private final com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard;
+    private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
+    private final com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
@@ -50,8 +50,8 @@ public class RobotController {
                            SimAgvTelemetry telemetry,
                            com.agv.navdeployer.sim.SimAgvProperties simProps,
                            com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
-                           com.agv.navdeployer.service.RobotOperationalService operationalService,
-                           com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard) {
+                           com.agv.navdeployer.task.application.RobotOperationalService operationalService,
+                           com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
@@ -226,7 +226,7 @@ public class RobotController {
             description = "调机器人 /agv/relocalize：受理即返回任务（MapModeTaskVO），终态经 SSE map-task 事件推送——"
                     + "新版机器人以 operation_id 定位操作记录为权威结论（成功/失败/超时原因），无需刷新页面")
     @PostMapping("/api/v1/robot/initial-pose")
-    public ApiResponse<com.agv.navdeployer.vo.MapModeTaskVO> initialPose(@Valid @RequestBody InitialPoseDTO dto) {
+    public ApiResponse<com.agv.navdeployer.task.application.dto.MapModeTaskDTO> initialPose(@Valid @RequestBody InitialPoseDTO dto) {
         return ApiResponse.ok(mapModeTaskService.relocalize(dto.mapName(), dto.x(), dto.y(), dto.theta()));
     }
 

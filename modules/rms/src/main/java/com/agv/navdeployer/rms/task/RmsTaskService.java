@@ -1,14 +1,14 @@
 package com.agv.navdeployer.rms.task;
 
-import com.agv.navdeployer.dto.MoveTaskCreateDTO;
 import com.agv.navdeployer.rms.config.RmsProperties;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.rms.protocol.dto.command.TaskCommandRequest;
 import com.agv.navdeployer.rms.state.RobotStateView;
-import com.agv.navdeployer.service.MoveTaskService;
+import com.agv.navdeployer.task.application.MoveTaskService;
 import com.agv.navdeployer.sim.RosCommandDispatcher;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
-import com.agv.navdeployer.vo.MoveTaskVO;
+import com.agv.navdeployer.task.application.cmd.MoveTaskCreateCmd;
+import com.agv.navdeployer.task.application.dto.MoveTaskDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -34,10 +34,10 @@ public class RmsTaskService {
     private final com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher;
     private final com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry;
     private final com.agv.navdeployer.sim.SimAgvProperties simProps;
-    private final com.agv.navdeployer.service.SmartNavigationService smartNavigation;
-    private final com.agv.navdeployer.service.ChargeService chargeService;
-    private final com.agv.navdeployer.service.RobotOperationalService operationalService;
-    private final com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard;
+    private final com.agv.navdeployer.task.application.SmartNavigationService smartNavigation;
+    private final com.agv.navdeployer.task.application.ChargeService chargeService;
+    private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
+    private final com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard;
 
     private final ScheduledExecutorService worker =
             Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -57,10 +57,10 @@ public class RmsTaskService {
                           com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher,
                           com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry,
                           com.agv.navdeployer.sim.SimAgvProperties simProps,
-                           com.agv.navdeployer.service.SmartNavigationService smartNavigation,
-                           com.agv.navdeployer.service.ChargeService chargeService,
-                           com.agv.navdeployer.service.RobotOperationalService operationalService,
-                           com.agv.navdeployer.service.MapAlignmentGuard mapAlignmentGuard,
+                           com.agv.navdeployer.task.application.SmartNavigationService smartNavigation,
+                           com.agv.navdeployer.task.application.ChargeService chargeService,
+                           com.agv.navdeployer.task.application.RobotOperationalService operationalService,
+                           com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard,
                            RmsTemplateStore templateStore) {
         this.registry = registry;
         this.resultReporter = resultReporter;
@@ -440,14 +440,14 @@ public class RmsTaskService {
         task.setDestination(destination);
         try {
             // source=rms:{task_id}：任务页据此把同一 RMS 任务的多阶段执行（导航→充电）关联展示
-            MoveTaskVO moveTask = smartNavigation.createOptimizedMoveTask(taskId,
+            MoveTaskDTO moveTask = smartNavigation.createOptimizedMoveTask(taskId,
                     destination.x(), destination.y(), destination.yaw(), "rms:" + taskId);
-            task.setInternalMoveTaskId(moveTask.getId());
+            task.setInternalMoveTaskId(moveTask.id());
             registry.save(task);
             log.info("rms task {} dispatched internal move task {} (type={}) -> ({}, {}, {}rad)",
-                    taskId, moveTask.getId(), moveTask.getTaskType(),
+                    taskId, moveTask.id(), moveTask.taskType(),
                     destination.x(), destination.y(), destination.yaw());
-            scheduleMovePoll(taskId, moveTask.getId());
+            scheduleMovePoll(taskId, moveTask.id());
         } catch (Exception exception) {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());
         }
@@ -456,11 +456,11 @@ public class RmsTaskService {
     private void executeCharge(RmsTask task) {
         TaskCommandRequest.Destination destination = task.destination();
         try {
-            com.agv.navdeployer.vo.ChargeTaskVO chargeTask;
+            com.agv.navdeployer.task.application.dto.ChargeTaskDTO chargeTask;
             if (destination != null) {
                 task.setDestination(destination);
                 chargeTask = chargeService.start(
-                        new com.agv.navdeployer.service.ChargeService.ChargeCommand(
+                        new com.agv.navdeployer.task.application.cmd.ChargeStartCmd(
                                 "rms:" + task.taskId(), null,
                                 destination.x(), destination.y(), destination.yaw(),
                                 targetBatteryOf(task)));
@@ -507,7 +507,7 @@ public class RmsTaskService {
                 || !java.util.Objects.equals(task.internalChargeTaskId(), chargeTaskId)) {
             return;
         }
-        com.agv.navdeployer.vo.ChargeTaskVO chargeTask = chargeService.get(chargeTaskId);
+        com.agv.navdeployer.task.application.dto.ChargeTaskDTO chargeTask = chargeService.get(chargeTaskId);
         if (chargeTask == null) {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, "内部充电任务丢失: id=" + chargeTaskId);
             return;
@@ -555,9 +555,9 @@ public class RmsTaskService {
         String moveStatus;
         String moveError;
         try {
-            MoveTaskVO moveTask = moveTaskService.get(moveTaskId);
-            moveStatus = moveTask.getStatus();
-            moveError = moveTask.getErrorMessage();
+            MoveTaskDTO moveTask = moveTaskService.get(moveTaskId);
+            moveStatus = moveTask.status();
+            moveError = moveTask.errorMessage();
         } catch (Exception exception) {
             log.warn("rms task {} poll move task {} failed: {}", taskId, moveTaskId, exception.getMessage());
             scheduleMovePoll(taskId, moveTaskId);

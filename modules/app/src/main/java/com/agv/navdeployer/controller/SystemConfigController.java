@@ -3,7 +3,7 @@ package com.agv.navdeployer.controller;
 import com.agv.navdeployer.common.ApiResponse;
 import com.agv.navdeployer.rms.config.RmsProperties;
 import com.agv.navdeployer.rms.session.RmsRobotSession;
-import com.agv.navdeployer.service.ChargeProperties;
+import com.agv.navdeployer.task.domain.charge.ChargeProperties;
 import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import io.swagger.v3.oas.annotations.Operation;

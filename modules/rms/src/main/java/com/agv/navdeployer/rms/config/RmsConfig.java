@@ -14,7 +14,7 @@ import com.agv.navdeployer.rms.session.RmsRobotSession;
 import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.rms.task.RmsResultReporter;
 import com.agv.navdeployer.rms.task.RmsTaskService;
-import com.agv.navdeployer.service.MapModeTaskService;
+import com.agv.navdeployer.task.application.MapModeTaskService;
 import com.agv.navdeployer.sim.SimAgvProperties;
 import com.agv.navdeployer.sim.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
