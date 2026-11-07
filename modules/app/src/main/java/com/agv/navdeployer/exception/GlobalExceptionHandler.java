@@ -25,6 +25,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.valueOf(e.status()), e.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParam(
+            org.springframework.web.bind.MissingServletRequestParameterException e) {
+        return build(HttpStatus.BAD_REQUEST, "缺少必填参数 " + e.getParameterName());
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNotFound(NotFoundException e) {
         return build(HttpStatus.NOT_FOUND, e.getMessage());
@@ -59,6 +65,7 @@ public class GlobalExceptionHandler {
             log.debug("exception on committed response: {}", e.getMessage());
             return null;
         }
+        log.error("unhandled exception", e);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "服务器内部错误: " + e.getMessage());
     }
 

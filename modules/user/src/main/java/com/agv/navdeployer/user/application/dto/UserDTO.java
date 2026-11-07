@@ -1,11 +1,27 @@
 package com.agv.navdeployer.user.application.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
-public record UserDTO(Long id,
-                      String name,
-                      Integer age,
-                      String avatarKey,
-                      LocalDateTime createdAt,
-                      LocalDateTime updatedAt) {
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserDTO {
+
+    private Long id;
+
+    private String name;
+
+    private Integer age;
+
+    private String avatarKey;
+
+    private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }
