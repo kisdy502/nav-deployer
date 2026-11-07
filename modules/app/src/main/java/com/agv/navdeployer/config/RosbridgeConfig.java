@@ -1,13 +1,13 @@
 package com.agv.navdeployer.config;
 
-import com.agv.navdeployer.sim.ArmStateMonitor;
-import com.agv.navdeployer.sim.LiveMapCache;
-import com.agv.navdeployer.sim.MapSubscriptionGuard;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
-import com.agv.navdeployer.sim.RosbridgeClient;
-import com.agv.navdeployer.sim.SimAgvProperties;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
-import com.agv.navdeployer.sim.SimAgvTelemetryCollector;
+import com.agv.navdeployer.robot.domain.ArmStateMonitor;
+import com.agv.navdeployer.robot.infrastructure.LiveMapCache;
+import com.agv.navdeployer.robot.infrastructure.MapSubscriptionGuard;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
+import com.agv.navdeployer.robot.infrastructure.RosbridgeClient;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.robot.infrastructure.SimAgvTelemetryCollector;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
@@ -50,10 +50,10 @@ public class RosbridgeConfig {
     }
 
     @Bean
-    public com.agv.navdeployer.sim.LocalizationOperationTracker localizationOperationTracker(
+    public com.agv.navdeployer.robot.infrastructure.LocalizationOperationTracker localizationOperationTracker(
             SimAgvProperties props, RosCommandDispatcher dispatcher) {
-        com.agv.navdeployer.sim.LocalizationOperationTracker tracker =
-                new com.agv.navdeployer.sim.LocalizationOperationTracker(props);
+        com.agv.navdeployer.robot.infrastructure.LocalizationOperationTracker tracker =
+                new com.agv.navdeployer.robot.infrastructure.LocalizationOperationTracker(props);
         tracker.attachQueryCaller(dispatcher::queryLocalizationOperation);
         return tracker;
     }
@@ -75,7 +75,7 @@ public class RosbridgeConfig {
                                            SimAgvTelemetryCollector telemetryCollector,
                                            RosCommandDispatcher commandDispatcher,
                                            MapSubscriptionGuard mapSubscriptionGuard,
-                                           com.agv.navdeployer.sim.LocalizationOperationTracker localizationOperationTracker) {
+                                           com.agv.navdeployer.robot.infrastructure.LocalizationOperationTracker localizationOperationTracker) {
         // 指令/遥测主通道：不承载 /map——大消息会阻塞 rosbridge 单线程事件循环，
         // 把 /cmd_vel 与 /agv/status 挤出数百 ms（遥控迟钝的主因），/map 走专用通道
         RosbridgeClient client = new RosbridgeClient(
@@ -98,7 +98,7 @@ public class RosbridgeConfig {
                                                 MapSubscriptionGuard mapSubscriptionGuard,
                                                 @Value("${map2d.use-rosbridge:false}") boolean legacy) {
         return args -> {
-            com.agv.navdeployer.sim.RosbridgeMessageLog.configure(
+            com.agv.navdeployer.robot.infrastructure.RosbridgeMessageLog.configure(
                     props.isWsMessageLogCommandsEnabled(), props.isWsMessageLogEnabled(),
                     props.getWsMessageLogMaxChars(), props.getWsMessageLogFullChars(),
                     props.getWsMessageLogTopicIntervalMs(), props.getWsMessageLogUnchangedIntervalMs(),

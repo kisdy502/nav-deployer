@@ -8,8 +8,8 @@
         <version>0.1.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
-    <artifactId>nav-robot-core</artifactId>
-    <name>nav-robot-core</name>
+    <artifactId>nav-robot-gateway</artifactId>
+    <name>nav-robot-gateway</name>
     <description>机器人接入层：rosbridge WebSocket 客户端、AGV 遥测与指令分发（机械臂控制后续在此扩展）</description>
 
     <dependencies>

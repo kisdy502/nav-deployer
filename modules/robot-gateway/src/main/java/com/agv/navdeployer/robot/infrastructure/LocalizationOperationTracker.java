@@ -1,4 +1,9 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.infrastructure;
+
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
+import com.agv.navdeployer.robot.infrastructure.RosbridgeHandler;
+
+import com.agv.navdeployer.robot.domain.LocalizationOperation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;

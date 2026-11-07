@@ -1,6 +1,6 @@
 package com.agv.navdeployer.controller;
 
-import com.agv.navdeployer.sim.SimAgvProperties;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

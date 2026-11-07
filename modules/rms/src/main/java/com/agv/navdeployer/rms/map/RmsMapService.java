@@ -1,13 +1,13 @@
 package com.agv.navdeployer.rms.map;
 
-import com.agv.navdeployer.sim.NativeMapClient;
+import com.agv.navdeployer.robot.infrastructure.NativeMapClient;
 
 import com.agv.navdeployer.rms.protocol.dto.command.MapNameRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.MapReplyData;
 import com.agv.navdeployer.rms.protocol.dto.command.RelocateRequest;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.task.application.MapModeTaskService;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

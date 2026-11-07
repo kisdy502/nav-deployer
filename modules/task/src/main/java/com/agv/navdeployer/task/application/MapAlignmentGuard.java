@@ -2,8 +2,8 @@ package com.agv.navdeployer.task.application;
 
 import com.agv.navdeployer.map.domain.MapMeta;
 import com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper;
-import com.agv.navdeployer.sim.SimAgvProperties;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

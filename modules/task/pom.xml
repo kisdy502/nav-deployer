@@ -19,7 +19,7 @@
         </dependency>
         <dependency>
             <groupId>com.agv</groupId>
-            <artifactId>nav-robot-core</artifactId>
+            <artifactId>nav-robot-gateway</artifactId>
         </dependency>
         <dependency>
             <groupId>com.agv</groupId>

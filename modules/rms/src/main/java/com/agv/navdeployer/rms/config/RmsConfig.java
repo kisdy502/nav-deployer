@@ -1,6 +1,6 @@
 package com.agv.navdeployer.rms.config;
 
-import com.agv.navdeployer.sim.NativeMapClient;
+import com.agv.navdeployer.robot.infrastructure.NativeMapClient;
 
 import com.agv.navdeployer.rms.map.RmsMapService;
 import com.agv.navdeployer.rms.gateway.RmsCommandGateway;
@@ -17,8 +17,8 @@ import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.rms.task.RmsResultReporter;
 import com.agv.navdeployer.rms.task.RmsTaskService;
 import com.agv.navdeployer.task.application.MapModeTaskService;
-import com.agv.navdeployer.sim.SimAgvProperties;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,17 +121,17 @@ public class RmsConfig {
                                        RmsMapState mapState,
                                        com.agv.navdeployer.map.application.MapMetaService mapMetaService,
                                        com.agv.navdeployer.map.application.MapPackageService mapPackageService,
-                                       com.agv.navdeployer.sim.NativeMapClient nativeMaps) {
+                                       com.agv.navdeployer.robot.infrastructure.NativeMapClient nativeMaps) {
         return new RmsMapService(mapTaskService,
                 telemetry, mapState, mapMetaService, mapPackageService, nativeMaps);
     }
 
     @Bean
-    public com.agv.navdeployer.sim.NativeMapClient nativeMapClient(
+    public com.agv.navdeployer.robot.infrastructure.NativeMapClient nativeMapClient(
             SimAgvProperties robot,
             @org.springframework.beans.factory.annotation.Value("${native-map.token:${NATIVE_MAP_TOKEN:}}") String nativeMapToken) {
         String baseUrl = nativeMapToken.isBlank() ? "" : robot.robotHttpUri(8091).toString();
-        return new com.agv.navdeployer.sim.NativeMapClient(baseUrl, nativeMapToken);
+        return new com.agv.navdeployer.robot.infrastructure.NativeMapClient(baseUrl, nativeMapToken);
     }
 
     @Bean(destroyMethod = "shutdown")

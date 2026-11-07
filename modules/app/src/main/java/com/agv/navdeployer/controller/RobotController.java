@@ -6,11 +6,11 @@ import com.agv.navdeployer.dto.RobotControlDTO;
 import com.agv.navdeployer.dto.TeleopCommandDTO;
 import com.agv.navdeployer.task.application.MapAlignmentGuard;
 import com.agv.navdeployer.task.application.MapModeTaskService;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
-import com.agv.navdeployer.sim.RosCommandDispatcher.SetControlResult;
-import com.agv.navdeployer.sim.RosbridgeClient;
-import com.agv.navdeployer.sim.SimAgvSsePublisher;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.SetControlResult;
+import com.agv.navdeployer.robot.infrastructure.RosbridgeClient;
+import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,8 +37,8 @@ public class RobotController {
     private final MapModeTaskService mapModeTaskService;
     private final ObjectMapper objectMapper;
     private final SimAgvTelemetry telemetry;
-    private final com.agv.navdeployer.sim.SimAgvProperties simProps;
-    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    private final com.agv.navdeployer.robot.domain.SimAgvProperties simProps;
+    private final com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor;
     private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
     private final com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard;
 
@@ -48,8 +48,8 @@ public class RobotController {
                            MapModeTaskService mapModeTaskService,
                            ObjectMapper objectMapper,
                            SimAgvTelemetry telemetry,
-                           com.agv.navdeployer.sim.SimAgvProperties simProps,
-                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                           com.agv.navdeployer.robot.domain.SimAgvProperties simProps,
+                           com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor,
                            com.agv.navdeployer.task.application.RobotOperationalService operationalService,
                            com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard) {
         this.ssePublisher = ssePublisher;

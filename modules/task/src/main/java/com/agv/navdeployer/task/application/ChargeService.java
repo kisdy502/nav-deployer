@@ -2,9 +2,9 @@ package com.agv.navdeployer.task.application;
 
 import com.agv.navdeployer.map.domain.MapWaypoint;
 import com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
-import com.agv.navdeployer.sim.SimAgvSsePublisher;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
+import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.agv.navdeployer.task.application.cmd.ChargeStartCmd;
 import com.agv.navdeployer.task.application.dto.ChargeTaskDTO;
 import com.agv.navdeployer.task.domain.charge.ChargeProperties;

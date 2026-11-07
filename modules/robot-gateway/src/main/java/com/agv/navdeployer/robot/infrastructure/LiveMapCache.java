@@ -1,4 +1,7 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.infrastructure;
+
+import com.agv.navdeployer.robot.infrastructure.RosbridgeHandler;
+import com.agv.navdeployer.robot.infrastructure.SimAgvTelemetryCollector;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

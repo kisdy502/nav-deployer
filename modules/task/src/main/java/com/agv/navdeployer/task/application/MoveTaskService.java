@@ -8,12 +8,12 @@ import com.agv.navdeployer.task.domain.movetask.TaskErrorCode;
 import com.agv.navdeployer.task.domain.port.RobotConnectionPort;
 import com.agv.navdeployer.task.domain.repository.MoveTaskRepository;
 import com.agv.navdeployer.task.infrastructure.mapstruct.MoveTaskMapstruct;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
-import com.agv.navdeployer.sim.RosCommandDispatcher.ControlPoint;
-import com.agv.navdeployer.sim.RosCommandDispatcher.FollowEdgeGoal;
-import com.agv.navdeployer.sim.SimAgvProperties;
-import com.agv.navdeployer.sim.SimAgvSsePublisher;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.ControlPoint;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.FollowEdgeGoal;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
+import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.slf4j.Logger;
@@ -49,7 +49,7 @@ public class MoveTaskService {
     private final SimAgvTelemetry telemetry;
     private final SimAgvProperties props;
     private final SimAgvSsePublisher ssePublisher;
-    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    private final com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor;
     private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathMapper v2PathMapper;
     private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathSegmentMapper v2SegmentMapper;
     private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper v2WaypointMapper;
@@ -73,7 +73,7 @@ public class MoveTaskService {
                            SimAgvTelemetry telemetry,
                            SimAgvProperties props,
                            SimAgvSsePublisher ssePublisher,
-                           com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                           com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor,
                            com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathMapper v2PathMapper,
                            com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathSegmentMapper v2SegmentMapper,
                            com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper v2WaypointMapper,

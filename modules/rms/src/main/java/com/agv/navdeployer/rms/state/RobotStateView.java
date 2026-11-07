@@ -8,7 +8,7 @@ import com.agv.navdeployer.rms.protocol.dto.report.StatusReportEnvelope;
 import com.agv.navdeployer.rms.protocol.dto.report.BodyFullStatusData;
 import com.agv.navdeployer.rms.task.RmsTask;
 import com.agv.navdeployer.rms.task.RmsTaskRegistry;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -49,7 +49,7 @@ public class RobotStateView {
     private final RmsTaskRegistry taskRegistry;
     private final RmsProperties props;
     private final HostStats hostStats;
-    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
+    private final com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor;
     private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
 
     private volatile String effectiveRobotCode;
@@ -57,7 +57,7 @@ public class RobotStateView {
 
     public RobotStateView(SimAgvTelemetry telemetry, RmsTaskRegistry taskRegistry,
                           RmsProperties props, HostStats hostStats,
-                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
+                          com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor,
                           com.agv.navdeployer.task.application.RobotOperationalService operationalService) {
         this.telemetry = telemetry;
         this.taskRegistry = taskRegistry;

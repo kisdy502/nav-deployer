@@ -2,7 +2,7 @@ package com.agv.navdeployer.rms.map;
 
 import com.agv.navdeployer.rms.config.RmsProperties;
 import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;

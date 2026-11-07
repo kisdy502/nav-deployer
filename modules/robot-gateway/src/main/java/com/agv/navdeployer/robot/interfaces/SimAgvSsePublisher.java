@@ -1,4 +1,7 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.interfaces;
+
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;

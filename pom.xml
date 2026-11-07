@@ -18,7 +18,7 @@
     <modules>
         <module>modules/common</module>
         <module>modules/user</module>
-        <module>modules/robot-core</module>
+        <module>modules/robot-gateway</module>
         <module>modules/platform</module>
         <module>modules/map</module>
         <module>modules/task</module>
@@ -59,7 +59,7 @@
             </dependency>
             <dependency>
                 <groupId>com.agv</groupId>
-                <artifactId>nav-robot-core</artifactId>
+                <artifactId>nav-robot-gateway</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

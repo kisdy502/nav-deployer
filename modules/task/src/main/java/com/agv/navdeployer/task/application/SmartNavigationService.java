@@ -5,7 +5,7 @@ import com.agv.navdeployer.task.application.dto.MoveTaskDTO;
 import com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper;
 import com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper;
 import com.agv.navdeployer.map.application.RoutePlanService;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

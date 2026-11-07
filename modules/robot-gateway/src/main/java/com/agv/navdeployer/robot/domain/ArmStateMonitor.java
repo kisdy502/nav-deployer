@@ -1,4 +1,7 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.domain;
+
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
 
 import java.util.ArrayList;
 import java.util.List;

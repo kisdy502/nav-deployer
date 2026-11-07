@@ -5,8 +5,8 @@ import com.agv.navdeployer.rms.protocol.dto.command.BodyReply;
 import com.agv.navdeployer.rms.protocol.dto.command.TaskCommandRequest;
 import com.agv.navdeployer.rms.state.RobotStateView;
 import com.agv.navdeployer.task.application.MoveTaskService;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.agv.navdeployer.task.application.cmd.MoveTaskCreateCmd;
 import com.agv.navdeployer.task.application.dto.MoveTaskDTO;
 import org.slf4j.Logger;
@@ -30,10 +30,10 @@ public class RmsTaskService {
     private final RobotStateView stateView;
     private final MoveTaskService moveTaskService;
     private final RmsProperties props;
-    private final com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor;
-    private final com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher;
-    private final com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry;
-    private final com.agv.navdeployer.sim.SimAgvProperties simProps;
+    private final com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor;
+    private final com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher armDispatcher;
+    private final com.agv.navdeployer.robot.domain.SimAgvTelemetry armTelemetry;
+    private final com.agv.navdeployer.robot.domain.SimAgvProperties simProps;
     private final com.agv.navdeployer.task.application.SmartNavigationService smartNavigation;
     private final com.agv.navdeployer.task.application.ChargeService chargeService;
     private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
@@ -53,10 +53,10 @@ public class RmsTaskService {
                           RobotStateView stateView,
                           MoveTaskService moveTaskService,
                           RmsProperties props,
-                          com.agv.navdeployer.sim.ArmStateMonitor armStateMonitor,
-                          com.agv.navdeployer.sim.RosCommandDispatcher armDispatcher,
-                          com.agv.navdeployer.sim.SimAgvTelemetry armTelemetry,
-                          com.agv.navdeployer.sim.SimAgvProperties simProps,
+                          com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor,
+                          com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher armDispatcher,
+                          com.agv.navdeployer.robot.domain.SimAgvTelemetry armTelemetry,
+                          com.agv.navdeployer.robot.domain.SimAgvProperties simProps,
                            com.agv.navdeployer.task.application.SmartNavigationService smartNavigation,
                            com.agv.navdeployer.task.application.ChargeService chargeService,
                            com.agv.navdeployer.task.application.RobotOperationalService operationalService,
@@ -628,7 +628,7 @@ public class RmsTaskService {
     }
 
     private boolean runInspectionSequence(RmsTask task, long dwellMs) {
-        java.util.List<String> names = com.agv.navdeployer.sim.ArmStateMonitor
+        java.util.List<String> names = com.agv.navdeployer.robot.domain.ArmStateMonitor
                 .armJointNamesSorted(armTelemetry.getJointStates());
         double[] inspect = roleTargets(names, simProps.getArmInspectPose());
         double[] home = roleTargets(names,
@@ -658,7 +658,7 @@ public class RmsTaskService {
         }
         double[] targets = new double[names.size()];
         for (int i = 0; i < names.size(); i++) {
-            int role = com.agv.navdeployer.sim.ArmStateMonitor.roleIndexOf(names.get(i));
+            int role = com.agv.navdeployer.robot.domain.ArmStateMonitor.roleIndexOf(names.get(i));
             if (role < 0) {
                 return null;
             }
@@ -693,7 +693,7 @@ public class RmsTaskService {
             }
             boolean reached = true;
             for (int i = 0; i < names.size(); i++) {
-                double actual = com.agv.navdeployer.sim.ArmStateMonitor.positionOf(joints, names.get(i));
+                double actual = com.agv.navdeployer.robot.domain.ArmStateMonitor.positionOf(joints, names.get(i));
                 if (Math.abs(actual - targets[i]) > simProps.getArmHomeToleranceRad()) {
                     reached = false;
                     break;

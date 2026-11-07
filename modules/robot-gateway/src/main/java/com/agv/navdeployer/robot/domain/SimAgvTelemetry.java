@@ -1,4 +1,4 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.domain;
 
 import java.time.Instant;
 

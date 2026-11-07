@@ -1,4 +1,4 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.infrastructure;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;

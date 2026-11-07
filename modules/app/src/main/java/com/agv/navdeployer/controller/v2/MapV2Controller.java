@@ -8,7 +8,7 @@ import com.agv.navdeployer.map.application.MapPackageService;
 import com.agv.navdeployer.map.application.MapMetaService;
 import com.agv.navdeployer.map.application.dto.MapFullDTO;
 import com.agv.navdeployer.map.application.dto.MapV2DTO;
-import com.agv.navdeployer.sim.NativeMapClient;
+import com.agv.navdeployer.robot.infrastructure.NativeMapClient;
 import com.agv.navdeployer.map.application.dto.MapGridDTO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;

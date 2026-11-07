@@ -1,17 +1,17 @@
 package com.agv.navdeployer.task.application;
 
 import com.agv.navdeployer.common.error.BusinessException;
-import com.agv.navdeployer.sim.LiveMapCache;
-import com.agv.navdeployer.sim.LocalizationOperation;
-import com.agv.navdeployer.sim.LocalizationOperationTracker;
-import com.agv.navdeployer.sim.RosCommandDispatcher;
-import com.agv.navdeployer.sim.RosCommandDispatcher.GetMapResult;
-import com.agv.navdeployer.sim.RosCommandDispatcher.MapServiceResult;
-import com.agv.navdeployer.sim.RosCommandDispatcher.RelocalizeResult;
+import com.agv.navdeployer.robot.infrastructure.LiveMapCache;
+import com.agv.navdeployer.robot.domain.LocalizationOperation;
+import com.agv.navdeployer.robot.infrastructure.LocalizationOperationTracker;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.GetMapResult;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.MapServiceResult;
+import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.RelocalizeResult;
 import com.agv.navdeployer.task.domain.port.RobotConnectionPort;
-import com.agv.navdeployer.sim.SimAgvProperties;
-import com.agv.navdeployer.sim.SimAgvSsePublisher;
-import com.agv.navdeployer.sim.SimAgvTelemetry;
+import com.agv.navdeployer.robot.domain.SimAgvProperties;
+import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
+import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
 import com.agv.navdeployer.task.application.dto.MapModeTaskDTO;
 import com.agv.navdeployer.task.domain.mapmodetask.MapModeStateMachine;
 import jakarta.annotation.PreDestroy;

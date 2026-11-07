@@ -1,4 +1,6 @@
-package com.agv.navdeployer.sim;
+package com.agv.navdeployer.robot.domain;
+
+import com.agv.navdeployer.robot.domain.LocalizationOperation;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
