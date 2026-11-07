@@ -1,9 +1,9 @@
 package com.agv.navdeployer.controller;
 
 import com.agv.navdeployer.common.ApiResponse;
-import com.agv.navdeployer.dto.InitialPoseDTO;
-import com.agv.navdeployer.dto.RobotControlDTO;
-import com.agv.navdeployer.dto.TeleopCommandDTO;
+import com.agv.navdeployer.controller.dto.InitialPoseDTO;
+import com.agv.navdeployer.controller.dto.RobotControlDTO;
+import com.agv.navdeployer.controller.dto.TeleopCommandDTO;
 import com.agv.navdeployer.task.application.MapAlignmentGuard;
 import com.agv.navdeployer.task.application.MapModeTaskService;
 import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;

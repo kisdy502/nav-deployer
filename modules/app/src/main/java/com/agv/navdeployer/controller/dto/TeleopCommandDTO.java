@@ -1,4 +1,4 @@
-package com.agv.navdeployer.dto;
+package com.agv.navdeployer.controller.dto;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;

@@ -19,7 +19,6 @@
         <module>modules/common</module>
         <module>modules/user</module>
         <module>modules/robot-gateway</module>
-        <module>modules/platform</module>
         <module>modules/map</module>
         <module>modules/task</module>
         <module>modules/rms</module>
@@ -60,11 +59,6 @@
             <dependency>
                 <groupId>com.agv</groupId>
                 <artifactId>nav-robot-gateway</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.agv</groupId>
-                <artifactId>nav-platform</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

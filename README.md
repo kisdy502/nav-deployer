@@ -7,16 +7,19 @@
 
 ## 功能模块
 
-设计文档与接口文档：`docs/nav-deployment.md`；rosbridge 对接细节：`rosbridge_integration.md`。
+设计文档与接口文档：`docs/nav-deployment.md`；rosbridge 对接细节：`rosbridge_integration.md`；重构规范与模块架构：`AGENTS.md` + `requirements/specs/ddd-refactor.md`。
 
 | 模块 | 能力 | 主要接口 |
 |---|---|---|
-| 建图 / 地图管理 | /map 实时栅格、快照建图（gzip 入 MinIO）、机器人地图列表/导入（get_map 入库）、激活部署 | `/api/v1/nav-maps`、`/robot-maps`、`/import-from-robot` |
-| 地图模式任务 | 切图（load_map）、在线建图（start_mapping）、保存并自动同步（save_map）；mode 状态机跟踪，成功才对齐 ACTIVE；请求体统一 snake_case（map_name / robot_map_name） | `/api/v1/nav-maps/{id}/switch`、`/api/v1/map-mode-tasks/*` |
-| 点位部署 | CRUD、把机器人当前位姿标记为点位 | `/api/v1/nav-points`、`/api/v1/nav-points/from-current-pose` |
-| 路线部署 | 有序边序列（直线/贝塞尔/倒车/限速）、连续性校验、部署 | `/api/v1/nav-paths`、`/{id}/edges`、`/{id}/deploy` |
-| 移动任务 | 到点位 / 到坐标 / 按路线逐段执行 follow_edge，feedback+result 闭环、取消、看门狗 | `/api/v1/move-tasks` |
+| 建图 / 地图管理（V2 多楼层） | /map 实时栅格、快照建图、建图保存自动入库发布（PUBLISHED）、地图包导入导出（含 .lxmap 兼容） | `/api/v2/maps/*`、`/api/v2/maps/live` |
+| 地图元数据 | 楼层/点位（11 类）/区域/货架/路线（贝塞尔段）CRUD、发布、Dijkstra 路径规划 | `/api/v2/map-floors|map-waypoints|map-zones|map-shelves|map-paths|map-inter-floor-conns`、`/api/v2/route/plan` |
+| 地图模式任务 | 切图（load_map+自动发布）、在线建图、保存自动同步、周期对账；mode 状态机跟踪 | `/api/v1/map-mode-tasks/*`、`/api/v2/maps/{id}/switch` |
+| 移动任务 | 按 V2 点位 / 到坐标 / 按路线逐段执行 follow_edge，feedback+result 闭环、取消、看门狗 | `/api/v1/move-tasks` |
+| 充电任务 | 智能路径规划导航到桩、对接确认、救援充电 | `/api/v1/charge/*` |
 | 机器人控制 | set_control start/stop/reset、重定位、遥测快照（含 mode/map_name/新鲜度） | `/api/v1/robot/*`、SSE `/sse/agv` |
+| RMS 云端对接 | zenoh 双向通道：注册/心跳/状态上报/任务派发/地图上传下载 | 无本地 HTTP，云端发起 |
+
+后端 Maven 模块（限界上下文）：`nav-common`（共享内核）、`nav-user`、`nav-task`、`nav-map`、`nav-robot-gateway`、`nav-rms`、`nav-app`（装配，唯一 fat jar）。各模块内部 DDD 四层（interfaces/application/domain/infrastructure），详见 `AGENTS.md`。
 
 Swagger：http://localhost:8083/swagger-ui/index.html
 

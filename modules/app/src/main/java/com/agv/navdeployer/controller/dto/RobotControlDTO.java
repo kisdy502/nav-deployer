@@ -1,4 +1,4 @@
-package com.agv.navdeployer.dto;
+package com.agv.navdeployer.controller.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;

@@ -19,10 +19,6 @@
         </dependency>
         <dependency>
             <groupId>com.agv</groupId>
-            <artifactId>nav-platform</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.agv</groupId>
             <artifactId>nav-task</artifactId>
         </dependency>
         <dependency>
