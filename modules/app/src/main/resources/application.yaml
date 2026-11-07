@@ -8,6 +8,11 @@ server:
 spring:
   application:
     name: nav-deployer
+  # @Scheduled 默认单线程：SSE 推流(100ms)/扫描(250ms)/模式任务轮询(500ms)/对账(5s) 串行会互相拖慢，扩池隔离
+  task:
+    scheduling:
+      pool:
+        size: 4
   # IDEA 控制台 ANSI 探测常失败导致日志全白，强制开启彩色输出（logback %clr 与消息内嵌色码都依赖它）
   output:
     ansi:
