@@ -260,7 +260,8 @@ public class MapModeTaskService {
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.SAVE_MAP,
                 null, target, target,
-                Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
+                // 机器人侧保存(最长 300s)+定位重启(120s 就绪窗)远超通用任务超时，SAVE_MAP 单独放宽到定位级超时
+                Instant.now().plusMillis(props.getLocalizationTaskTimeoutMs()));
 
         MapServiceResult result;
         try {

@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { useRobotStore } from '@/stores/robot'
 import { startMapping, saveMapTask, discardMapping, getCurrentMapTask } from '@/api/tasks'
-import { createMapFromLiveV2, replaceGridFromLiveV2 } from '@/api/map2'
+import { createMapFromLiveV2, replaceGridFromLiveV2, listMapsV2 } from '@/api/map2'
 import type { MapModeTaskVO, MapTaskType } from '@/types/api'
 
 /**
@@ -64,9 +64,9 @@ async function onStartMapping() {
   }
 }
 
-/** 等待指定类型模式任务终态（状态机 500ms 节拍，轮询 1s；上限 100s）。 */
-async function awaitTaskTerminal(type: MapTaskType): Promise<{ ok: boolean; message: string }> {
-  const deadline = Date.now() + 100_000
+/** 等待指定类型模式任务终态（状态机 500ms 节拍，轮询 1s）。 */
+async function awaitTaskTerminal(type: MapTaskType, timeoutMs = 100_000): Promise<{ ok: boolean; message: string }> {
+  const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1000))
     let task: MapModeTaskVO | null = null
@@ -82,12 +82,31 @@ async function awaitTaskTerminal(type: MapTaskType): Promise<{ ok: boolean; mess
       }
     }
   }
-  return { ok: false, message: '任务超时未到达终态（>100s）' }
+  return { ok: false, message: `任务超时未到达终态（>${Math.round(timeoutMs / 1000)}s）` }
 }
 
-/** 等待 SAVE_MAP 模式任务终态（保存/放弃共用终端等待）。 */
+/**
+ * 等待 SAVE_MAP 模式任务终态。
+ * 机器人侧保存(最长 300s)+定位重启(120s 就绪窗)远超通用任务超时，与后端 660s 对齐并留缓冲。
+ */
 function awaitSaveTaskTerminal(): Promise<{ ok: boolean; message: string }> {
-  return awaitTaskTerminal('SAVE_MAP')
+  return awaitTaskTerminal('SAVE_MAP', 700_000)
+}
+
+/** 等待后端自动入库（save 成功后经 get_map 入库并发布），返回新 v2 地图 id。 */
+async function waitMapSynced(name: string): Promise<number | null> {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    try {
+      const maps = await listMapsV2()
+      const hit = maps.find((m) => m.robot_map_name === name || m.map_name === name)
+      if (hit) return hit.id
+    } catch {
+      // 网络抖动继续等
+    }
+  }
+  return null
 }
 
 /** 放弃建图：不保存新图，机器人退出建图并回载建图前地图恢复定位。 */
@@ -158,7 +177,7 @@ function openSaveDialog(mode: 'finish' | 'new') {
 /**
  * 一键完成建图：
  * 1) 机器人侧 save_map（退出 MAPPING，存 maps_dir）——闭环等待终态；
- * 2) 上位机侧从实时栅格（后端 LiveMapCache 最后帧）创建 v2 地图并跳转编辑。
+ * 2) 等待后端自动入库（get_map → v2 地图并发布），跳转新地图编辑。
  */
 async function onSaveConfirm() {
   const name = saveDialog.name.trim()
@@ -170,13 +189,24 @@ async function onSaveConfirm() {
       await saveMapTask(name)
       const result = await awaitSaveTaskTerminal()
       if (!result.ok) {
-        ElMessage.error(`机器人侧保存失败，v2 地图未创建：${result.message}`)
+        ElMessage.error(`机器人侧保存失败：${result.message}`)
         return
       }
+      finishState.text = '2/2 等待地图自动入库并发布…'
+      const mapId = await waitMapSynced(name)
+      if (mapId == null) {
+        ElMessage.warning('机器人已保存，但自动入库未在期限内完成：请稍后在「地图管理」中查看')
+        return
+      }
+      // 建图流程收尾：关掉实时预览再进入新地图，避免带着 livePreview=true 进编辑被保护拦截
+      if (store.livePreview) store.stopLivePreview()
+      ElMessage.success(`v2 地图「${name}」已入库并发布`)
+      saveDialog.visible = false
+      emit('map-created', mapId)
+      return
     }
-    finishState.text = saveDialog.mode === 'finish' ? '2/2 创建 v2 地图…' : '创建 v2 地图…'
+    finishState.text = '从实时栅格创建 v2 地图…'
     const vo = await createMapFromLiveV2(name, store.modifiedBy)
-    // 建图流程收尾：关掉实时预览再进入新地图，避免带着 livePreview=true 进编辑被保护拦截
     if (store.livePreview) store.stopLivePreview()
     ElMessage.success(`v2 地图「${vo.map_name}」已创建`)
     saveDialog.visible = false
@@ -234,7 +264,7 @@ function togglePreview() {
         </div>
         <div v-if="stopState.text" class="task-state">{{ stopState.text }}</div>
         <div v-if="discardState.text" class="task-state">{{ discardState.text }}</div>
-        <div class="muted">「仅停止建图」只在机器人侧保存并退出建图（maps_dir），不创建上位机 v2 地图。</div>
+        <div class="muted">「仅停止建图」在机器人侧保存并退出建图，后端随后自动入库发布为 v2 地图（无需手动创建）。</div>
         <div class="muted">「放弃建图」不保存新图，机器人退出建图并回载建图前地图恢复定位。</div>
       </div>
 
@@ -250,10 +280,10 @@ function togglePreview() {
           <el-button :loading="replacing" :disabled="!store.map" @click="onReplaceGrid">替换当前底图</el-button>
         </div>
         <div v-if="finishState.text" class="task-state">{{ finishState.text }}</div>
-        <div class="muted">
-          建图中：「完成建图并保存」= 机器人退出建图（save_map）+ 从实时栅格创建 v2 地图，一次点击全部完成；
-          非建图状态：「保存为 v2 地图」从最后一帧实时栅格创建；「替换底图」保留当前地图元数据仅换栅格。
-        </div>
+    <div class="muted">
+      建图中：「完成建图并保存」= 机器人退出建图（save_map）+ 等待自动入库发布，一次点击全部完成（保存+定位重启最长约 7 分钟）；
+      非建图状态：「保存为 v2 地图」从最后一帧实时栅格创建；「替换底图」保留当前地图元数据仅换栅格。
+    </div>
       </div>
 
       <div class="section">
@@ -277,7 +307,7 @@ function togglePreview() {
     append-to-body
   >
     <div v-if="saveDialog.mode === 'finish'" class="muted dialog-tip">
-      将执行两步：① 命令机器人保存地图并退出建图模式（等待完成）；② 用最终栅格创建 v2 地图并进入编辑。地图名两步共用。
+      将执行两步：① 命令机器人保存地图并退出建图模式（保存+定位重启，最长约 7 分钟）；② 等待后端自动入库发布并进入新地图。地图名两步共用。
     </div>
     <el-form label-width="90px" @submit.prevent>
       <el-form-item label="地图名">

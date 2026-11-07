@@ -339,7 +339,7 @@ public class MapMetaService {
         mapSubscriptionGuard.touch();
         LiveMapCache.OccupancyGrid grid = liveMapCache.snapshot();
         if (grid == null) {
-            throw new IllegalStateException("尚未收到 /map 数据，请确认仿真栈与 rosbridge 连接正常");
+            throw new IllegalStateException("机器人尚未提供实时地图（8092 /maps/live 不可用或定位/建图未启动），请确认仿真栈已起");
         }
         return new MapGridDTO(grid.frameId(), grid.resolution(), grid.width(), grid.height(),
                 grid.originX(), grid.originY(), grid.originYaw(), grid.data(), grid.receivedAt());
