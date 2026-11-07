@@ -166,42 +166,32 @@ public class MapModeTaskService {
     public MapModeTaskDTO discardMapping() {
         requireIdleAndGates("MAPPING");
 
-        String target = mappingPreMapName;
+        // 机器人新固件在 MAPPING 态拒绝 load_map，放弃建图必须走 /agv/cancel_mapping：
+        // 机器人侧自记录建图前地图名并恢复定位，响应携带 map_name 与 operation_id（权威终态通道）
+        MapServiceResult result;
+        try {
+            result = dispatcher.cancelMapping().join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new IllegalStateException("cancel_mapping 调用失败: " + cause.getMessage(), cause);
+        }
+        if (!result.success()) {
+            throw new IllegalStateException("机器人拒绝放弃建图: " + result.message());
+        }
+        String target = result.mapName() == null || result.mapName().isBlank()
+                ? (mappingPreMapName == null ? "" : mappingPreMapName) : result.mapName();
         Long targetV2MapId = null;
-        if (target == null) {
-            com.agv.navdeployer.map.domain.MapMeta published = mapMetaService.findPublished();
-            if (published != null) {
-                target = published.getRobotMapName() != null && !published.getRobotMapName().isBlank()
-                        ? published.getRobotMapName() : published.getMapName();
-                targetV2MapId = published.getId();
-            }
-        } else {
+        if (!target.isBlank()) {
             com.agv.navdeployer.map.domain.MapMeta v2Match = mapMetaService.findByUploadName(target);
             if (v2Match != null) {
                 targetV2MapId = v2Match.getId();
             }
         }
-        if (target == null || target.isBlank()) {
-            throw new IllegalStateException(
-                    "建图前没有已定位地图（冷启动建图），无旧图可回，请使用「完成建图并保存」");
-        }
-        requireValidRobotMapName(target);
 
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.DISCARD_MAPPING,
                 targetV2MapId, target, target,
-                Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
-
-        MapServiceResult result;
-        try {
-            result = dispatcher.loadMap(target).join();
-        } catch (CompletionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new IllegalStateException("load_map（放弃建图回旧图）调用失败: " + cause.getMessage(), cause);
-        }
-        if (!result.success()) {
-            throw new IllegalStateException("机器人拒绝放弃建图回载旧图 " + target + ": " + result.message());
-        }
+                Instant.now().plusMillis(props.getLocalizationTaskTimeoutMs()));
         bindOperation(machine, result.operationId());
 
         return registerAndPublish(machine);

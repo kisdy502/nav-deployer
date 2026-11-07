@@ -244,6 +244,15 @@ public class RosCommandDispatcher implements RosbridgeHandler {
                         ""));
     }
 
+    public CompletableFuture<MapServiceResult> cancelMapping() {
+        return callService(props.getCancelMappingService(), null)
+                .thenApply(values -> new MapServiceResult(
+                        values.path("success").asBoolean(false),
+                        values.path("message").asText(""),
+                        textOrEmpty(values, "map_name"),
+                        textOrEmpty(values, "operation_id")));
+    }
+
     private static String textOrEmpty(JsonNode values, String field) {
         JsonNode value = values.path(field);
         return value.isMissingNode() || value.isNull() ? "" : value.asText();

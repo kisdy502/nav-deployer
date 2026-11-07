@@ -78,6 +78,7 @@ public class SimAgvProperties {
     private String loadMapService = "/agv/load_map";
     private String startMappingService = "/agv/start_mapping";
     private String saveMapService = "/agv/save_map";
+    private String cancelMappingService = "/agv/cancel_mapping";
 
     private String localizationOperationTopic = "/agv/localization_operation";
     private String localizationOperationTopicType = "agv_bridge_v2_interfaces/msg/LocalizationOperation";
@@ -566,6 +567,14 @@ public class SimAgvProperties {
 
     public void setSaveMapService(String saveMapService) {
         this.saveMapService = saveMapService;
+    }
+
+    public String getCancelMappingService() {
+        return cancelMappingService;
+    }
+
+    public void setCancelMappingService(String cancelMappingService) {
+        this.cancelMappingService = cancelMappingService;
     }
 
     public String getArmMoveService() {
