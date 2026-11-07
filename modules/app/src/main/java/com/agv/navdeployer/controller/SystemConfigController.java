@@ -1,8 +1,8 @@
 package com.agv.navdeployer.controller;
 
 import com.agv.navdeployer.common.ApiResponse;
-import com.agv.navdeployer.rms.config.RmsProperties;
-import com.agv.navdeployer.rms.session.RmsRobotSession;
+import com.agv.navdeployer.rms.infrastructure.config.RmsProperties;
+import com.agv.navdeployer.rms.infrastructure.session.RmsRobotSession;
 import com.agv.navdeployer.task.domain.charge.ChargeProperties;
 import com.agv.navdeployer.robot.domain.SimAgvProperties;
 import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
