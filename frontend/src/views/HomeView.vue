@@ -349,7 +349,7 @@ onBeforeUnmount(() => {})
 
       <main class="browse-main">
         <MapCanvas2
-          v-if="v2MapId"
+          v-if="v2MapId || editor2.livePreview"
           ref="mapCanvas2Ref"
           :editable="false"
         />
