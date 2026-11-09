@@ -41,7 +41,7 @@ public class RosbridgeConfig {
         if (legacy || !props.isEnabled() || !props.isMapEnabled()) {
             return new LiveMapCache(props.getMapTopic());
         }
-        return new LiveMapCache(props.getMapTopic(), props.robotHttpUri(8092).resolve("/maps/live"), mapper);
+        return new LiveMapCache(props.getMapTopic(), props.robotHttpUri().resolve("/maps/live"), mapper);
     }
 
     @Bean

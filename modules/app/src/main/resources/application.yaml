@@ -164,6 +164,8 @@ rms:
 sim_agv:
   enabled: ${SIM_AGV_ENABLED:true}
   ws_url: ${SIM_AGV_WS_URL:ws://localhost:9090}
+  # 机器人侧 HTTP 统一入口（单进程按 URL 路由：/maps/*、/native/*、包资源），host 取 ws_url 的主机名
+  robot_http_port: ${SIM_AGV_HTTP_PORT:8080}
   # Must match the bridge agv_id (child_frame_id = <agv_id>/base_link).
   tf_child_frame: ${SIM_AGV_TF_CHILD_FRAME:AGV001/base_link}
   tf_throttle_ms: 0

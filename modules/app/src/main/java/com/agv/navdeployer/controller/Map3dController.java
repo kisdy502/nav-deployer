@@ -28,7 +28,7 @@ public class Map3dController {
             .connectTimeout(Duration.ofSeconds(5)).build();
 
     public Map3dController(SimAgvProperties properties) {
-        this.baseUrl = properties.robotHttpUri(8089).toString();
+        this.baseUrl = properties.robotHttpUri().toString();
     }
 
     private HttpResponse<InputStream> request(String name, String asset) throws Exception {

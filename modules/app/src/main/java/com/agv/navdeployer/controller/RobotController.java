@@ -177,7 +177,7 @@ public class RobotController {
         }
         java.net.URI target;
         try {
-            target = java.net.URI.create(simProps.robotHttpUri(simProps.getUrdfMeshPort()) + "/" + raw);
+            target = java.net.URI.create(simProps.robotHttpUri() + "/" + raw);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(503).body(out -> out.write("invalid robot mesh address".getBytes()));
         }

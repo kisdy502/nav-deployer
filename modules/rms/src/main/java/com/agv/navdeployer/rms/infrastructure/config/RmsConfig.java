@@ -135,7 +135,7 @@ public class RmsConfig {
     public com.agv.navdeployer.robot.infrastructure.NativeMapClient nativeMapClient(
             SimAgvProperties robot,
             @org.springframework.beans.factory.annotation.Value("${native-map.token:${NATIVE_MAP_TOKEN:}}") String nativeMapToken) {
-        String baseUrl = nativeMapToken.isBlank() ? "" : robot.robotHttpUri(8091).toString();
+        String baseUrl = nativeMapToken.isBlank() ? "" : robot.robotHttpUri().toString();
         return new com.agv.navdeployer.robot.infrastructure.NativeMapClient(baseUrl, nativeMapToken);
     }
 

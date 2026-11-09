@@ -85,7 +85,8 @@ public class SimAgvProperties {
     private String getLocalizationOperationService = "/agv/get_localization_operation";
     private long localizationTaskTimeoutMs = 660000L;
     private String armMoveService = "/agv/arm_move";
-    private int urdfMeshPort = 8090;
+    // 机器人侧 HTTP 统一入口（robot_http_server 单进程按 URL 路由：/maps/*、/native/*、包资源），替代旧散装端口 8089/8090/8091/8092
+    private int robotHttpPort = 8080;
 
     private long statusFreshMs = 15000L;
 
@@ -111,6 +112,10 @@ public class SimAgvProperties {
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("Invalid robot HTTP address", e);
         }
+    }
+
+    public URI robotHttpUri() {
+        return robotHttpUri(robotHttpPort);
     }
 
     public String getWsUrl() {
@@ -585,12 +590,12 @@ public class SimAgvProperties {
         this.armMoveService = armMoveService;
     }
 
-    public int getUrdfMeshPort() {
-        return urdfMeshPort;
+    public int getRobotHttpPort() {
+        return robotHttpPort;
     }
 
-    public void setUrdfMeshPort(int urdfMeshPort) {
-        this.urdfMeshPort = urdfMeshPort;
+    public void setRobotHttpPort(int robotHttpPort) {
+        this.robotHttpPort = robotHttpPort;
     }
 
     public long getStatusFreshMs() {
