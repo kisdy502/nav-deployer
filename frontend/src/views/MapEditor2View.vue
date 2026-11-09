@@ -199,6 +199,17 @@ async function disablePath(id: number) {
   ElMessage.success('路线已停用')
 }
 
+/** 现场部署流：把机器人当前实时位姿一键记为点位（自动编码 P+n，类型普通路径点）。 */
+async function addWaypointAtRobot() {
+  const pose = robot.pose
+  if (!pose) return ElMessage.warning('未收到机器人位姿，无法创建点位')
+  const created = await store.addWaypoint(pose.x, pose.y, pose.yaw)
+  if (created) {
+    mapCanvasRef.value?.flyToPoint(pose.x, pose.y)
+    ElMessage.success(`已在机器人位置创建点位 ${created.waypoint_code}`)
+  }
+}
+
 function onMapCreated(id: number) {
   mappingVisible.value = false
   if (id !== mapId.value) {
@@ -457,6 +468,15 @@ onBeforeUnmount(() => {
       <el-button circle :icon="Position" title="适应视图" @click="mapCanvasRef?.fitView()" />
       <el-button circle :icon="Odometer" title="建图" @click="mappingVisible = !mappingVisible" />
       <el-button circle :icon="Operation" title="全向遥控器" @click="teleopVisible = true" />
+      <!-- 现场部署流：遥控机器人到目标位置后，一键把当前位姿记为点位 -->
+      <el-button
+        circle
+        type="success"
+        :icon="Location"
+        title="在机器人当前位置创建点位"
+        :disabled="!robot.pose"
+        @click="addWaypointAtRobot"
+      />
     </div>
   </div>
 </template>
