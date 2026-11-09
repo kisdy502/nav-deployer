@@ -69,8 +69,9 @@ public final class NativeMapClient {
                     return null;
                 }
                 if (bytes != null || status != HttpURLConnection.HTTP_OK) {
-                    throw new TransferException("Lightning 地图传输失败，机器人 HTTP " + status,
-                            status == HttpURLConnection.HTTP_CONFLICT);
+                    // 透传机器人侧错误详情（如 409 的"地图已存在且内容不同: xxx"），调用方与 RMS 页面直接可见
+                    throw new TransferException("Lightning 地图传输失败，机器人 HTTP " + status
+                            + errorDetail(connection), status == HttpURLConnection.HTTP_CONFLICT);
                 }
                 try (var input = connection.getInputStream()) {
                     byte[] result = input.readNBytes(MAX_BYTES + 1);
@@ -85,6 +86,30 @@ public final class NativeMapClient {
         } catch (IOException exception) {
             throw new TransferException("Lightning 地图服务连接或传输失败: " + exception.getMessage()
                     + "（baseUrl=" + baseUrl + "）", false);
+        }
+    }
+
+    /** 读取错误响应体并提取 JSON 的 error 字段（容错：非 JSON 原样截断；读失败返回空） */
+    private static String errorDetail(HttpURLConnection connection) {
+        try (var input = connection.getErrorStream()) {
+            if (input == null) {
+                return "";
+            }
+            String body = new String(input.readNBytes(512)).trim();
+            if (body.isEmpty()) {
+                return "";
+            }
+            int quote = body.indexOf("\"error\"");
+            if (quote >= 0) {
+                int start = body.indexOf('"', body.indexOf(':', quote) + 1) + 1;
+                int end = body.indexOf('"', start);
+                if (start > 0 && end > start) {
+                    return ": " + body.substring(start, end);
+                }
+            }
+            return ": " + body.substring(0, Math.min(body.length(), 120));
+        } catch (Exception ignored) {
+            return "";
         }
     }
 
