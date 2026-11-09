@@ -83,7 +83,8 @@ public final class NativeMapClient {
                 connection.disconnect();
             }
         } catch (IOException exception) {
-            throw new TransferException("Lightning 地图服务连接或传输失败", false);
+            throw new TransferException("Lightning 地图服务连接或传输失败: " + exception.getMessage()
+                    + "（baseUrl=" + baseUrl + "）", false);
         }
     }
 
