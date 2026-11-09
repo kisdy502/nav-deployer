@@ -15,16 +15,23 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 
 # 先只拷贝 parent + 各模块 pom 下载依赖，利用 Docker 层缓存加速重复构建
+# 模块 = 限界上下文（common/user/task/map/robot-gateway/rms/app），依赖顺序由 Maven reactor 自动排序
 COPY pom.xml .
-COPY modules/robot-core/pom.xml modules/robot-core/
-COPY modules/platform/pom.xml modules/platform/
+COPY modules/common/pom.xml modules/common/
+COPY modules/user/pom.xml modules/user/
+COPY modules/task/pom.xml modules/task/
+COPY modules/map/pom.xml modules/map/
+COPY modules/robot-gateway/pom.xml modules/robot-gateway/
 COPY modules/rms/pom.xml modules/rms/
 COPY modules/app/pom.xml modules/app/
 RUN mvn -B dependency:go-offline
 
 # 再拷贝各模块源码（源码变更时不会重新下载依赖）
-COPY modules/robot-core/src modules/robot-core/src
-COPY modules/platform/src modules/platform/src
+COPY modules/common/src modules/common/src
+COPY modules/user/src modules/user/src
+COPY modules/task/src modules/task/src
+COPY modules/map/src modules/map/src
+COPY modules/robot-gateway/src modules/robot-gateway/src
 COPY modules/rms/src modules/rms/src
 COPY modules/app/src modules/app/src
 
