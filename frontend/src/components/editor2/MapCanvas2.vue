@@ -246,6 +246,8 @@ const viewRot = ref((() => {
 })())
 const orbit3d = ref(false)
 const followCam = ref(false)
+/** 视野比例（每米像素数），驱动图例下方的比例尺与网格档位显示 */
+const pxPerMeterView = ref(0)
 const show3d = ref(false)
 const map3dName = computed(() => store.map?.robot_map_name || store.map?.map_name || '')
 
@@ -379,6 +381,9 @@ onMounted(() => {
     onLeftUp: onUp,
     onLeftClick: onClick,
     onContext: onCtx,
+    onViewChange: (pxPerMeter) => {
+      pxPerMeterView.value = pxPerMeter
+    },
     onFrame: (dt) => {
       robotLayer?.tick(dt)
       scene?.updateFollow(robotLayer?.currentPose ?? null, dt)
@@ -1548,7 +1553,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
       <button class="nd-chip nd-chip--btn" @click="cancelReloc">✕ 取消</button>
     </div>
 
-    <PointLegend />
+    <PointLegend :px-per-meter="pxPerMeterView" />
 
     <!-- 右键菜单（v1 风格） -->
     <div v-if="ctx.visible" class="ctx-menu" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }">

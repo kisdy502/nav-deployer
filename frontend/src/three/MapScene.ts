@@ -31,6 +31,8 @@ export interface MapSceneCallbacks {
   onLeftClick?: (hit: PickResult | null, world: THREE.Vector3, ev: PointerEvent) => void
   onContext?: (hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) => void
   onFrame?: (dt: number) => void
+  /** 视野比例变化（缩放/适配/resize）：pxPerMeter = 当前每米对应的屏幕像素数 */
+  onViewChange?: (pxPerMeter: number) => void
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
@@ -336,6 +338,7 @@ export class MapScene {
     const pxPerMeter = h / this.viewHeight
     if (this.gridMinor) this.gridMinor.visible = pxPerMeter >= 10
     if (this.gridMajor) this.gridMajor.visible = pxPerMeter >= 1.5
+    this.opts.onViewChange?.(pxPerMeter)
   }
 
   resize() {

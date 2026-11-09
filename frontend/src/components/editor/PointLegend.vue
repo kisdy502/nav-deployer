@@ -1,9 +1,33 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { POINT_STYLES } from '@/utils/pointStyle'
 
-/** 点位类型图例：每次进入页面一律折叠（不占画布）；会话内可点击展开/收起，不记忆状态。 */
+/** 点位类型图例 + 地图比例尺：每次进入页面一律折叠（不占画布）；会话内可点击展开/收起，不记忆状态。 */
 const expanded = ref(false)
+
+/** 当前每米对应的屏幕像素数（由画布视野变化驱动，缩放/适配/resize 时更新） */
+const props = defineProps<{ pxPerMeter?: number }>()
+
+const NICE_METERS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]
+
+/** RViz 风格：选一个"整齐"的米数，让线段像素长度落在 60~150px 之间 */
+const scaleBar = computed(() => {
+  const pxPerMeter = props.pxPerMeter ?? 0
+  if (pxPerMeter <= 0) return null
+  const meters = NICE_METERS.find((m) => m * pxPerMeter >= 60)
+      ?? NICE_METERS[NICE_METERS.length - 1]
+  const pixels = Math.round(meters * pxPerMeter)
+  const label = meters >= 1 ? `${meters} m` : `${meters * 100} cm`
+  return { pixels, label }
+})
+
+/** 当前生效网格档位（与 MapScene 网格 LOD 同步：≥10px/m 细格 1m；≥1.5px/m 粗格 10m；再小网格隐藏） */
+const gridStep = computed(() => {
+  const pxPerMeter = props.pxPerMeter ?? 0
+  if (pxPerMeter >= 10) return '1 m'
+  if (pxPerMeter >= 1.5) return '10 m'
+  return null
+})
 
 function toggle() {
   expanded.value = !expanded.value
@@ -30,13 +54,30 @@ function toggle() {
     </template>
     <button v-else class="legend-toggle" title="展开点位类型图例" @click="toggle">▸ 点位图例</button>
   </div>
+
+  <!-- 比例尺：图例正下方、左对齐；线段长度=标注米数的真实像素换算，网格档位与 LOD 联动 -->
+  <div v-if="scaleBar" class="scale-bar" aria-label="地图比例尺">
+    <div class="bar" :style="{ width: scaleBar.pixels + 'px' }">
+      <i class="tick" /><i class="tick" />
+    </div>
+    <span class="scale-label">{{ scaleBar.label }}</span>
+    <span v-if="gridStep" class="grid-step">网格 {{ gridStep }}</span>
+  </div>
 </template>
 
 <style scoped>
-.point-legend { position: absolute; bottom: 32px; left: 10px; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; max-width: calc(100% - 40px); padding: 7px 10px; background: rgba(255,255,255,.94); border: 1px solid #dcdfe6; border-radius: 6px; color: #303133; font-size: 12px; pointer-events: auto; }
+.point-legend { position: absolute; bottom: 44px; left: 10px; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; max-width: calc(100% - 40px); padding: 7px 10px; background: rgba(255,255,255,.94); border: 1px solid #dcdfe6; border-radius: 6px; color: #303133; font-size: 12px; pointer-events: auto; }
 .legend-item { display: inline-flex; align-items: center; gap: 5px; }
 svg { width: 26px; height: 26px; }
 .direction { align-self: center; color: #172b4d; }
 .legend-toggle { border: none; background: transparent; color: #409eff; font-size: 12px; cursor: pointer; padding: 0 2px; white-space: nowrap; }
 .legend-toggle:hover { text-decoration: underline; }
+
+.scale-bar { position: absolute; bottom: 10px; left: 10px; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: rgba(255,255,255,.94); border: 1px solid #dcdfe6; border-radius: 6px; color: #303133; font-size: 12px; pointer-events: none; }
+.bar { position: relative; height: 6px; border: 1.5px solid #303133; border-top: none; }
+.tick { position: absolute; top: -1.5px; width: 1.5px; height: 6px; background: #303133; }
+.tick:first-child { left: 0; }
+.tick:last-child { right: 0; }
+.scale-label { font-weight: 600; white-space: nowrap; }
+.grid-step { color: #909399; white-space: nowrap; }
 </style>
