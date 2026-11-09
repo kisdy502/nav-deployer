@@ -1594,7 +1594,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
       </template>
     </el-dialog>
 
-    <el-dialog v-model="show3d" :title="`三维地图 · ${map3dName}`" width="90%" destroy-on-close append-to-body>
+    <el-dialog v-model="show3d" :title="`三维地图 · ${map3dName}`" width="86%" destroy-on-close append-to-body>
       <Map3DViewer v-if="show3d && map3dName" :key="map3dName" :map-name="map3dName" />
     </el-dialog>
   </div>

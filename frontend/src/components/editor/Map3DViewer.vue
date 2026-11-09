@@ -130,7 +130,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.map3d-viewport { height: 70vh; width: 100%; }
+.map3d-viewport { height: 90vh; width: 100%; }
 .map3d-status { margin-bottom: 10px; color: #606266; }
 .error { color: #f56c6c; }
 </style>

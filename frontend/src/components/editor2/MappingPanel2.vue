@@ -137,12 +137,23 @@ async function onDiscardMapping() {
   }
 }
 
+/** 默认地图名：mapMMDD + 1~3 个随机大写字母（如 map1109H / map1109SE / map1109PRO）。 */
+function defaultMapName(): string {
+  const mmdd = new Date().toISOString().slice(5, 10).replace('-', '')
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
+  const suffix = Array.from(
+    { length: 1 + Math.floor(Math.random() * 3) },
+    () => letters[Math.floor(Math.random() * letters.length)],
+  ).join('')
+  return `map${mmdd}${suffix}`
+}
+
 /** 仅停止建图（机器人侧保存并退出 MAPPING），闭环等待终态。 */
 async function onStopMapping() {
   const { value: name } = await ElMessageBox.prompt('机器人侧地图名（maps_dir 保存名）', '停止建图', {
     confirmButtonText: '停止并保存到机器人',
     cancelButtonText: '取消',
-    inputValue: store.map ? `${store.map.map_name}_new` : `map_${new Date().toISOString().slice(5, 10).replace('-', '')}`,
+    inputValue: store.map ? `${store.map.map_name}_new` : defaultMapName(),
     inputPattern: /\S+/,
     inputErrorMessage: '名称不能为空',
   })
@@ -168,9 +179,7 @@ async function onStopMapping() {
 
 function openSaveDialog(mode: 'finish' | 'new') {
   saveDialog.mode = mode
-  saveDialog.name = store.map
-    ? `${store.map.map_name}_new`
-    : `map_${new Date().toISOString().slice(5, 10).replace('-', '')}`
+  saveDialog.name = store.map ? `${store.map.map_name}_new` : defaultMapName()
   saveDialog.visible = true
 }
 

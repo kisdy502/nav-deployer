@@ -545,13 +545,11 @@ function floorWaypoints(floorCode: string) {
         <el-button
           v-if="store.selectedPath.status !== 'DEPLOYED'"
           type="success"
-          size="small"
           @click="deployFromPanel"
         >部署</el-button>
         <el-button
           v-else
           type="warning"
-          size="small"
           plain
           @click="disableFromPanel"
         >停用</el-button>
