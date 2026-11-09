@@ -318,10 +318,10 @@ onBeforeUnmount(() => {
                   {{ p.status === 'DEPLOYED' ? '已部署' : p.status === 'DISABLED' ? '已停用' : '草稿' }}
                 </el-tag>
                 <el-tooltip v-if="p.status !== 'DEPLOYED'" content="部署" placement="top">
-                  <el-button size="small" text circle type="success" :icon="VideoPlay" @click.stop="deployPath(p.id)" />
+                  <el-button text circle type="success" :icon="VideoPlay" @click.stop="deployPath(p.id)" />
                 </el-tooltip>
                 <el-tooltip v-else content="停用" placement="top">
-                  <el-button size="small" text circle type="info" :icon="Switch" @click.stop="disablePath(p.id)" />
+                  <el-button text circle type="info" :icon="Switch" @click.stop="disablePath(p.id)" />
                 </el-tooltip>
               </div>
               <el-empty v-if="store.paths.length === 0" description="用「画路线」工具依次点击点位" :image-size="40" />
