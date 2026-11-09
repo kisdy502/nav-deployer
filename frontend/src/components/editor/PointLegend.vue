@@ -8,8 +8,6 @@ const expanded = ref(false)
 /** 当前每米对应的屏幕像素数（由画布视野变化驱动，缩放/适配/resize 时更新） */
 const props = defineProps<{ pxPerMeter?: number }>()
 
-const NICE_METERS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]
-
 /** 当前生效网格档位（与 MapScene 网格 LOD 同步：≥10px/m 细格 1m；≥1.5px/m 粗格 10m） */
 const gridStepMeters = computed(() => {
   const pxPerMeter = props.pxPerMeter ?? 0
