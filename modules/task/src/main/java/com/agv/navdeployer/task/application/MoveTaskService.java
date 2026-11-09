@@ -1,21 +1,28 @@
 package com.agv.navdeployer.task.application;
 
 import com.agv.navdeployer.common.error.BusinessException;
+import com.agv.navdeployer.map.application.MapMetaService;
+import com.agv.navdeployer.map.domain.MapMeta;
+import com.agv.navdeployer.map.domain.MapPath;
+import com.agv.navdeployer.map.domain.MapPathSegment;
+import com.agv.navdeployer.map.domain.MapWaypoint;
 import com.agv.navdeployer.task.application.cmd.MoveTaskCreateCmd;
 import com.agv.navdeployer.task.application.dto.MoveTaskDTO;
 import com.agv.navdeployer.task.domain.movetask.MoveTask;
 import com.agv.navdeployer.task.domain.movetask.TaskErrorCode;
+import com.agv.navdeployer.task.domain.port.FollowControlPoint;
+import com.agv.navdeployer.task.domain.port.FollowEdgeCommand;
+import com.agv.navdeployer.task.domain.port.FollowEdgeListener;
+import com.agv.navdeployer.task.domain.port.RobotCommandPort;
 import com.agv.navdeployer.task.domain.port.RobotConnectionPort;
+import com.agv.navdeployer.task.domain.port.RobotEventPort;
+import com.agv.navdeployer.task.domain.port.RobotPose;
+import com.agv.navdeployer.task.domain.port.RobotTelemetryPort;
+import com.agv.navdeployer.task.domain.port.RobotTuning;
 import com.agv.navdeployer.task.domain.repository.MoveTaskRepository;
 import com.agv.navdeployer.task.infrastructure.mapstruct.MoveTaskMapstruct;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.ControlPoint;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.FollowEdgeGoal;
-import com.agv.navdeployer.robot.domain.SimAgvProperties;
-import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
-import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.task.infrastructure.robot.RobotTuningProvider;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -45,15 +52,11 @@ public class MoveTaskService {
     private final MoveTaskRepository moveTaskRepository;
     private final MoveTaskMapstruct moveTaskMapstruct;
     private final RobotConnectionPort robotConnection;
-    private final RosCommandDispatcher dispatcher;
-    private final SimAgvTelemetry telemetry;
-    private final SimAgvProperties props;
-    private final SimAgvSsePublisher ssePublisher;
-    private final com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor;
-    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathMapper v2PathMapper;
-    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathSegmentMapper v2SegmentMapper;
-    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper v2WaypointMapper;
-    private final com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper v2MapMapper;
+    private final RobotCommandPort robotCommands;
+    private final RobotTelemetryPort telemetry;
+    private final RobotEventPort events;
+    private final RobotTuning tuning;
+    private final MapMetaService mapMetaService;
     private final RobotOperationalService operationalService;
     private final MapAlignmentGuard mapAlignmentGuard;
 
@@ -69,29 +72,21 @@ public class MoveTaskService {
     public MoveTaskService(MoveTaskRepository moveTaskRepository,
                            MoveTaskMapstruct moveTaskMapstruct,
                            RobotConnectionPort robotConnection,
-                           RosCommandDispatcher dispatcher,
-                           SimAgvTelemetry telemetry,
-                           SimAgvProperties props,
-                           SimAgvSsePublisher ssePublisher,
-                           com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor,
-                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathMapper v2PathMapper,
-                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapPathSegmentMapper v2SegmentMapper,
-                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper v2WaypointMapper,
-                           com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper v2MapMapper,
+                           RobotCommandPort robotCommands,
+                           RobotTelemetryPort telemetry,
+                           RobotEventPort events,
+                           RobotTuningProvider tuningProvider,
+                           MapMetaService mapMetaService,
                            RobotOperationalService operationalService,
                            MapAlignmentGuard mapAlignmentGuard) {
         this.moveTaskRepository = moveTaskRepository;
         this.moveTaskMapstruct = moveTaskMapstruct;
         this.robotConnection = robotConnection;
-        this.dispatcher = dispatcher;
+        this.robotCommands = robotCommands;
         this.telemetry = telemetry;
-        this.props = props;
-        this.ssePublisher = ssePublisher;
-        this.armStateMonitor = armStateMonitor;
-        this.v2PathMapper = v2PathMapper;
-        this.v2SegmentMapper = v2SegmentMapper;
-        this.v2WaypointMapper = v2WaypointMapper;
-        this.v2MapMapper = v2MapMapper;
+        this.events = events;
+        this.tuning = tuningProvider.tuning();
+        this.mapMetaService = mapMetaService;
         this.operationalService = operationalService;
         this.mapAlignmentGuard = mapAlignmentGuard;
     }
@@ -117,19 +112,19 @@ public class MoveTaskService {
             throw new IllegalStateException("已有在途任务（" + activeRuntimes.size() + " 条），机器人同一时刻只允许一个 goal，请先取消或等待完成");
         }
         if (!robotConnection.isConnected()) {
-            throw new IllegalStateException("rosbridge 未连接，无法下发移动任务");
+            throw new IllegalStateException("机器人连接未就绪，无法下发移动任务");
         }
-        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+        var status = telemetry.status();
         if (status == null || !status.poseInitialized()) {
             throw new IllegalStateException("机器人定位未收敛（pose_initialized=false），禁止下发导航指令");
         }
-        if (telemetry.isStatusFresh(props.getStatusFreshMs()) && status.mode() != null
+        if (telemetry.statusFresh() && status.mode() != null
                 && !"NAVIGATION".equals(status.mode())) {
             throw new IllegalStateException("机器人 mode=" + status.mode()
                     + "（切图/建图中），禁止下发导航指令，请等待回到 NAVIGATION");
         }
-        if (armStateMonitor != null && !armStateMonitor.movementAllowed()) {
-            throw new IllegalStateException("机械臂未归位（arm_state=" + armStateMonitor.state()
+        if (!telemetry.armMovementAllowed()) {
+            throw new IllegalStateException("机械臂未归位（arm_state=" + telemetry.armState()
                     + "），禁止移动作业，请先收臂归位");
         }
         if (mapAlignmentGuard != null) {
@@ -149,15 +144,11 @@ public class MoveTaskService {
                 if (dto.waypointId() == null) {
                     throw new IllegalArgumentException("TO_WAYPOINT 任务必须携带 waypoint_id");
                 }
-                com.agv.navdeployer.map.domain.MapWaypoint waypoint = v2WaypointMapper.selectById(dto.waypointId());
+                MapWaypoint waypoint = mapMetaService.getWaypoint(dto.waypointId());
                 if (waypoint == null) {
                     throw new BusinessException(TaskErrorCode.WAYPOINT_NOT_FOUND, "点位 " + dto.waypointId() + " 不存在");
                 }
-                com.agv.navdeployer.map.domain.MapMeta published = v2MapMapper.selectOne(
-                        Wrappers.lambdaQuery(com.agv.navdeployer.map.domain.MapMeta.class)
-                                .eq(com.agv.navdeployer.map.domain.MapMeta::getStatus,
-                                        com.agv.navdeployer.map.domain.MapMeta.STATUS_PUBLISHED)
-                                .last("LIMIT 1"));
+                MapMeta published = mapMetaService.findPublished();
                 if (published == null) {
                     throw new IllegalStateException("当前无 PUBLISHED 状态的 V2 地图，无法执行点位导航");
                 }
@@ -204,18 +195,18 @@ public class MoveTaskService {
                 if (dto.pathId() == null) {
                     throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id");
                 }
-                com.agv.navdeployer.map.domain.MapPath v2Path = v2PathMapper.selectById(dto.pathId());
+                MapPath v2Path = mapMetaService.getPath(dto.pathId());
                 if (v2Path == null) {
                     throw new BusinessException(TaskErrorCode.PATH_NOT_FOUND, "路线 " + dto.pathId() + " 不存在（V2 路线）");
                 }
-                if (!com.agv.navdeployer.map.domain.MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
+                if (!MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
                     throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + v2Path.getStatus() + "）");
                 }
                 segments = buildPathPlan(dto.pathId(), dto.maxSpeed());
                 if (segments.isEmpty()) {
                     throw new IllegalStateException("路线 " + dto.pathId() + " 没有可执行的边");
                 }
-                SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
+                RobotPose pose = telemetry.mapPose();
                 if (pose != null && shouldReverseForNearestEnd(segments, pose.x(), pose.y())) {
                     SegmentPlan firstEdge = segments.get(0);
                     SegmentPlan lastEdge = segments.get(segments.size() - 1);
@@ -227,13 +218,13 @@ public class MoveTaskService {
                 int edgeCount = segments.size();
                 segments = withStartHopIfNeeded(segments,
                         pose == null ? null : pose.x(), pose == null ? null : pose.y(),
-                        props.getFollowPathStartRadius());
+                        tuning.followPathStartRadius());
                 if (segments.size() > edgeCount && pose != null) {
                     SegmentPlan firstEdge = segments.get(1);
                     log.info("follow path {} start hop prepended: robot=({},{}) start=({},{}), distance={}m > {}m",
                             dto.pathId(), pose.x(), pose.y(), firstEdge.sx(), firstEdge.sy(),
                             String.format("%.2f", Math.hypot(pose.x() - firstEdge.sx(), pose.y() - firstEdge.sy())),
-                            props.getFollowPathStartRadius());
+                            tuning.followPathStartRadius());
                 }
                 SegmentPlan last = segments.get(segments.size() - 1);
                 task.setPathId(dto.pathId());
@@ -251,7 +242,7 @@ public class MoveTaskService {
         TaskRuntime runtime = new TaskRuntime(task, segments, endPointSingle);
         activeRuntimes.put(task.getId(), runtime);
         runtime.watchdog = worker.schedule(() -> onWatchdog(runtime),
-                props.getGoalTimeoutSeconds(), TimeUnit.SECONDS);
+                tuning.goalTimeoutSeconds(), TimeUnit.SECONDS);
         dispatchSegment(runtime, 1);
         log.info("move task created: id={}, no={}, type={}, segments={}",
                 task.getId(), task.getTaskNo(), task.getTaskType(), segments.size());
@@ -265,7 +256,7 @@ public class MoveTaskService {
             throw new IllegalStateException("任务 " + id + " 不在执行中，无法取消");
         }
         runtime.cancelRequested = true;
-        dispatcher.cancelGoal(runtime.currentGoalId);
+        robotCommands.cancelGoal(runtime.currentGoalId);
         scheduleForceFinalize(runtime, MoveTask.STATUS_CANCELLED, "已下发取消，但未收到 action_result，强制终结");
         log.info("move task cancel requested: id={}, goal={}", id, runtime.currentGoalId);
         return moveTaskMapstruct.toDTO(runtime.task);
@@ -295,34 +286,32 @@ public class MoveTaskService {
         boolean endPoint = seq == runtime.segments.size() && runtime.endPointSingle;
         String commandId = task.getTaskNo() + "-s" + seq;
 
-        FollowEdgeGoal goal = new FollowEdgeGoal(
+        FollowEdgeCommand command = new FollowEdgeCommand(
                 commandId,
-                plan.targetCode(),
-                plan.x(), plan.y(), plan.theta(),
-                "edge-" + commandId,
-                plan.edgeType(),
                 plan.sourceCode(),
                 plan.targetCode(),
-                plan.maxSpeed() == null ? props.getDefaultMaxSpeed() : plan.maxSpeed(),
+                plan.x(), plan.y(), plan.theta(),
+                plan.edgeType(),
+                plan.maxSpeed() == null ? tuning.defaultMaxSpeed() : plan.maxSpeed(),
+                tuning.defaultStep(),
                 plan.backUp(),
                 plan.reverse(),
-                props.getDefaultStep(),
                 endPoint,
                 plan.controlPoints());
 
         runtime.currentSeq = seq;
-        String goalId = dispatcher.dispatchFollowEdge(goal, listenerFor(runtime, seq));
+        String goalId = robotCommands.dispatchFollowEdge(command, listenerFor(runtime, seq));
         runtime.currentGoalId = goalId;
 
         task.markDispatchedGoal(goalId, seq);
         moveTaskRepository.update(task);
     }
 
-    private RosCommandDispatcher.ActionListener listenerFor(TaskRuntime runtime, int seq) {
-        return new RosCommandDispatcher.ActionListener() {
+    private FollowEdgeListener listenerFor(TaskRuntime runtime, int seq) {
+        return new FollowEdgeListener() {
             @Override
-            public void onFeedback(JsonNode values) {
-                worker.execute(() -> handleFeedback(runtime, seq, values));
+            public void onFeedback(FollowFeedback feedback) {
+                worker.execute(() -> handleFeedback(runtime, seq, feedback));
             }
 
             @Override
@@ -332,15 +321,23 @@ public class MoveTaskService {
         };
     }
 
-    private void handleFeedback(TaskRuntime runtime, int seq, JsonNode values) {
+    private void handleFeedback(TaskRuntime runtime, int seq, FollowEdgeListener.FollowFeedback feedback) {
         if (activeRuntimes.get(runtime.task.getId()) != runtime || runtime.currentSeq != seq) {
             return;
         }
         MoveTask task = runtime.task;
-        task.setCurrentX(values.path("x").asDouble(task.getCurrentX() == null ? 0 : task.getCurrentX()));
-        task.setCurrentY(values.path("y").asDouble(task.getCurrentY() == null ? 0 : task.getCurrentY()));
-        task.setCurrentTheta(values.path("theta").asDouble(task.getCurrentTheta() == null ? 0 : task.getCurrentTheta()));
-        task.setAgvState(values.path("state").asText(task.getAgvState()));
+        if (feedback.x() != null) {
+            task.setCurrentX(feedback.x());
+        }
+        if (feedback.y() != null) {
+            task.setCurrentY(feedback.y());
+        }
+        if (feedback.theta() != null) {
+            task.setCurrentTheta(feedback.theta());
+        }
+        if (feedback.state() != null) {
+            task.setAgvState(feedback.state());
+        }
 
         boolean statusChanged = task.markExecutingIfDispatched();
         long now = System.currentTimeMillis();
@@ -370,15 +367,15 @@ public class MoveTaskService {
             return;
         }
         log.warn("move task watchdog fired: id={}, timeout={}s, cancelling",
-                runtime.task.getId(), props.getGoalTimeoutSeconds());
+                runtime.task.getId(), tuning.goalTimeoutSeconds());
         runtime.timeoutRequested = true;
         try {
-            dispatcher.cancelGoal(runtime.currentGoalId);
+            robotCommands.cancelGoal(runtime.currentGoalId);
         } catch (Exception e) {
             log.warn("watchdog cancel failed: {}", e.getMessage());
         }
         scheduleForceFinalize(runtime, MoveTask.STATUS_TIMEOUT,
-                "任务超时（" + props.getGoalTimeoutSeconds() + "s）且未收到 action_result，已强制结束");
+                "任务超时（" + tuning.goalTimeoutSeconds() + "s）且未收到 action_result，已强制结束");
     }
 
     private void scheduleForceFinalize(TaskRuntime runtime, String status, String reason) {
@@ -405,7 +402,7 @@ public class MoveTaskService {
     }
 
     private void publishTaskEvent(MoveTask task) {
-        ssePublisher.publishEvent("task", moveTaskMapstruct.toDTO(task));
+        events.publish("task", moveTaskMapstruct.toDTO(task));
     }
 
     private List<SegmentPlan> buildPathPlan(Long pathId, Double maxSpeedOverride) {
@@ -417,14 +414,11 @@ public class MoveTaskService {
     }
 
     private List<SegmentPlan> buildV2PathPlan(Long pathId, Double maxSpeedOverride) {
-        com.agv.navdeployer.map.domain.MapPath v2Path = v2PathMapper.selectById(pathId);
+        MapPath v2Path = mapMetaService.getPath(pathId);
         if (v2Path == null) {
             return List.of();
         }
-        List<com.agv.navdeployer.map.domain.MapPathSegment> segments = v2SegmentMapper.selectList(
-                Wrappers.lambdaQuery(com.agv.navdeployer.map.domain.MapPathSegment.class)
-                        .eq(com.agv.navdeployer.map.domain.MapPathSegment::getPathId, pathId)
-                        .orderByAsc(com.agv.navdeployer.map.domain.MapPathSegment::getSeq));
+        List<MapPathSegment> segments = mapMetaService.listPathSegments(pathId);
         if (segments.isEmpty()) {
             return List.of();
         }
@@ -433,12 +427,10 @@ public class MoveTaskService {
             waypointIds.add(segment.getSourceWaypointId());
             waypointIds.add(segment.getTargetWaypointId());
         }
-        Map<Long, com.agv.navdeployer.map.domain.MapWaypoint> waypoints =
-                v2WaypointMapper.selectBatchIds(waypointIds.stream().distinct().toList())
+        Map<Long, MapWaypoint> waypoints =
+                mapMetaService.listWaypointsByIds(waypointIds.stream().distinct().toList())
                         .stream()
-                        .collect(Collectors.toMap(
-                                com.agv.navdeployer.map.domain.MapWaypoint::getId,
-                                Function.identity()));
+                        .collect(Collectors.toMap(MapWaypoint::getId, Function.identity()));
 
         List<SegmentPlan> plans = new ArrayList<>(segments.size());
         for (var segment : segments) {
@@ -448,7 +440,7 @@ public class MoveTaskService {
                 throw new IllegalStateException("V2 路线段引用的点位不存在，数据不一致: pathId=" + pathId);
             }
             Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride : segment.getMaxSpeed();
-            List<ControlPoint> controlPoints = parseV2ControlPoints(segment.getControlPoints());
+            List<FollowControlPoint> controlPoints = parseV2ControlPoints(segment.getControlPoints());
             plans.add(new SegmentPlan(source.getWaypointCode(), target.getWaypointCode(),
                     target.getX(), target.getY(), target.getYaw(),
                     segment.getSegmentType(), controlPoints,
@@ -460,16 +452,16 @@ public class MoveTaskService {
         return plans;
     }
 
-    private static List<ControlPoint> parseV2ControlPoints(String json) {
+    private static List<FollowControlPoint> parseV2ControlPoints(String json) {
         if (json == null || json.isBlank()) {
             return List.of();
         }
         try {
             JsonNode array = com.agv.navdeployer.map.application.MetadataJson.MAPPER.readTree(json);
-            List<ControlPoint> points = new ArrayList<>();
+            List<FollowControlPoint> points = new ArrayList<>();
             for (JsonNode node : array) {
                 if (node.isArray() && node.size() >= 2) {
-                    points.add(new ControlPoint(node.get(0).asDouble(), node.get(1).asDouble()));
+                    points.add(new FollowControlPoint(node.get(0).asDouble(), node.get(1).asDouble()));
                 }
             }
             return points;
@@ -507,7 +499,7 @@ public class MoveTaskService {
         List<SegmentPlan> out = new ArrayList<>(segments.size());
         for (int i = segments.size() - 1; i >= 0; i--) {
             SegmentPlan s = segments.get(i);
-            List<ControlPoint> cps = new ArrayList<>(s.controlPoints());
+            List<FollowControlPoint> cps = new ArrayList<>(s.controlPoints());
             java.util.Collections.reverse(cps);
             out.add(new SegmentPlan(s.targetCode(), s.sourceCode(),
                     s.sx(), s.sy(), s.syaw(),
@@ -561,7 +553,7 @@ public class MoveTaskService {
             double y,
             double theta,
             String edgeType,
-            List<ControlPoint> controlPoints,
+            List<FollowControlPoint> controlPoints,
             Double maxSpeed,
             boolean backUp,
             boolean reverse,

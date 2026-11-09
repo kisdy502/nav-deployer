@@ -1,11 +1,12 @@
 package com.agv.navdeployer.task.application;
 
+import com.agv.navdeployer.map.application.MapMetaService;
+import com.agv.navdeployer.map.application.RoutePlanService;
+import com.agv.navdeployer.map.domain.MapMeta;
+import com.agv.navdeployer.map.domain.MapWaypoint;
 import com.agv.navdeployer.task.application.cmd.MoveTaskCreateCmd;
 import com.agv.navdeployer.task.application.dto.MoveTaskDTO;
-import com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper;
-import com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper;
-import com.agv.navdeployer.map.application.RoutePlanService;
-import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.task.domain.port.RobotTelemetryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -20,19 +21,16 @@ public class SmartNavigationService {
 
     private final MoveTaskService moveTaskService;
     private final RoutePlanService routePlanService;
-    private final MapMetaMapper v2MapMapper;
-    private final MapWaypointMapper v2WaypointMapper;
-    private final SimAgvTelemetry telemetry;
+    private final MapMetaService mapMetaService;
+    private final RobotTelemetryPort telemetry;
 
     public SmartNavigationService(MoveTaskService moveTaskService,
                                   RoutePlanService routePlanService,
-                                  MapMetaMapper v2MapMapper,
-                                  MapWaypointMapper v2WaypointMapper,
-                                  SimAgvTelemetry telemetry) {
+                                  MapMetaService mapMetaService,
+                                  RobotTelemetryPort telemetry) {
         this.moveTaskService = moveTaskService;
         this.routePlanService = routePlanService;
-        this.v2MapMapper = v2MapMapper;
-        this.v2WaypointMapper = v2WaypointMapper;
+        this.mapMetaService = mapMetaService;
         this.telemetry = telemetry;
     }
 
@@ -46,20 +44,11 @@ public class SmartNavigationService {
 
     public List<Long> planRoutePathIds(String label, double x, double y) {
         try {
-            var publishedMap = v2MapMapper.selectOne(
-                    com.baomidou.mybatisplus.core.toolkit.Wrappers.lambdaQuery(
-                                    com.agv.navdeployer.map.domain.MapMeta.class)
-                            .eq(com.agv.navdeployer.map.domain.MapMeta::getStatus,
-                                    com.agv.navdeployer.map.domain.MapMeta.STATUS_PUBLISHED)
-                            .last("LIMIT 1"));
+            MapMeta publishedMap = mapMetaService.findPublished();
             if (publishedMap == null) {
                 return List.of();
             }
-            var waypoints = v2WaypointMapper.selectList(
-                    com.baomidou.mybatisplus.core.toolkit.Wrappers.lambdaQuery(
-                                    com.agv.navdeployer.map.domain.MapWaypoint.class)
-                            .eq(com.agv.navdeployer.map.domain.MapWaypoint::getMapId,
-                                    publishedMap.getId()));
+            List<MapWaypoint> waypoints = mapMetaService.listWaypoints(publishedMap.getId());
             if (waypoints.isEmpty()) {
                 return List.of();
             }
@@ -68,7 +57,7 @@ public class SmartNavigationService {
                 log.debug("smart navigate: target ({},{}) not near any waypoint, fallback GOAL", x, y);
                 return List.of();
             }
-            var pose = telemetry.getMapPose();
+            var pose = telemetry.mapPose();
             if (pose == null) {
                 return List.of();
             }
@@ -109,12 +98,11 @@ public class SmartNavigationService {
                 "GOAL", null, null, x, y, yaw, null, Boolean.TRUE), source);
     }
 
-    private record NearestWaypoint(com.agv.navdeployer.map.domain.MapWaypoint waypoint, double distance) {
+    private record NearestWaypoint(MapWaypoint waypoint, double distance) {
     }
 
-    private static NearestWaypoint nearestWaypoint(
-            List<com.agv.navdeployer.map.domain.MapWaypoint> waypoints, double x, double y) {
-        com.agv.navdeployer.map.domain.MapWaypoint best = null;
+    private static NearestWaypoint nearestWaypoint(List<MapWaypoint> waypoints, double x, double y) {
+        MapWaypoint best = null;
         double bestDist = Double.MAX_VALUE;
         for (var wp : waypoints) {
             double dist = Math.hypot(wp.getX() - x, wp.getY() - y);

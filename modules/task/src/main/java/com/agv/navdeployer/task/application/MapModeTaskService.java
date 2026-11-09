@@ -1,19 +1,21 @@
 package com.agv.navdeployer.task.application;
 
 import com.agv.navdeployer.common.error.BusinessException;
-import com.agv.navdeployer.robot.infrastructure.LiveMapCache;
-import com.agv.navdeployer.robot.domain.LocalizationOperation;
-import com.agv.navdeployer.robot.infrastructure.LocalizationOperationTracker;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.GetMapResult;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.MapServiceResult;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher.RelocalizeResult;
-import com.agv.navdeployer.task.domain.port.RobotConnectionPort;
-import com.agv.navdeployer.robot.domain.SimAgvProperties;
-import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
-import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.common.robot.RobotGrid;
+import com.agv.navdeployer.map.application.MapMetaService;
+import com.agv.navdeployer.map.application.dto.MapV2DTO;
+import com.agv.navdeployer.map.domain.MapMeta;
 import com.agv.navdeployer.task.application.dto.MapModeTaskDTO;
 import com.agv.navdeployer.task.domain.mapmodetask.MapModeStateMachine;
+import com.agv.navdeployer.task.domain.movetask.TaskErrorCode;
+import com.agv.navdeployer.task.domain.port.MapCmdResult;
+import com.agv.navdeployer.task.domain.port.RobotCommandPort;
+import com.agv.navdeployer.task.domain.port.RobotConnectionPort;
+import com.agv.navdeployer.task.domain.port.RobotEventPort;
+import com.agv.navdeployer.task.domain.port.RobotOperationPort;
+import com.agv.navdeployer.task.domain.port.RobotTelemetryPort;
+import com.agv.navdeployer.task.domain.port.RobotTuning;
+import com.agv.navdeployer.task.infrastructure.robot.RobotTuningProvider;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,14 +42,14 @@ public class MapModeTaskService {
     private static final int HISTORY_LIMIT = 100;
     private static final String MODE_NAVIGATION = "NAVIGATION";
 
-    private final com.agv.navdeployer.map.application.MapMetaService mapMetaService;
-    private final RosCommandDispatcher dispatcher;
+    private final MapMetaService mapMetaService;
+    private final RobotCommandPort robotCommands;
     private final RobotConnectionPort robotConnection;
-    private final SimAgvTelemetry telemetry;
-    private final SimAgvProperties props;
-    private final SimAgvSsePublisher ssePublisher;
+    private final RobotTelemetryPort telemetry;
+    private final RobotEventPort events;
+    private final RobotTuning tuning;
     private final MoveTaskService moveTaskService;
-    private final LocalizationOperationTracker operationTracker;
+    private final RobotOperationPort operations;
 
     private final AtomicLong idSequence = new AtomicLong();
     private final Deque<MapModeStateMachine> history = new ArrayDeque<>();
@@ -67,30 +69,30 @@ public class MapModeTaskService {
         worker.shutdownNow();
     }
 
-    public MapModeTaskService(com.agv.navdeployer.map.application.MapMetaService mapMetaService,
-                              RosCommandDispatcher dispatcher,
+    public MapModeTaskService(MapMetaService mapMetaService,
+                              RobotCommandPort robotCommands,
                               RobotConnectionPort robotConnection,
-                              SimAgvTelemetry telemetry,
-                              SimAgvProperties props,
-                              SimAgvSsePublisher ssePublisher,
+                              RobotTelemetryPort telemetry,
+                              RobotEventPort events,
+                              RobotTuningProvider tuningProvider,
                               MoveTaskService moveTaskService,
-                              LocalizationOperationTracker operationTracker) {
+                              RobotOperationPort operations) {
         this.mapMetaService = mapMetaService;
-        this.dispatcher = dispatcher;
+        this.robotCommands = robotCommands;
         this.robotConnection = robotConnection;
         this.telemetry = telemetry;
-        this.props = props;
-        this.ssePublisher = ssePublisher;
+        this.events = events;
+        this.tuning = tuningProvider.tuning();
         this.moveTaskService = moveTaskService;
-        this.operationTracker = operationTracker;
+        this.operations = operations;
     }
 
     public MapModeTaskDTO switchV2Map(Long mapId, String robotMapNameOverride) {
         requireIdleAndGates(MODE_NAVIGATION, true);
 
-        com.agv.navdeployer.map.domain.MapMeta map = mapMetaService.getMeta(mapId);
+        MapMeta map = mapMetaService.getMeta(mapId);
         if (map == null) {
-            throw new BusinessException(com.agv.navdeployer.task.domain.movetask.TaskErrorCode.MOVE_TASK_NOT_FOUND, "地图 " + mapId + " 不存在");
+            throw new BusinessException(TaskErrorCode.MOVE_TASK_NOT_FOUND, "地图 " + mapId + " 不存在");
         }
         String robotMapName = robotMapNameOverride != null && !robotMapNameOverride.isBlank()
                 ? robotMapNameOverride.trim()
@@ -99,7 +101,7 @@ public class MapModeTaskService {
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.SWITCH_MAP,
                 map.getId(), map.getMapName(), robotMapName,
-                Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
+                Instant.now().plusMillis(tuning.modeTaskTimeoutMs()));
         return dispatchSwitchLike(machine, robotMapName);
     }
 
@@ -108,20 +110,20 @@ public class MapModeTaskService {
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.SWITCH_MAP,
                 null, mapName, robotMapName,
-                Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
+                Instant.now().plusMillis(tuning.modeTaskTimeoutMs()));
         return dispatchSwitchLike(machine, robotMapName);
     }
 
     private MapModeTaskDTO dispatchSwitchLike(MapModeStateMachine machine, String robotMapName) {
         requireValidRobotMapName(robotMapName);
 
-        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+        var status = telemetry.status();
         if (status != null && robotMapName.equals(status.mapName())) {
             machine.onStatus(MODE_NAVIGATION, robotMapName, 0, Long.MAX_VALUE);
         } else {
-            MapServiceResult result;
+            MapCmdResult result;
             try {
-                result = dispatcher.loadMap(robotMapName).join();
+                result = robotCommands.loadMap(robotMapName).join();
             } catch (CompletionException e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 throw new IllegalStateException("load_map 调用失败: " + cause.getMessage(), cause);
@@ -137,16 +139,16 @@ public class MapModeTaskService {
 
     public MapModeTaskDTO startMapping() {
         requireIdleAndGates(MODE_NAVIGATION, true);
-        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+        var status = telemetry.status();
 
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.START_MAPPING,
                 null, null, null,
-                Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
+                Instant.now().plusMillis(tuning.modeTaskTimeoutMs()));
 
-        MapServiceResult result;
+        MapCmdResult result;
         try {
-            result = dispatcher.startMapping().join();
+            result = robotCommands.startMapping().join();
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("start_mapping 调用失败: " + cause.getMessage(), cause);
@@ -168,9 +170,9 @@ public class MapModeTaskService {
 
         // 机器人新固件在 MAPPING 态拒绝 load_map，放弃建图必须走 /agv/cancel_mapping：
         // 机器人侧自记录建图前地图名并恢复定位，响应携带 map_name 与 operation_id（权威终态通道）
-        MapServiceResult result;
+        MapCmdResult result;
         try {
-            result = dispatcher.cancelMapping().join();
+            result = robotCommands.cancelMapping().join();
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("cancel_mapping 调用失败: " + cause.getMessage(), cause);
@@ -182,7 +184,7 @@ public class MapModeTaskService {
                 ? (mappingPreMapName == null ? "" : mappingPreMapName) : result.mapName();
         Long targetV2MapId = null;
         if (!target.isBlank()) {
-            com.agv.navdeployer.map.domain.MapMeta v2Match = mapMetaService.findByUploadName(target);
+            MapMeta v2Match = mapMetaService.findByUploadName(target);
             if (v2Match != null) {
                 targetV2MapId = v2Match.getId();
             }
@@ -191,7 +193,7 @@ public class MapModeTaskService {
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.DISCARD_MAPPING,
                 targetV2MapId, target, target,
-                Instant.now().plusMillis(props.getLocalizationTaskTimeoutMs()));
+                Instant.now().plusMillis(tuning.localizationTaskTimeoutMs()));
         bindOperation(machine, result.operationId());
 
         return registerAndPublish(machine);
@@ -202,7 +204,7 @@ public class MapModeTaskService {
 
         String target = mapName == null ? "" : mapName.trim();
         if (target.isEmpty()) {
-            SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+            var status = telemetry.status();
             target = status == null ? null : status.mapName();
         }
         if (target == null || target.isBlank()) {
@@ -211,11 +213,11 @@ public class MapModeTaskService {
 
         MapModeStateMachine machine = new MapModeStateMachine(
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.RELOCALIZE,
-                null, target, target, Instant.now().plusMillis(props.getModeTaskTimeoutMs()));
+                null, target, target, Instant.now().plusMillis(tuning.modeTaskTimeoutMs()));
 
-        RelocalizeResult result;
+        MapCmdResult result;
         try {
-            result = dispatcher.callRelocalize(target, x, y, yaw).join();
+            result = robotCommands.relocalize(target, x, y, yaw).join();
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("relocalize 调用失败: " + cause.getMessage(), cause);
@@ -235,11 +237,11 @@ public class MapModeTaskService {
             return;
         }
         machine.attachOperation(operationId, null, null);
-        Instant extended = Instant.now().plusMillis(props.getLocalizationTaskTimeoutMs());
+        Instant extended = Instant.now().plusMillis(tuning.localizationTaskTimeoutMs());
         if (extended.isAfter(machine.getDeadlineAt())) {
             machine.extendDeadlineTo(extended);
         }
-        operationTracker.refreshFromRobot(operationId);
+        operations.refresh(operationId);
     }
 
     public MapModeTaskDTO saveMap(String mapName) {
@@ -251,11 +253,11 @@ public class MapModeTaskService {
                 idSequence.incrementAndGet(), MapModeStateMachine.Type.SAVE_MAP,
                 null, target, target,
                 // 机器人侧保存(最长 300s)+定位重启(120s 就绪窗)远超通用任务超时，SAVE_MAP 单独放宽到定位级超时
-                Instant.now().plusMillis(props.getLocalizationTaskTimeoutMs()));
+                Instant.now().plusMillis(tuning.localizationTaskTimeoutMs()));
 
-        MapServiceResult result;
+        MapCmdResult result;
         try {
-            result = dispatcher.saveMap(target).join();
+            result = robotCommands.saveMap(target).join();
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("save_map 调用失败: " + cause.getMessage(), cause);
@@ -298,17 +300,17 @@ public class MapModeTaskService {
         Optional<MapModeStateMachine.Status> transition = Optional.empty();
 
         if (machine.hasOperation()) {
-            LocalizationOperation operation = operationTracker.get(machine.getOperationId());
+            var operation = operations.query(machine.getOperationId());
             if (operation != null && machine.getOperationId().equals(operation.operationId())) {
-                transition = machine.onOperation(operation.operationId(), operation.isTerminal(),
-                        LocalizationOperation.STATE_SUCCEEDED.equals(operation.state()),
+                transition = machine.onOperation(operation.operationId(), operation.terminal(),
+                        operation.succeeded(),
                         operation.stage(), operation.message(), operation.failureReason());
             }
         }
 
         if (transition.isEmpty()) {
-            SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
-            long staleLimit = Math.max(props.getStatusFreshMs() * 6, 30_000L);
+            var status = telemetry.status();
+            long staleLimit = Math.max(tuning.statusFreshMs() * 6, 30_000L);
             if (status == null) {
                 transition = machine.onStatus(null, null, Long.MAX_VALUE, staleLimit);
             } else {
@@ -328,7 +330,7 @@ public class MapModeTaskService {
 
         if (machine.getProgressVersion() != lastPushedProgressVersion) {
             lastPushedProgressVersion = machine.getProgressVersion();
-            ssePublisher.publishEvent("map-task", MapModeTaskDTO.from(machine));
+            events.publish("map-task", MapModeTaskDTO.from(machine));
         }
     }
 
@@ -345,14 +347,14 @@ public class MapModeTaskService {
             }
         }
         if (!robotConnection.isConnected()) {
-            throw new IllegalStateException("rosbridge 未连接，无法执行模式任务");
+            throw new IllegalStateException("机器人连接未就绪，无法执行模式任务");
         }
-        if (!telemetry.isStatusFresh(props.getStatusFreshMs())) {
-            log.info("websocket 已连接，但超过 {}s 未收到 /agv/status，机器人业务层不可达" +
-                    "（agv_nav_server 未启动 / rosbridge topics_sub_glob 未放行 / status 话题名不匹配），拒绝执行", props.getStatusFreshMs() / 1000);
+        if (!telemetry.statusFresh()) {
+            log.info("websocket 已连接，但超过 {}s 未收到机器人状态（agv_nav_server 未启动 / 白名单未放行 / 话题名不匹配），拒绝执行",
+                    tuning.statusFreshMs() / 1000);
         }
-        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
-        if (status.mode() == null) {
+        var status = telemetry.status();
+        if (status == null || status.mode() == null) {
             throw new IllegalStateException("机器人未上报 mode 字段（旧版 agv_bridge_v2），请升级机器人固件到 v0.3.0+");
         }
         if (!requiredMode.equals(status.mode())) {
@@ -412,15 +414,15 @@ public class MapModeTaskService {
                 && machine.getType() == MapModeStateMachine.Type.SAVE_MAP) {
             worker.execute(() -> syncRobotMapV2(machine));
         }
-        ssePublisher.publishEvent("map-task", MapModeTaskDTO.from(machine));
+        events.publish("map-task", MapModeTaskDTO.from(machine));
     }
 
     private void syncRobotMapV2(MapModeStateMachine machine) {
         String robotMapName = machine.getRobotMapName();
         try {
-            LiveMapCache.OccupancyGrid grid = fetchRobotGrid(robotMapName);
-            com.agv.navdeployer.map.domain.MapMeta existing = mapMetaService.findByUploadName(robotMapName);
-            com.agv.navdeployer.map.application.dto.MapV2DTO saved;
+            RobotGrid grid = fetchRobotGrid(robotMapName);
+            MapMeta existing = mapMetaService.findByUploadName(robotMapName);
+            MapV2DTO saved;
             if (existing != null) {
                 saved = mapMetaService.replaceRobotGrid(existing.getId(), robotMapName, grid);
             } else {
@@ -429,51 +431,33 @@ public class MapModeTaskService {
             mapMetaService.publish(saved.id(), "map-mode-sync");
             log.info("v2 map synced from robot after save: mapId={}, robotMapName={}",
                     saved.id(), robotMapName);
-            ssePublisher.publishEvent("map-sync", Map.of(
+            events.publish("map-sync", Map.of(
                     "success", true, "mapId", saved.id(), "mapName", saved.mapName(),
                     "robotMapName", robotMapName));
         } catch (Exception e) {
             Throwable cause = e instanceof CompletionException ce && ce.getCause() != null ? ce.getCause() : e;
             log.error("sync v2 map {} from robot failed: {}", robotMapName, cause.getMessage(), cause);
-            ssePublisher.publishEvent("map-sync", Map.of(
+            events.publish("map-sync", Map.of(
                     "success", false, "robotMapName", robotMapName,
                     "message", String.valueOf(cause.getMessage())));
         }
     }
 
-    private LiveMapCache.OccupancyGrid fetchRobotGrid(String robotMapName) {
+    private RobotGrid fetchRobotGrid(String robotMapName) {
         String target = robotMapName == null ? "" : robotMapName.trim();
         requireValidRobotMapName(target);
         requireConnection();
-
-        GetMapResult getMapResult;
         try {
-            getMapResult = dispatcher.getMap(target).join();
+            return robotCommands.getMap(target);
         } catch (CompletionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new IllegalStateException("get_map 调用失败: " + cause.getMessage(), cause);
         }
-        if (!getMapResult.success() || getMapResult.grid() == null) {
-            throw new IllegalStateException("get_map 失败: "
-                    + (getMapResult.message() == null || getMapResult.message().isBlank()
-                            ? "无栅格数据" : getMapResult.message()));
-        }
-        LiveMapCache.OccupancyGrid grid = LiveMapCache.parse(getMapResult.grid());
-        if (grid == null) {
-            throw new IllegalStateException("get_map 返回的栅格数据非法（几何不一致）");
-        }
-        return grid;
     }
 
     public List<String> listRobotMaps() {
         requireConnection();
-        RosCommandDispatcher.ListMapsResult result;
-        try {
-            result = dispatcher.listMaps().join();
-        } catch (CompletionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new IllegalStateException("list_maps 调用失败: " + cause.getMessage(), cause);
-        }
+        var result = robotCommands.listMaps().join();
         if (!result.success()) {
             throw new IllegalStateException("机器人拒绝 list_maps: " + result.message());
         }
@@ -482,15 +466,15 @@ public class MapModeTaskService {
 
     @Scheduled(fixedDelay = 5000)
     public void alignActiveMapWithRobot() {
-        if (!telemetry.isStatusFresh(props.getStatusFreshMs())) {
+        if (!telemetry.statusFresh()) {
             return;
         }
-        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
-        String robotMap = status.mapName();
+        var status = telemetry.status();
+        String robotMap = status == null ? null : status.mapName();
         if (robotMap == null || robotMap.isBlank()) {
             return;
         }
-        com.agv.navdeployer.map.domain.MapMeta published = mapMetaService.findPublished();
+        MapMeta published = mapMetaService.findPublished();
         if (published == null) {
             return;
         }
@@ -499,7 +483,7 @@ public class MapModeTaskService {
         if (robotMap.equals(ref)) {
             return;
         }
-        com.agv.navdeployer.map.domain.MapMeta match = mapMetaService.findByUploadName(robotMap);
+        MapMeta match = mapMetaService.findByUploadName(robotMap);
         if (match == null || match.getId().equals(published.getId())) {
             return;
         }
@@ -511,17 +495,18 @@ public class MapModeTaskService {
         }
         log.info("v2 map aligned to robot truth: robotMap={} -> mapId={} PUBLISHED",
                 robotMap, match.getId());
-        ssePublisher.publishEvent("map-align", Map.of(
+        events.publish("map-align", Map.of(
                 "aligned", true, "mapId", match.getId(), "robotMapName", robotMap));
     }
 
     public Map<String, Object> computeAlignment() {
         String robotMap = null;
-        if (telemetry.isStatusFresh(props.getStatusFreshMs()) && telemetry.getStatus() != null) {
-            robotMap = telemetry.getStatus().mapName();
+        if (telemetry.statusFresh()) {
+            var status = telemetry.status();
+            robotMap = status == null ? null : status.mapName();
         }
 
-        com.agv.navdeployer.map.domain.MapMeta published = mapMetaService.findPublished();
+        MapMeta published = mapMetaService.findPublished();
         String ref = published == null ? null
                 : (published.getRobotMapName() != null && !published.getRobotMapName().isBlank()
                         ? published.getRobotMapName() : published.getMapName());
@@ -549,7 +534,7 @@ public class MapModeTaskService {
 
     private void requireConnection() {
         if (!robotConnection.isConnected()) {
-            throw new IllegalStateException("rosbridge 未连接，无法访问机器人地图");
+            throw new IllegalStateException("机器人连接未就绪，无法访问机器人地图");
         }
     }
 

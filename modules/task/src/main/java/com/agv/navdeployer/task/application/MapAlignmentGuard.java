@@ -1,10 +1,8 @@
 package com.agv.navdeployer.task.application;
 
+import com.agv.navdeployer.map.application.MapMetaService;
 import com.agv.navdeployer.map.domain.MapMeta;
-import com.agv.navdeployer.map.infrastructure.repository.mapper.MapMetaMapper;
-import com.agv.navdeployer.robot.domain.SimAgvProperties;
-import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.agv.navdeployer.task.domain.port.RobotTelemetryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -14,16 +12,13 @@ public class MapAlignmentGuard {
 
     private static final Logger log = LoggerFactory.getLogger(MapAlignmentGuard.class);
 
-    private final SimAgvTelemetry telemetry;
-    private final SimAgvProperties props;
-    private final MapMetaMapper v2MapMapper;
+    private final RobotTelemetryPort telemetry;
+    private final MapMetaService mapMetaService;
 
-    public MapAlignmentGuard(SimAgvTelemetry telemetry,
-                             SimAgvProperties props,
-                             MapMetaMapper v2MapMapper) {
+    public MapAlignmentGuard(RobotTelemetryPort telemetry,
+                             MapMetaService mapMetaService) {
         this.telemetry = telemetry;
-        this.props = props;
-        this.v2MapMapper = v2MapMapper;
+        this.mapMetaService = mapMetaService;
     }
 
     public record Alignment(String state, String robotMapName, String refMapName,
@@ -35,15 +30,15 @@ public class MapAlignmentGuard {
 
     public Alignment current() {
         String robotMap = null;
-        if (telemetry.isStatusFresh(props.getStatusFreshMs()) && telemetry.getStatus() != null) {
-            robotMap = telemetry.getStatus().mapName();
+        if (telemetry.statusFresh()) {
+            var status = telemetry.status();
+            robotMap = status == null ? null : status.mapName();
         }
         if (robotMap == null || robotMap.isBlank()) {
             return new Alignment(Alignment.UNKNOWN, null, null, null,
                     "机器人未上报当前地图名（或遥测过期），无法校验地图一致性");
         }
-        MapMeta published = v2MapMapper.selectOne(Wrappers.lambdaQuery(MapMeta.class)
-                .eq(MapMeta::getStatus, MapMeta.STATUS_PUBLISHED).last("LIMIT 1"));
+        MapMeta published = mapMetaService.findPublished();
         if (published != null && !isBlank(published.getRobotMapName())) {
             String ref = published.getRobotMapName().trim();
             if (robotMap.equals(ref)) {
@@ -67,7 +62,7 @@ public class MapAlignmentGuard {
         }
     }
 
-    private static Alignment mismatch(String robotMap, String ref, String source) {
+    private Alignment mismatch(String robotMap, String ref, String source) {
         return new Alignment(Alignment.MISMATCH, robotMap, ref, source,
                 "地图不一致：机器人当前加载「" + robotMap + "」，上位机导航基准为「" + ref + "」（" + source
                         + "）。两张地图中同名点位的坐标不对应，继续执行任务会导航到错误位置。"

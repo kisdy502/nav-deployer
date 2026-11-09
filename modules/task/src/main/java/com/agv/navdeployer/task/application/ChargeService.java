@@ -1,10 +1,11 @@
 package com.agv.navdeployer.task.application;
 
+import com.agv.navdeployer.map.application.MapMetaService;
 import com.agv.navdeployer.map.domain.MapWaypoint;
-import com.agv.navdeployer.map.infrastructure.repository.mapper.MapWaypointMapper;
-import com.agv.navdeployer.robot.infrastructure.RosCommandDispatcher;
-import com.agv.navdeployer.robot.interfaces.SimAgvSsePublisher;
-import com.agv.navdeployer.robot.domain.SimAgvTelemetry;
+import com.agv.navdeployer.task.domain.port.RobotCommandPort;
+import com.agv.navdeployer.task.domain.port.RobotEventPort;
+import com.agv.navdeployer.task.domain.port.RobotPose;
+import com.agv.navdeployer.task.domain.port.RobotTelemetryPort;
 import com.agv.navdeployer.task.application.cmd.ChargeStartCmd;
 import com.agv.navdeployer.task.application.dto.ChargeTaskDTO;
 import com.agv.navdeployer.task.domain.charge.ChargeProperties;
@@ -33,11 +34,11 @@ public class ChargeService {
 
     private final SmartNavigationService smartNavigation;
     private final MoveTaskService moveTaskService;
-    private final RosCommandDispatcher dispatcher;
-    private final SimAgvTelemetry telemetry;
-    private final SimAgvSsePublisher ssePublisher;
+    private final RobotCommandPort robotCommands;
+    private final RobotTelemetryPort telemetry;
+    private final RobotEventPort events;
     private final ChargeProperties props;
-    private final MapWaypointMapper v2WaypointMapper;
+    private final MapMetaService mapMetaService;
     private final RobotOperationalService operationalService;
 
     private final ScheduledExecutorService worker =
@@ -54,19 +55,19 @@ public class ChargeService {
 
     public ChargeService(SmartNavigationService smartNavigation,
                          MoveTaskService moveTaskService,
-                         RosCommandDispatcher dispatcher,
-                         SimAgvTelemetry telemetry,
-                         SimAgvSsePublisher ssePublisher,
+                         RobotCommandPort robotCommands,
+                         RobotTelemetryPort telemetry,
+                         RobotEventPort events,
                          ChargeProperties props,
-                         MapWaypointMapper v2WaypointMapper,
+                         MapMetaService mapMetaService,
                          RobotOperationalService operationalService) {
         this.smartNavigation = smartNavigation;
         this.moveTaskService = moveTaskService;
-        this.dispatcher = dispatcher;
+        this.robotCommands = robotCommands;
         this.telemetry = telemetry;
-        this.ssePublisher = ssePublisher;
+        this.events = events;
         this.props = props;
-        this.v2WaypointMapper = v2WaypointMapper;
+        this.mapMetaService = mapMetaService;
         this.operationalService = operationalService;
     }
 
@@ -84,7 +85,7 @@ public class ChargeService {
         double y;
         double yaw;
         if (waypointId != null) {
-            MapWaypoint waypoint = v2WaypointMapper.selectById(waypointId);
+            MapWaypoint waypoint = mapMetaService.getWaypoint(waypointId);
             if (waypoint == null) {
                 throw new IllegalArgumentException("充电点不存在: waypoint_id=" + waypointId);
             }
@@ -264,7 +265,7 @@ public class ChargeService {
 
     private void beginStartCharging(ChargeTask task) {
         if (!Double.isNaN(task.x()) && !Double.isNaN(task.y())) {
-            SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
+            RobotPose pose = telemetry.mapPose();
             if (pose == null) {
                 finish(task, ChargeTask.Status.FAILED,
                         "无法获取机器人当前位姿（/tf 未上报），到桩校验无法执行，已拒绝开始充电");
@@ -298,7 +299,7 @@ public class ChargeService {
         try {
             ObjectNode args = MAPPER.createObjectNode();
             args.put("data", true);
-            call = dispatcher.callService(props.getService(), args, props.getServiceTimeoutMs());
+            call = robotCommands.callService(props.getService(), args, props.getServiceTimeoutMs());
         } catch (Exception exception) {
             finish(task, ChargeTask.Status.FAILED, "开始充电服务下发失败: " + exception.getMessage());
             return;
@@ -337,7 +338,7 @@ public class ChargeService {
             return;
         }
         if (task.serviceAckAt() > 0) {
-            SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+            var status = telemetry.status();
             if (status != null && Boolean.TRUE.equals(status.charging())) {
                 task.setBatteryAtStart(status.battery());
                 finish(task, ChargeTask.Status.SUCCEEDED, String.format(java.util.Locale.ROOT,
@@ -369,19 +370,19 @@ public class ChargeService {
     }
 
     private boolean isRobotSettled() {
-        if (telemetry.getOdomCount() <= 0) {
+        if (telemetry.odomCount() <= 0) {
             return true;
         }
-        return Math.abs(telemetry.getOdomLinearX()) < props.getOdomQuietLinearMs()
-                && Math.abs(telemetry.getOdomLinearY()) < props.getOdomQuietLinearMs()
-                && Math.abs(telemetry.getOdomAngularZ()) < props.getOdomQuietAngularRad();
+        return Math.abs(telemetry.odomLinearX()) < props.getOdomQuietLinearMs()
+                && Math.abs(telemetry.odomLinearY()) < props.getOdomQuietLinearMs()
+                && Math.abs(telemetry.odomAngularZ()) < props.getOdomQuietAngularRad();
     }
 
     private void callSetCharging(boolean data) {
         try {
             ObjectNode args = MAPPER.createObjectNode();
             args.put("data", data);
-            dispatcher.callService(props.getService(), args, props.getServiceTimeoutMs())
+            robotCommands.callService(props.getService(), args, props.getServiceTimeoutMs())
                     .whenComplete((values, error) -> {
                         if (error != null) {
                             log.warn("set_charging({}) failed: {}", data, rootMessage(error));
@@ -406,7 +407,7 @@ public class ChargeService {
     }
 
     private double currentBatteryPct() {
-        SimAgvTelemetry.StatusSnapshot status = telemetry.getStatus();
+        var status = telemetry.status();
         double battery = status == null ? Double.NaN : status.battery();
         return Double.isNaN(battery) ? Double.NaN : battery;
     }
@@ -425,7 +426,7 @@ public class ChargeService {
         task.lastPublishedBattery = battery;
         task.lastPublishedAt = now;
         try {
-            ssePublisher.publishEvent("charge", vo(task));
+            events.publish("charge", vo(task));
         } catch (Exception exception) {
             log.debug("publish charge event failed: {}", exception.getMessage());
         }

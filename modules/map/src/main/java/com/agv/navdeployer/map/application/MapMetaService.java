@@ -33,6 +33,7 @@ import com.agv.navdeployer.map.application.dto.PathV2DTO;
 import com.agv.navdeployer.map.application.dto.ShelfDTO;
 import com.agv.navdeployer.map.application.dto.WaypointDTO;
 import com.agv.navdeployer.map.application.dto.ZoneDTO;
+import com.agv.navdeployer.common.robot.RobotGrid;
 import com.agv.navdeployer.robot.infrastructure.LiveMapCache;
 import com.agv.navdeployer.robot.infrastructure.MapSubscriptionGuard;
 import com.agv.navdeployer.map.application.dto.MapGridDTO;
@@ -267,6 +268,32 @@ public class MapMetaService {
         return snapshotLiveGrid();
     }
 
+    public MapWaypoint getWaypoint(Long id) {
+        return waypointMapper.selectById(id);
+    }
+
+    public List<MapWaypoint> listWaypointsByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return waypointMapper.selectBatchIds(ids);
+    }
+
+    public List<MapWaypoint> listWaypoints(Long mapId) {
+        return waypointMapper.selectList(Wrappers.lambdaQuery(MapWaypoint.class)
+                .eq(MapWaypoint::getMapId, mapId));
+    }
+
+    public MapPath getPath(Long id) {
+        return pathMapper.selectById(id);
+    }
+
+    public List<MapPathSegment> listPathSegments(Long pathId) {
+        return pathSegmentMapper.selectList(Wrappers.lambdaQuery(MapPathSegment.class)
+                .eq(MapPathSegment::getPathId, pathId)
+                .orderByAsc(MapPathSegment::getSeq));
+    }
+
     public MapMeta findPublished() {
         return mapMetaMapper.selectOne(Wrappers.lambdaQuery(MapMeta.class)
                 .eq(MapMeta::getStatus, MapMeta.STATUS_PUBLISHED).last("LIMIT 1"));
@@ -277,7 +304,7 @@ public class MapMetaService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public MapV2DTO createFromRobotGrid(String robotMapName, LiveMapCache.OccupancyGrid grid) {
+    public MapV2DTO createFromRobotGrid(String robotMapName, RobotGrid grid) {
         requireMapNameAvailable(robotMapName);
         MapGridDTO gridVO = toGridVO(grid);
         String objectKey = storeGrid(gridVO);
@@ -305,7 +332,7 @@ public class MapMetaService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public MapV2DTO replaceRobotGrid(Long mapId, String robotMapName, LiveMapCache.OccupancyGrid grid) {
+    public MapV2DTO replaceRobotGrid(Long mapId, String robotMapName, RobotGrid grid) {
         MapMeta map = requireMap(mapId);
         MapGridDTO gridVO = toGridVO(grid);
         String objectKey = storeGrid(gridVO);
@@ -330,14 +357,17 @@ public class MapMetaService {
         return MapV2DTO.from(mapMetaMapper.selectById(mapId));
     }
 
-    private MapGridDTO toGridVO(LiveMapCache.OccupancyGrid grid) {
+    private MapGridDTO toGridVO(RobotGrid grid) {
         return new MapGridDTO(grid.frameId(), grid.resolution(), grid.width(), grid.height(),
                 grid.originX(), grid.originY(), grid.originYaw(), grid.data(), grid.receivedAt());
     }
 
     private MapGridDTO snapshotLiveGrid() {
         mapSubscriptionGuard.touch();
-        LiveMapCache.OccupancyGrid grid = liveMapCache.snapshot();
+        LiveMapCache.OccupancyGrid snapshot = liveMapCache.snapshot();
+        RobotGrid grid = snapshot == null ? null : new RobotGrid(snapshot.frameId(), snapshot.resolution(),
+                snapshot.width(), snapshot.height(), snapshot.originX(), snapshot.originY(),
+                snapshot.originYaw(), snapshot.data(), snapshot.receivedAt());
         if (grid == null) {
             throw new IllegalStateException("机器人尚未提供实时地图（机器人 /maps/live 不可用或定位/建图未启动），请确认仿真栈已起");
         }
