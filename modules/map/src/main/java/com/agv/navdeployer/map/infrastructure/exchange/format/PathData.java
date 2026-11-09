@@ -12,6 +12,7 @@ public record PathData(String id,
                        boolean isBidirectional,
                        Double maxSpeed,
                        Boolean enableObstacleAvoidance,
+                       String status,
                        List<Segment> segments) {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

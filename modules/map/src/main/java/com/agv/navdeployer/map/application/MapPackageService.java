@@ -324,6 +324,7 @@ public class MapPackageService {
                 path.isBidirectional() == null || path.isBidirectional(),
                 path.maxSpeed(),
                 path.enableObstacleAvoidance() == null || path.enableObstacleAvoidance(),
+                path.status(),
                 segments);
     }
 
@@ -592,7 +593,8 @@ public class MapPackageService {
                 path.setMaxSpeed(pathData.maxSpeed());
                 path.setEnableObstacleAvoidance(pathData.enableObstacleAvoidance() == null
                         || pathData.enableObstacleAvoidance());
-                path.setStatus(MapPath.STATUS_DRAFT);
+                // 恢复导出时的部署状态；旧版包无该字段（null）回退 DRAFT
+                path.setStatus(normalizeImportedPathStatus(pathData.status()));
                 pathMapper.insert(path);
                 List<PathData.Segment> segments = pathData.segments();
                 int seq = 1;
@@ -656,6 +658,11 @@ public class MapPackageService {
                             connData.rampInfo().surface())));
             connMapper.insert(conn);
         }
+    }
+
+    private static String normalizeImportedPathStatus(String status) {
+        return MapPath.STATUS_DEPLOYED.equals(status) || MapPath.STATUS_DISABLED.equals(status)
+                ? status : MapPath.STATUS_DRAFT;
     }
 
     private static String normalizeWaypointType(String type) {
