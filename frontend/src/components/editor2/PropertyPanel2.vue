@@ -296,10 +296,11 @@ async function savePath() {
   ElMessage.success('路线已保存')
 }
 
-/** 部署/停用快捷操作（v1 同款），同步表单里的状态值。 */
+/** 部署/停用快捷操作。部署前先保存表单（限速/名称/段等编辑值随部署一并提交，否则丢弃）。 */
 async function deployFromPanel() {
   const path = store.selectedPath
   if (!path) return
+  await savePath()
   await store.setPathStatus(path.id, 'DEPLOYED')
   pathForm.status = 'DEPLOYED'
   ElMessage.success('路线已部署')
