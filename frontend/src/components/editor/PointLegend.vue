@@ -51,22 +51,9 @@ function toggle() {
     <button v-else class="legend-toggle" title="展开点位类型图例" @click="toggle">▸ 点位图例</button>
   </div>
 
-  <!-- 比例尺：图例正下方、左对齐；SVG 整数坐标绘制（crispEdges），线段长度 = 一格网格的真实像素换算 -->
+  <!-- 比例尺：图例正下方、左对齐；线段长度 = 一格网格的真实像素换算（CSS 过渡平滑缩放跳变） -->
   <div v-if="scaleBar" class="scale-bar" aria-label="地图比例尺">
-    <svg
-      :width="scaleBar.pixels + 8"
-      height="12"
-      :viewBox="`0 0 ${scaleBar.pixels + 8} 12`"
-      shape-rendering="crispEdges"
-      aria-hidden="true"
-    >
-      <path
-        :d="`M4 1 V9 H${scaleBar.pixels + 4} V1`"
-        fill="none"
-        stroke="#303133"
-        stroke-width="2"
-      />
-    </svg>
+    <div class="bar" :style="{ width: scaleBar.pixels + 'px' }" />
     <span class="scale-label">{{ scaleBar.label }}</span>
   </div>
 </template>
@@ -79,6 +66,8 @@ svg { width: 26px; height: 26px; }
 .legend-toggle { border: none; background: transparent; color: #409eff; font-size: 12px; cursor: pointer; padding: 0 2px; white-space: nowrap; }
 .legend-toggle:hover { text-decoration: underline; }
 
-.scale-bar { position: absolute; bottom: 10px; left: 10px; z-index: 10; display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: rgba(255,255,255,.94); border: 1px solid #dcdfe6; border-radius: 6px; color: #303133; font-size: 12px; pointer-events: none; }
-.scale-label { font-weight: 600; white-space: nowrap; }
+.scale-bar { position: absolute; bottom: 10px; left: 10px; z-index: 10; display: flex; align-items: flex-end; gap: 8px; padding: 4px 10px; background: rgba(255,255,255,.94); border: 1px solid #dcdfe6; border-radius: 6px; color: #303133; font-size: 12px; pointer-events: none; }
+/* ┌─┐ 形比例尺：三边 2px 整数 border（两端竖线+底线），宽度随缩放换算并以过渡平滑 */
+.bar { height: 8px; border-left: 2px solid #303133; border-right: 2px solid #303133; border-bottom: 2px solid #303133; transition: width .15s ease-out; }
+.scale-label { font-weight: 600; white-space: nowrap; line-height: 1; padding-bottom: 1px; }
 </style>
