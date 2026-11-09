@@ -89,7 +89,7 @@ public final class NativeMapClient {
         }
     }
 
-    /** 读取错误响应体并提取 JSON 的 error 字段（容错：非 JSON 原样截断；读失败返回空） */
+    /** 读取错误响应体并提取 JSON 的 message 字段（官方提示字段；兼容回退 error），容错：非 JSON 原样截断 */
     private static String errorDetail(HttpURLConnection connection) {
         try (var input = connection.getErrorStream()) {
             if (input == null) {
@@ -99,18 +99,30 @@ public final class NativeMapClient {
             if (body.isEmpty()) {
                 return "";
             }
-            int quote = body.indexOf("\"error\"");
-            if (quote >= 0) {
-                int start = body.indexOf('"', body.indexOf(':', quote) + 1) + 1;
-                int end = body.indexOf('"', start);
-                if (start > 0 && end > start) {
-                    return ": " + body.substring(start, end);
-                }
+            String extracted = extractJsonStringField(body, "message");
+            if (extracted == null) {
+                extracted = extractJsonStringField(body, "error");
+            }
+            if (extracted != null) {
+                return ": " + extracted;
             }
             return ": " + body.substring(0, Math.min(body.length(), 120));
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private static String extractJsonStringField(String body, String field) {
+        int quote = body.indexOf("\"" + field + "\"");
+        if (quote < 0) {
+            return null;
+        }
+        int start = body.indexOf('"', body.indexOf(':', quote) + 1) + 1;
+        int end = body.indexOf('"', start);
+        if (start > 0 && end > start) {
+            return body.substring(start, end);
+        }
+        return null;
     }
 
     public static final class TransferException extends RuntimeException {
