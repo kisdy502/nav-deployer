@@ -10,23 +10,21 @@ const props = defineProps<{ pxPerMeter?: number }>()
 
 const NICE_METERS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50]
 
-/** RViz 风格：选一个"整齐"的米数，让线段像素长度落在 60~150px 之间 */
+/** 当前生效网格档位（与 MapScene 网格 LOD 同步：≥10px/m 细格 1m；≥1.5px/m 粗格 10m） */
+const gridStepMeters = computed(() => {
+  const pxPerMeter = props.pxPerMeter ?? 0
+  if (pxPerMeter >= 10) return 1
+  if (pxPerMeter >= 1.5) return 10
+  return 10
+})
+
+/** 比例尺 = 一格的真实长度：线段像素宽度量化到 4px 步进，避免缩放过程中逐像素抖动 */
 const scaleBar = computed(() => {
   const pxPerMeter = props.pxPerMeter ?? 0
   if (pxPerMeter <= 0) return null
-  const meters = NICE_METERS.find((m) => m * pxPerMeter >= 60)
-      ?? NICE_METERS[NICE_METERS.length - 1]
-  const pixels = Math.round(meters * pxPerMeter)
-  const label = meters >= 1 ? `${meters} m` : `${meters * 100} cm`
-  return { pixels, label }
-})
-
-/** 当前生效网格档位（与 MapScene 网格 LOD 同步：≥10px/m 细格 1m；≥1.5px/m 粗格 10m；再小网格隐藏） */
-const gridStep = computed(() => {
-  const pxPerMeter = props.pxPerMeter ?? 0
-  if (pxPerMeter >= 10) return '1 m'
-  if (pxPerMeter >= 1.5) return '10 m'
-  return null
+  const rawPixels = gridStepMeters.value * pxPerMeter
+  const pixels = Math.max(8, Math.round(rawPixels / 4) * 4)
+  return { pixels, label: `1 格 = ${gridStepMeters.value} m` }
 })
 
 function toggle() {
@@ -55,13 +53,12 @@ function toggle() {
     <button v-else class="legend-toggle" title="展开点位类型图例" @click="toggle">▸ 点位图例</button>
   </div>
 
-  <!-- 比例尺：图例正下方、左对齐；线段长度=标注米数的真实像素换算，网格档位与 LOD 联动 -->
+  <!-- 比例尺：图例正下方、左对齐；线段长度 = 一格网格的真实像素换算 -->
   <div v-if="scaleBar" class="scale-bar" aria-label="地图比例尺">
     <div class="bar" :style="{ width: scaleBar.pixels + 'px' }">
       <i class="tick" /><i class="tick" />
     </div>
     <span class="scale-label">{{ scaleBar.label }}</span>
-    <span v-if="gridStep" class="grid-step">网格 {{ gridStep }}</span>
   </div>
 </template>
 
