@@ -439,7 +439,9 @@ public class MoveTaskService {
             if (source == null || target == null) {
                 throw new IllegalStateException("V2 路线段引用的点位不存在，数据不一致: pathId=" + pathId);
             }
-            Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride : segment.getMaxSpeed();
+            Double maxSpeed = maxSpeedOverride != null ? maxSpeedOverride
+                    : segment.getMaxSpeed() != null ? segment.getMaxSpeed()
+                    : v2Path.getMaxSpeed();
             List<FollowControlPoint> controlPoints = parseV2ControlPoints(segment.getControlPoints());
             plans.add(new SegmentPlan(source.getWaypointCode(), target.getWaypointCode(),
                     target.getX(), target.getY(), target.getYaw(),
