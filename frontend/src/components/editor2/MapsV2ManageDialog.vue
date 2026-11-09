@@ -159,7 +159,7 @@ function statusTag(status: string) {
         <template #default="{ row }">
           <el-button size="small" type="primary" link @click="edit(row)">编辑</el-button>
           <el-button v-if="row.status !== 'PUBLISHED'" size="small" type="success" link @click="publish(row)">发布</el-button>
-          <el-button v-if="row.status !== 'PUBLISHED'" size="small" type="success" link @click="switchMap(row)">切换</el-button>
+          <el-button size="small" type="success" link @click="switchMap(row)">切换</el-button>
           <el-button size="small" link @click="exportZip(row)">导出包</el-button>
           <el-button size="small" link @click="replaceGrid(row)">换底图</el-button>
           <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
