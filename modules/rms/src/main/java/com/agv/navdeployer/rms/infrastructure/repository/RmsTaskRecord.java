@@ -28,6 +28,8 @@ public class RmsTaskRecord {
 
     private String templateId;
 
+    private String targetLabel;
+
     private String parameters;
 
     private String status;

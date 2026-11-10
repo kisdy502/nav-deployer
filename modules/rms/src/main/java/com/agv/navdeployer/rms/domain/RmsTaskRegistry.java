@@ -131,6 +131,7 @@ public class RmsTaskRegistry {
             record.setDestYaw(task.destination().yaw());
         }
         record.setDestTopoName(topoNameOf(task.parameters()));
+        record.setTargetLabel(task.targetLabel());
         record.setInternalMoveTaskId(task.internalMoveTaskId());
         record.setInternalChargeTaskId(task.internalChargeTaskId());
         record.setCreatedAt(local(task.createdAt()));

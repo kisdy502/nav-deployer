@@ -23,6 +23,7 @@ public final class RmsTask {
     private Instant startedAt;
     private Instant finishedAt;
     private TaskCommandRequest.Destination destination;
+    private String targetLabel;
     private Long internalMoveTaskId;
     private Long internalChargeTaskId;
     private String message;
@@ -103,6 +104,15 @@ public final class RmsTask {
 
     public void setDestination(TaskCommandRequest.Destination destination) {
         this.destination = destination;
+    }
+
+    /** 目标点可读名（destination 反查最近点位名，展示用；无匹配时为坐标文本） */
+    public String targetLabel() {
+        return targetLabel;
+    }
+
+    public void setTargetLabel(String targetLabel) {
+        this.targetLabel = targetLabel;
     }
 
     public Long internalMoveTaskId() {

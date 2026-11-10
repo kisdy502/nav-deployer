@@ -82,6 +82,8 @@ export interface MoveTaskVO {
   error_message: string | null
   /** 来源：manual=手动；rms:{task_id}=RMS 派发；charge:{chargeTaskId}=充电内部导航（旧数据可能缺失，视为 manual） */
   source?: string | null
+  /** 点位名路线摘要（如 H9→P13→P2；旧数据为 null） */
+  route_summary?: string | null
   created_at: string
   updated_at: string
   finished_at: string | null
@@ -204,6 +206,8 @@ export interface RmsTaskVO {
   dest_x: number | null
   dest_y: number | null
   dest_yaw: number | null
+  /** 目标点可读名（点位名或坐标文本；原地充电为"原地充电"） */
+  target_label: string | null
   internal_move_task_id: number | null
   internal_charge_task_id: number | null
   created_at: string

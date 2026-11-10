@@ -189,6 +189,7 @@ public class MoveTaskService {
                 task.setGoalX(waypoint.getX());
                 task.setGoalY(waypoint.getY());
                 task.setGoalTheta(waypoint.getYaw());
+                task.setRouteSummary("→ " + waypoint.getWaypointCode());
                 segments = List.of(new SegmentPlan("", waypoint.getWaypointCode(),
                         waypoint.getX(), waypoint.getY(), waypoint.getYaw(),
                         "STRAIGHT", List.of(), dto.maxSpeed(), false, false,
@@ -202,6 +203,7 @@ public class MoveTaskService {
                 task.setGoalX(dto.x());
                 task.setGoalY(dto.y());
                 task.setGoalTheta(dto.theta());
+                task.setRouteSummary(String.format(java.util.Locale.ROOT, "→ (%.2f, %.2f)", dto.x(), dto.y()));
                 segments = List.of(new SegmentPlan("", "", dto.x(), dto.y(), dto.theta(),
                         "STRAIGHT", List.of(), dto.maxSpeed(), false, false,
                         Double.NaN, Double.NaN, Double.NaN));
@@ -268,6 +270,7 @@ public class MoveTaskService {
                 task.setGoalX(last.x());
                 task.setGoalY(last.y());
                 task.setGoalTheta(last.theta());
+                task.setRouteSummary(routeChainOf(segments));
                 endPointSingle = true;
             }
             default -> throw new IllegalArgumentException("不支持的 task_type: " + dto.taskType());
@@ -440,6 +443,21 @@ public class MoveTaskService {
 
     private void publishTaskEvent(MoveTask task) {
         events.publish("task", moveTaskMapstruct.toDTO(task));
+    }
+
+    /** 由段链拼点位名路线（相邻去重，跳过无名段），如 "H9→P13→P2" */
+    static String routeChainOf(List<SegmentPlan> segments) {
+        List<String> codes = new ArrayList<>(segments.size() + 1);
+        for (SegmentPlan segment : segments) {
+            if (segment.sourceCode() != null && !segment.sourceCode().isBlank() && codes.isEmpty()) {
+                codes.add(segment.sourceCode());
+            }
+            if (segment.targetCode() != null && !segment.targetCode().isBlank()
+                    && (codes.isEmpty() || !codes.get(codes.size() - 1).equals(segment.targetCode()))) {
+                codes.add(segment.targetCode());
+            }
+        }
+        return codes.isEmpty() ? "" : String.join("→", codes);
     }
 
     private List<SegmentPlan> buildPathPlan(Long pathId, Double maxSpeedOverride) {

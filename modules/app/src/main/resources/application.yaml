@@ -181,7 +181,7 @@ sim_agv:
   # 传感器流话题（雷达/agv/pose/tf/odom/joint_states/feedback/cmd_vel）——固定每
   #   sensor_interval_ms 一条摘要（默认 30s），无变化分析价值。
   ws_message_log_commands_enabled: ${SIM_AGV_WS_CMD_LOG:true}
-  ws_message_log_enabled: ${SIM_AGV_WS_MSG_LOG:true}
+  ws_message_log_enabled: ${SIM_AGV_WS_MSG_LOG:false}
   ws_message_log_full_chars: ${SIM_AGV_WS_FULL_LOG_CHARS:65536}
   ws_message_log_unchanged_interval_ms: ${SIM_AGV_WS_UNCHANGED_LOG_MS:60000}
   ws_message_log_sensor_interval_ms: ${SIM_AGV_WS_SENSOR_LOG_MS:60000}

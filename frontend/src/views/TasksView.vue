@@ -103,9 +103,9 @@ function stagesOf(rms: RmsTaskVO): StageItem[] {
     if (m.source?.startsWith(prefix)) {
       stages.push({
         key: `m${m.id}`,
-        kind: '导航',
-        kindType: 'primary',
-        desc: m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : ''),
+      kind: '导航',
+      kindType: 'primary',
+      desc: moveDesc(m),
         status: m.status ?? '—',
         statusType: stageStatusType(m.status ?? ''),
         time: m.created_at,
@@ -133,7 +133,7 @@ function stagesOf(rms: RmsTaskVO): StageItem[] {
           key: `cm${m.id}`,
           kind: '充电·导航',
           kindType: 'warning',
-          desc: m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : ''),
+          desc: moveDesc(m),
           status: m.status ?? '—',
           statusType: stageStatusType(m.status ?? ''),
           time: m.created_at,
@@ -180,7 +180,7 @@ const localTasks = computed<LocalItem[]>(() => {
       move: m,
       status: m.status ?? '—',
       statusType: stageStatusType(m.status ?? ''),
-      desc: m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : m.path_id ? ` 路线#${m.path_id}` : ''),
+      desc: moveDesc(m),
       message: m.error_message,
       time: m.created_at,
     })
@@ -211,6 +211,12 @@ function localMoveActive(item: LocalItem) {
 }
 
 // ==================== 展示辅助 ====================
+
+/** 移动任务描述：优先点位链摘要（H9→P13→P2），旧数据回退坐标 */
+function moveDesc(m: MoveTaskVO) {
+  if (m.route_summary) return m.route_summary
+  return m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : m.path_id ? ` 路线#${m.path_id}` : '')
+}
 
 function rmsStatusType(status: string) {
   if (status === 'COMPLETED') return 'success'
@@ -326,7 +332,8 @@ onUnmounted(() => {
           </el-table-column>
           <el-table-column label="目标点" width="140">
             <template #default="{ row }">
-              <span v-if="row.dest_x != null">({{ fmtNum(row.dest_x, 2) }}, {{ fmtNum(row.dest_y, 2) }})</span>
+              <span v-if="row.target_label">{{ row.target_label }}</span>
+              <span v-else-if="row.dest_x != null">({{ fmtNum(row.dest_x, 2) }}, {{ fmtNum(row.dest_y, 2) }})</span>
               <span v-else>—</span>
             </template>
           </el-table-column>

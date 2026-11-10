@@ -81,8 +81,9 @@ public class SmartNavigationService {
             if (steps.isEmpty()) {
                 return List.of();
             }
-            log.info("{} route navigation plan: paths={}, steps={}, totalCost={}s",
-                    label, steps.stream().map(RoutePlanService.RouteStep::pathId).distinct().toList(),
+            log.info("{} route navigation plan: {} | paths={}, steps={}, totalCost={}s",
+                    label, chainOf(steps),
+                    steps.stream().map(RoutePlanService.RouteStep::pathId).distinct().toList(),
                     plan.steps().size(), String.format("%.1f", plan.totalCost()));
             return steps;
         } catch (Exception e) {
@@ -99,6 +100,17 @@ public class SmartNavigationService {
     public MoveTaskDTO createGoalTask(double x, double y, double yaw, String source) {
         return moveTaskService.create(new MoveTaskCreateCmd(
                 "GOAL", null, null, x, y, yaw, null, Boolean.TRUE), source);
+    }
+
+    private static String chainOf(List<RoutePlanService.RouteStep> steps) {
+        StringBuilder chain = new StringBuilder();
+        for (RoutePlanService.RouteStep step : steps) {
+            if (chain.isEmpty()) {
+                chain.append(step.fromWaypointCode());
+            }
+            chain.append("→").append(step.toWaypointCode());
+        }
+        return chain.toString();
     }
 
     private record NearestWaypoint(MapWaypoint waypoint, double distance) {

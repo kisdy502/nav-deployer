@@ -28,6 +28,7 @@ public class RmsTaskExecutor {
     private final com.agv.navdeployer.rms.infrastructure.config.RmsProperties props;
     private final RmsTemplateGate templateGate;
     private final RmsArmSequencer armSequencer;
+    private final com.agv.navdeployer.map.application.MapMetaService mapMetaService;
 
     private final java.util.concurrent.ScheduledExecutorService worker =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -43,7 +44,8 @@ public class RmsTaskExecutor {
                            com.agv.navdeployer.task.application.ChargeService chargeService,
                            com.agv.navdeployer.rms.infrastructure.config.RmsProperties props,
                            RmsTemplateGate templateGate,
-                           RmsArmSequencer armSequencer) {
+                           RmsArmSequencer armSequencer,
+                           com.agv.navdeployer.map.application.MapMetaService mapMetaService) {
         this.registry = registry;
         this.resultReporter = resultReporter;
         this.moveTaskService = moveTaskService;
@@ -52,6 +54,7 @@ public class RmsTaskExecutor {
         this.props = props;
         this.templateGate = templateGate;
         this.armSequencer = armSequencer;
+        this.mapMetaService = mapMetaService;
     }
 
     boolean armMovementAllowed() {
@@ -103,14 +106,16 @@ public class RmsTaskExecutor {
             return;
         }
         task.setDestination(destination);
+        task.setTargetLabel(resolveTargetLabel(destination.x(), destination.y()));
+        registry.save(task);
         try {
             // source=rms:{task_id}：任务页据此把同一 RMS 任务的多阶段执行（导航→充电）关联展示
             var moveTask = smartNavigation.createOptimizedMoveTask(taskId,
                     destination.x(), destination.y(), destination.yaw(), "rms:" + taskId);
             task.setInternalMoveTaskId(moveTask.id());
             registry.save(task);
-            log.info("rms task {} dispatched internal move task {} (type={}) -> ({}, {}, {}rad)",
-                    taskId, moveTask.id(), moveTask.taskType(),
+            log.info("rms task {} dispatched internal move task {} (type={}) -> {} ({}, {}, {}rad)",
+                    taskId, moveTask.id(), moveTask.taskType(), task.targetLabel(),
                     destination.x(), destination.y(), destination.yaw());
             scheduleMovePoll(taskId, moveTask.id());
         } catch (Exception exception) {
@@ -118,13 +123,31 @@ public class RmsTaskExecutor {
         }
     }
 
+    /** 目标坐标反查点位名（≤1.5m 内最近点），无匹配回退坐标文本；任务页/日志展示用 */
+    private String resolveTargetLabel(double x, double y) {
+        try {
+            var published = mapMetaService.findPublished();
+            if (published != null) {
+                for (var wp : mapMetaService.listWaypoints(published.getId())) {
+                    if (Math.hypot(wp.getX() - x, wp.getY() - y) <= 1.5) {
+                        return wp.getWaypointCode();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return String.format(java.util.Locale.ROOT, "(%.2f,%.2f)", x, y);
+    }
+
     private void executeCharge(RmsTask task) {
         var destination = task.destination();
         try {
             if (destination != null) {
-                log.info("rms task {} charge with destination ({}, {}) ignored for navigation: "
-                        + "调度负责分段导航，到位判据=在途移动任务已清空", task.taskId(),
-                        destination.x(), destination.y());
+                task.setTargetLabel(resolveTargetLabel(destination.x(), destination.y()));
+                log.info("rms task {} charge with destination {} ignored for navigation: "
+                                + "调度负责分段导航，到位判据=在途移动任务已清空", task.taskId(), task.targetLabel());
+            } else {
+                task.setTargetLabel("原地充电");
             }
             com.agv.navdeployer.task.application.dto.ChargeTaskDTO chargeTask =
                     chargeService.chargeInPlace("rms:" + task.taskId(), targetBatteryOf(task), false, false);

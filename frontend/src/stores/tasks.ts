@@ -133,7 +133,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const dto: MoveTaskCreateDTO = { task_type: 'GOAL', x, y, theta }
     if (maxSpeed) dto.max_speed = maxSpeed
     activeMoveTask.value = await createMoveTask(dto)
-    ElMessage.success('导航任务已下发')
+    toastRoute(activeMoveTask.value, '导航任务已下发')
     return activeMoveTask.value
   }
 
@@ -142,7 +142,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const dto: MoveTaskCreateDTO = { task_type: 'TO_WAYPOINT', waypoint_id: waypointId }
     if (maxSpeed) dto.max_speed = maxSpeed
     activeMoveTask.value = await createMoveTask(dto)
-    ElMessage.success('导航任务已下发')
+    toastRoute(activeMoveTask.value, '导航任务已下发')
     return activeMoveTask.value
   }
 
@@ -151,7 +151,7 @@ export const useTasksStore = defineStore('tasks', () => {
     const dto: MoveTaskCreateDTO = { task_type: 'FREE', x, y, theta }
     if (maxSpeed) dto.max_speed = maxSpeed
     activeMoveTask.value = await createMoveTask(dto)
-    ElMessage.success('自由导航任务已下发')
+    toastRoute(activeMoveTask.value, '自由导航任务已下发')
     return activeMoveTask.value
   }
 
@@ -159,8 +159,17 @@ export const useTasksStore = defineStore('tasks', () => {
     const dto: MoveTaskCreateDTO = { task_type: 'FOLLOW_PATH', path_id: pathId }
     if (maxSpeed) dto.max_speed = maxSpeed
     activeMoveTask.value = await createMoveTask(dto)
-    ElMessage.success('循线任务已下发')
+    toastRoute(activeMoveTask.value, '循线任务已下发')
     return activeMoveTask.value
+  }
+
+  /** 任务下发 toast：带路线摘要时显示规划链（如 H9→P13→P2） */
+  function toastRoute(task: MoveTaskVO | null, fallback: string) {
+    if (task?.route_summary) {
+      ElMessage.success(`${fallback}：${task.route_summary}`)
+    } else {
+      ElMessage.success(fallback)
+    }
   }
 
   async function cancelActive() {

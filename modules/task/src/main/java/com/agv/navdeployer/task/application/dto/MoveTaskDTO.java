@@ -20,6 +20,7 @@ public record MoveTaskDTO(Long id,
                           Integer segmentTotal,
                           String errorMessage,
                           String source,
+                          String routeSummary,
                           LocalDateTime createdAt,
                           LocalDateTime updatedAt,
                           LocalDateTime finishedAt) {

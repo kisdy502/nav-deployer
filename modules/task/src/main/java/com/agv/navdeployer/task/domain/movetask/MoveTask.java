@@ -69,6 +69,8 @@ public class MoveTask {
 
     private Integer segmentTotal;
 
+    private String routeSummary;
+
     @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

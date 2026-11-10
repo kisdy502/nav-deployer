@@ -304,6 +304,7 @@ public class RmsTaskService {
                         parseParameters(record.getParameters()), record.getStatus(),
                         RmsTaskStatus.fromWire(record.getStatus()).actionStatusCode(),
                         record.getMessage(), record.getDestX(), record.getDestY(), record.getDestYaw(),
+                        record.getTargetLabel(),
                         record.getInternalMoveTaskId(), record.getInternalChargeTaskId(),
                         record.getCreatedAt(), record.getStartedAt(), record.getFinishedAt()))
                 .toList();
