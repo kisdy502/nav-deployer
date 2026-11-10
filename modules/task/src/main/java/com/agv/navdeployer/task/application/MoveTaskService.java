@@ -59,6 +59,7 @@ public class MoveTaskService {
     private final MapMetaService mapMetaService;
     private final RobotOperationalService operationalService;
     private final MapAlignmentGuard mapAlignmentGuard;
+    private final com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps;
 
     // 单线程 worker 串行化任务启动；任务先落库再下发，防 result 回调早于事务可见
     private final ScheduledExecutorService worker =
@@ -78,7 +79,8 @@ public class MoveTaskService {
                            RobotTuningProvider tuningProvider,
                            MapMetaService mapMetaService,
                            RobotOperationalService operationalService,
-                           MapAlignmentGuard mapAlignmentGuard) {
+                           MapAlignmentGuard mapAlignmentGuard,
+                           com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps) {
         this.moveTaskRepository = moveTaskRepository;
         this.moveTaskMapstruct = moveTaskMapstruct;
         this.robotConnection = robotConnection;
@@ -89,6 +91,7 @@ public class MoveTaskService {
         this.mapMetaService = mapMetaService;
         this.operationalService = operationalService;
         this.mapAlignmentGuard = mapAlignmentGuard;
+        this.chargeProps = chargeProps;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -101,6 +104,31 @@ public class MoveTaskService {
 
     public MoveTaskDTO create(MoveTaskCreateCmd dto) {
         return create(dto, "manual");
+    }
+
+    public boolean hasActiveTask() {
+        return !activeRuntimes.isEmpty();
+    }
+
+    private void interruptChargingIfAny() {
+        var status = telemetry.status();
+        if (status == null || !Boolean.TRUE.equals(status.charging())) {
+            return;
+        }
+        log.info("move task creation while charging: interrupt charging first (set_charging=false)");
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode args =
+                    new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            args.put("data", false);
+            robotCommands.callService(chargeProps.getService(), args, chargeProps.getServiceTimeoutMs())
+                    .whenComplete((values, error) -> {
+                        if (error != null) {
+                            log.warn("auto interrupt charging failed: {}", error.getMessage());
+                        }
+                    });
+        } catch (Exception exception) {
+            log.warn("auto interrupt charging dispatch failed: {}", exception.getMessage());
+        }
     }
 
     public MoveTaskDTO create(MoveTaskCreateCmd dto, String source) {
@@ -130,6 +158,7 @@ public class MoveTaskService {
         if (mapAlignmentGuard != null) {
             mapAlignmentGuard.requireAligned();
         }
+        interruptChargingIfAny();
 
         MoveTask task = new MoveTask();
         task.setTaskNo("move-" + UUID.randomUUID());

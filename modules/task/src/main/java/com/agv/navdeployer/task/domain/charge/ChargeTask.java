@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ChargeTask {
 
     public enum Status {
-        MOVING, STARTING, SUCCEEDED, FAILED, CANCELLED;
+        MOVING, STARTING, CHARGING, SUCCEEDED, FAILED, CANCELLED;
 
         public boolean terminal() {
             return this == SUCCEEDED || this == FAILED || this == CANCELLED;
@@ -31,6 +31,7 @@ public final class ChargeTask {
     private volatile long serviceSentAt;
     private volatile long serviceAckAt;
     private volatile long dockedAt;
+    private volatile boolean persistCharging;
     private volatile LocalDateTime updatedAt = createdAt;
     private volatile LocalDateTime finishedAt;
 
@@ -146,6 +147,14 @@ public final class ChargeTask {
 
     public void setDockedAt(long dockedAt) {
         this.dockedAt = dockedAt;
+    }
+
+    public boolean persistCharging() {
+        return persistCharging;
+    }
+
+    public void setPersistCharging(boolean persistCharging) {
+        this.persistCharging = persistCharging;
     }
 
     public LocalDateTime createdAt() {

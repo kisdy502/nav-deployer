@@ -13,7 +13,6 @@ public class ChargeProperties {
     private long confirmTimeoutMs = 20000;
     private long dockSettleMinMs = 2000;
     private long dockSettleMaxMs = 15000;
-    private double dockArrivalRadius = 0.5;
     private double odomQuietLinearMs = 0.03;
     private double odomQuietAngularRad = 0.05;
     private long pollIntervalMs = 1000;
@@ -65,14 +64,6 @@ public class ChargeProperties {
 
     public void setDockSettleMaxMs(long dockSettleMaxMs) {
         this.dockSettleMaxMs = dockSettleMaxMs;
-    }
-
-    public double getDockArrivalRadius() {
-        return dockArrivalRadius;
-    }
-
-    public void setDockArrivalRadius(double dockArrivalRadius) {
-        this.dockArrivalRadius = dockArrivalRadius;
     }
 
     public double getOdomQuietLinearMs() {

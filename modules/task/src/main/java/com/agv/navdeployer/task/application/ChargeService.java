@@ -4,7 +4,6 @@ import com.agv.navdeployer.map.application.MapMetaService;
 import com.agv.navdeployer.map.domain.MapWaypoint;
 import com.agv.navdeployer.task.domain.port.RobotCommandPort;
 import com.agv.navdeployer.task.domain.port.RobotEventPort;
-import com.agv.navdeployer.task.domain.port.RobotPose;
 import com.agv.navdeployer.task.domain.port.RobotTelemetryPort;
 import com.agv.navdeployer.task.application.cmd.ChargeStartCmd;
 import com.agv.navdeployer.task.application.dto.ChargeTaskDTO;
@@ -118,7 +117,6 @@ public class ChargeService {
         worker.schedule(this::poll, props.getPollIntervalMs(), TimeUnit.MILLISECONDS);
         return vo(task);
     }
-
     public ChargeTaskDTO active() {
         ChargeTask task = current;
         return task != null && !task.status().terminal() ? vo(task) : null;
@@ -130,12 +128,18 @@ public class ChargeService {
     }
 
     public synchronized ChargeTaskDTO startRescue() {
-        ChargeTaskDTO task = startDirect("rescue", null);
-        log.info("charge task {} RESCUE: 远程开始充电（机器人未导航到桩，低电量死锁救援）", task.id());
+        ChargeTaskDTO task = chargeInPlace("rescue", null, true, true);
+        log.info("charge task {} RESCUE: 模拟接上充电器原地开始充电", task.id());
         return task;
     }
 
-    public synchronized ChargeTaskDTO startDirect(String source, Double targetBatteryPct) {
+    /**
+     * 原地充电（无导航）：RMS 调度分段导航就位后执行（persistCharging=false），
+     * 或前端救援充电=模拟插充电器（persistCharging=true，充电确认后进入 CHARGING 持续态）。
+     * requireIdleRobot=true 时前置校验底盘/机械臂静止（真机插充电器要求完全静止）。
+     */
+    public synchronized ChargeTaskDTO chargeInPlace(String source, Double targetBatteryPct,
+                                                    boolean persistCharging, boolean requireIdleRobot) {
         ChargeTask existing = current;
         if (existing != null && !existing.status().terminal()) {
             throw new IllegalStateException("已有进行中的充电任务（id=" + existing.id()
@@ -144,20 +148,41 @@ public class ChargeService {
         if (operationalService != null && operationalService.isDecommissioned()) {
             throw new IllegalStateException("机器人已停用（" + operationalService.getReason() + "），无法发起充电");
         }
+        if (moveTaskService.hasActiveTask()) {
+            throw new IllegalStateException("存在在途移动任务，无法原地开始充电"
+                    + (source != null && source.startsWith("rms") ? "（调度未完成分段导航）" : "，请先取消或等待完成"));
+        }
+        if (requireIdleRobot) {
+            requireRobotIdleForRescue();
+        }
         double target = targetBatteryPct != null ? targetBatteryPct : props.getTargetBatteryPct();
         if (target <= 0.0 || target > 100.0) {
             throw new IllegalArgumentException("target_battery_pct 必须在 (0, 100]，当前: " + target);
         }
         ChargeTask task = new ChargeTask(idSeq.incrementAndGet(), source, null,
                 Double.NaN, Double.NaN, 0.0, target);
+        task.setPersistCharging(persistCharging);
         task.setBatteryNow(currentBatteryPct());
         this.current = task;
-        log.info("charge task {} DIRECT start: source={} 跳过导航原地开始充电, targetBattery={}%",
-                task.id(), source, target);
+        log.info("charge task {} IN-PLACE start: source={} 原地开始充电, persistCharging={}, targetBattery={}%",
+                task.id(), source, persistCharging, target);
         beginStartCharging(task);
         publish(task, true);
         worker.schedule(this::poll, props.getPollIntervalMs(), TimeUnit.MILLISECONDS);
         return vo(task);
+    }
+
+    private void requireRobotIdleForRescue() {
+        if (telemetry.odomCount() > 0
+                && !(Math.abs(telemetry.odomLinearX()) < props.getOdomQuietLinearMs()
+                && Math.abs(telemetry.odomLinearY()) < props.getOdomQuietLinearMs()
+                && Math.abs(telemetry.odomAngularZ()) < props.getOdomQuietAngularRad())) {
+            throw new IllegalStateException("底盘运动中，无法执行救援充电（真机要求完全静止才可接充电器）");
+        }
+        if (!telemetry.armMovementAllowed()) {
+            throw new IllegalStateException("机械臂未静止/未归位（arm_state=" + telemetry.armState()
+                    + "），无法执行救援充电");
+        }
     }
 
     public synchronized ChargeTaskDTO cancel(String reason) {
@@ -176,7 +201,7 @@ public class ChargeService {
         if (phase == ChargeTask.Status.MOVING && task.internalMoveTaskId() != null) {
             Long moveTaskId = task.internalMoveTaskId();
             worker.execute(() -> cancelMoveQuietly(moveTaskId));
-        } else if (phase == ChargeTask.Status.STARTING) {
+        } else if (phase == ChargeTask.Status.STARTING || phase == ChargeTask.Status.CHARGING) {
             callSetCharging(false);
         }
         publish(task, true);
@@ -185,8 +210,25 @@ public class ChargeService {
     }
 
     public void stopCharging() {
+        ChargeTask task = current;
+        if (task != null && task.status() == ChargeTask.Status.CHARGING) {
+            log.info("stop charging requested: charge task {} manual stop, calling {} data=false",
+                    task.id(), props.getService());
+            callSetCharging(false);
+            finish(task, ChargeTask.Status.SUCCEEDED, "手动停止充电");
+            return;
+        }
         log.info("stop charging requested: calling {} data=false", props.getService());
         callSetCharging(false);
+    }
+
+    /** 急停联动：CHARGING 会话以 CANCELLED 收口，无论如何都发断充指令 */
+    public synchronized void emergencyInterrupt() {
+        ChargeTask task = current;
+        callSetCharging(false);
+        if (task != null && task.status() == ChargeTask.Status.CHARGING) {
+            finish(task, ChargeTask.Status.CANCELLED, "急停联动断充");
+        }
     }
 
     public synchronized java.util.List<ChargeTaskDTO> history(int limit) {
@@ -221,7 +263,8 @@ public class ChargeService {
             if (task == null || task.status().terminal()) {
                 return;
             }
-            if (System.currentTimeMillis() - task.createdAtMs() > props.getMaxDurationMs()) {
+            if (System.currentTimeMillis() - task.createdAtMs() > props.getMaxDurationMs()
+                    && task.status() != ChargeTask.Status.CHARGING) {
                 finish(task, ChargeTask.Status.FAILED,
                         "充电任务超时（超过 max_duration_ms=" + props.getMaxDurationMs() + "ms）");
                 return;
@@ -229,6 +272,7 @@ public class ChargeService {
             switch (task.status()) {
                 case MOVING -> pollMoving(task);
                 case STARTING -> pollStarting(task);
+                case CHARGING -> pollCharging(task);
                 default -> {
                 }
             }
@@ -264,29 +308,14 @@ public class ChargeService {
     }
 
     private void beginStartCharging(ChargeTask task) {
-        if (!Double.isNaN(task.x()) && !Double.isNaN(task.y())) {
-            RobotPose pose = telemetry.mapPose();
-            if (pose == null) {
-                finish(task, ChargeTask.Status.FAILED,
-                        "无法获取机器人当前位姿（/tf 未上报），到桩校验无法执行，已拒绝开始充电");
-                return;
-            }
-            double distance = Math.hypot(pose.x() - task.x(), pose.y() - task.y());
-            if (distance > props.getDockArrivalRadius()) {
-                finish(task, ChargeTask.Status.FAILED, String.format(java.util.Locale.ROOT,
-                        "未到达充电桩：机器人距充电桩 (%.2f, %.2f) %.2fm，超过允许半径 %.2fm，已拒绝开始充电",
-                        task.x(), task.y(), distance, props.getDockArrivalRadius()));
-                return;
-            }
-        }
         if (!task.transitionTo(ChargeTask.Status.STARTING)) {
             return;
         }
         task.stamp(ChargeTask.Status.STARTING);
-        task.setMessage("已到充电点，等待停车稳定");
+        task.setMessage(task.persistCharging() ? "模拟接上充电器，准备开始充电" : "已到充电点，等待停车稳定");
         task.setDockedAt(System.currentTimeMillis());
         publish(task, true);
-        log.info("charge task {} navigation done (dock verified), waiting robot to settle (min={}ms max={}ms)",
+        log.info("charge task {} ready, waiting robot to settle (min={}ms max={}ms)",
                 task.id(), props.getDockSettleMinMs(), props.getDockSettleMaxMs());
     }
 
@@ -330,6 +359,10 @@ public class ChargeService {
 
     private void pollStarting(ChargeTask task) {
         if (task.serviceSentAt() == 0) {
+            if (task.persistCharging()) {
+                sendStartCharging(task);
+                return;
+            }
             long elapsed = System.currentTimeMillis() - task.dockedAt();
             boolean quiet = isRobotSettled();
             if ((elapsed >= props.getDockSettleMinMs() && quiet) || elapsed >= props.getDockSettleMaxMs()) {
@@ -341,6 +374,14 @@ public class ChargeService {
             var status = telemetry.status();
             if (status != null && Boolean.TRUE.equals(status.charging())) {
                 task.setBatteryAtStart(status.battery());
+                if (task.persistCharging() && task.transitionTo(ChargeTask.Status.CHARGING)) {
+                    task.stamp(ChargeTask.Status.CHARGING);
+                    task.setMessage(String.format(java.util.Locale.ROOT,
+                            "充电中（当前电量 %s%%，充满或断开后自动结束）", formatBattery(status.battery())));
+                    publish(task, true);
+                    log.info("charge task {} -> CHARGING (rescue session)", task.id());
+                    return;
+                }
                 finish(task, ChargeTask.Status.SUCCEEDED, String.format(java.util.Locale.ROOT,
                         "已对接充电桩，充电已开始（当前电量 %s%%）", formatBattery(status.battery())));
                 return;
@@ -355,6 +396,27 @@ public class ChargeService {
         if (task.serviceSentAt() > 0
                 && System.currentTimeMillis() - task.serviceSentAt() > props.getServiceTimeoutMs() + 3000L) {
             finish(task, ChargeTask.Status.FAILED, "开始充电服务无响应");
+        }
+    }
+
+    private void pollCharging(ChargeTask task) {
+        var status = telemetry.status();
+        if (status == null) {
+            return;
+        }
+        if (Boolean.TRUE.equals(status.charging())) {
+            task.setBatteryNow(status.battery());
+            publish(task, false);
+            return;
+        }
+        double battery = status.battery() == null ? Double.NaN : status.battery();
+        if (!Double.isNaN(battery) && battery >= 99.0) {
+            finish(task, ChargeTask.Status.SUCCEEDED, "已充满，自动断开充电");
+        } else if (moveTaskService.hasActiveTask()) {
+            finish(task, ChargeTask.Status.CANCELLED, "任务插队，已自动断开充电");
+        } else {
+            finish(task, ChargeTask.Status.FAILED,
+                    "充电异常中断（未充满，当前电量 " + formatBattery(battery) + "%）");
         }
     }
 

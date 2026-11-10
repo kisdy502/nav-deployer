@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8083
   tomcat:
     accesslog:
@@ -214,7 +214,6 @@ charge:
   # 路线导航终点是「离桩最近的 waypoint」（可能距桩数米），仿真机器人 set_charging 又不校验
   # 位置——超出半径先自动补一段精确接近段，补完仍超出则任务报错拒绝充电。
   # 救援充电（模拟充电器，无需在桩上）豁免。
-  dock_arrival_radius: 0.5
   odom_quiet_linear_ms: 0.03
   odom_quiet_angular_rad: 0.05
   # 状态轮询周期

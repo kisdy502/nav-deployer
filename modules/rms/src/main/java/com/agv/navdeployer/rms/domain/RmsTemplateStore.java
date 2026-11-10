@@ -31,6 +31,8 @@ public final class RmsTemplateStore {
     public RmsTemplateStore(Path baseDir) {
         this.baseDir = baseDir;
         loadAll();
+        templates.computeIfAbsent("charge", code -> new Template(code, code, "charge",
+                "builtin charge template (content unused)", "", OffsetDateTime.now().toString()));
     }
 
     public static RmsTemplateStore inMemory() {

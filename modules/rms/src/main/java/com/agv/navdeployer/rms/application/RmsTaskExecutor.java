@@ -121,27 +121,17 @@ public class RmsTaskExecutor {
     private void executeCharge(RmsTask task) {
         var destination = task.destination();
         try {
-            com.agv.navdeployer.task.application.dto.ChargeTaskDTO chargeTask;
             if (destination != null) {
-                task.setDestination(destination);
-                chargeTask = chargeService.start(
-                        new com.agv.navdeployer.task.application.cmd.ChargeStartCmd(
-                                "rms:" + task.taskId(), null,
-                                destination.x(), destination.y(), destination.yaw(),
-                                targetBatteryOf(task)));
-            } else {
-                chargeTask = chargeService.startDirect("rms:" + task.taskId(), targetBatteryOf(task));
-                log.info("rms task {} charge without destination: 原地执行充电（调度分段导航已就位）",
-                        task.taskId());
+                log.info("rms task {} charge with destination ({}, {}) ignored for navigation: "
+                        + "调度负责分段导航，到位判据=在途移动任务已清空", task.taskId(),
+                        destination.x(), destination.y());
             }
+            com.agv.navdeployer.task.application.dto.ChargeTaskDTO chargeTask =
+                    chargeService.chargeInPlace("rms:" + task.taskId(), targetBatteryOf(task), false, false);
             task.setInternalChargeTaskId(chargeTask.id());
             registry.save(task);
-            log.info("rms task {} dispatched charge task {} -> ({}, {}, {}rad, target={}%)",
-                    task.taskId(), chargeTask.id(),
-                    destination == null ? null : destination.x(),
-                    destination == null ? null : destination.y(),
-                    destination == null ? null : destination.yaw(),
-                    chargeTask.targetBatteryPct());
+            log.info("rms task {} dispatched charge task {} (in-place, target={}%)",
+                    task.taskId(), chargeTask.id(), chargeTask.targetBatteryPct());
             scheduleChargePoll(task.taskId(), chargeTask.id());
         } catch (Exception exception) {
             fail(task, RmsTaskStatus.AGV_NODE_FAILED, exception.getMessage());

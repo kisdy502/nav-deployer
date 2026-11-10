@@ -41,6 +41,7 @@ public class RobotController {
     private final com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor;
     private final com.agv.navdeployer.task.application.RobotOperationalService operationalService;
     private final com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard;
+    private final com.agv.navdeployer.task.application.ChargeService chargeService;
 
     public RobotController(SimAgvSsePublisher ssePublisher,
                            RosCommandDispatcher dispatcher,
@@ -51,7 +52,8 @@ public class RobotController {
                            com.agv.navdeployer.robot.domain.SimAgvProperties simProps,
                            com.agv.navdeployer.robot.domain.ArmStateMonitor armStateMonitor,
                            com.agv.navdeployer.task.application.RobotOperationalService operationalService,
-                           com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard) {
+                           com.agv.navdeployer.task.application.MapAlignmentGuard mapAlignmentGuard,
+                           com.agv.navdeployer.task.application.ChargeService chargeService) {
         this.ssePublisher = ssePublisher;
         this.dispatcher = dispatcher;
         this.rosbridgeClient = rosbridgeClient;
@@ -62,6 +64,7 @@ public class RobotController {
         this.armStateMonitor = armStateMonitor;
         this.operationalService = operationalService;
         this.mapAlignmentGuard = mapAlignmentGuard;
+        this.chargeService = chargeService;
     }
 
     public record DecommissionDTO(String reason) {
@@ -212,6 +215,7 @@ public class RobotController {
             SetControlResult result = dispatcher.setControl(dto.action()).join();
             if ("stop".equals(dto.action())) {
                 operationalService.decommission("emergency_stop");
+                chargeService.emergencyInterrupt();
             } else {
                 operationalService.recommission();
             }
