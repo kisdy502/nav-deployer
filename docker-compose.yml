@@ -69,7 +69,7 @@ services:
       # 路径对应 rms.template_dir 默认值 data/rms-templates，可用 RMS_TEMPLATE_DIR 覆盖）
       - rms_templates:/app/data/rms-templates
       # zenoh 连接配置（docker 变体：host.docker.internal:7447；切换 bj/cc/sz 环境替换左侧文件名）
-      - ./modules/app/src/main/resources/config-json5-sz-dev.json:/app/config/zenoh.json5:ro
+      - ./modules/app/src/main/resources/config-json5-cz.json:/app/config/zenoh.json5:ro
       # teach 采集 / 质检图片样例目录挂载示例：
       # - ./docker/samples:/app/samples:ro     # 配合 RMS_TEACH_SAMPLE_DIR=/app/samples
       # 质检图片样例目录：默认仓库内样例目录（相对路径由 Compose 解析为绝对路径，
