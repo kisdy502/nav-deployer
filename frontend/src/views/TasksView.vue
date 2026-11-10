@@ -265,11 +265,11 @@ function segStateOf(m: MoveTaskVO, segNo: number, cur: number): SegState {
 }
 
 function segTagType(state: SegState): 'success' | 'warning' | 'info' | 'danger' {
-  return { done: 'success', active: 'warning', pending: 'info', failed: 'danger' }[state]
+  return ({ done: 'success', active: 'warning', pending: 'info', failed: 'danger' } as const)[state]
 }
 
 function segLabel(state: SegState): string {
-  return { done: '已完成', active: '执行中', pending: '待执行', failed: '中断' }[state]
+  return ({ done: '已完成', active: '执行中', pending: '待执行', failed: '中断' } as const)[state]
 }
 
 function rmsStatusType(status: string) {
