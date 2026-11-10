@@ -263,6 +263,8 @@ export class MapScene {
         this.controls.maxPolarAngle = Math.PI / 2 - 0.04
         this.controls.minDistance = 1.5
         this.controls.maxDistance = 700
+        // 3D 下缩放/旋转改变地面像素密度，实时刷新 LOD 与比例尺
+        this.controls.addEventListener('change', () => this.updateViewMetrics())
       }
       this.controls!.enabled = true
       const aspect = (this.container.clientWidth || 1) / (this.container.clientHeight || 1)
@@ -281,8 +283,7 @@ export class MapScene {
       this.perspCamera.lookAt(center)
       this.controls!.target.copy(center)
       this.controls!.update()
-      // 斜视角下 1m 细网格易摩尔纹，只保留 10m 粗网格
-      if (this.gridMinor) this.gridMinor.visible = false
+      this.updateViewMetrics()
     } else {
       if (this.controls) this.controls.enabled = false
       this.updateCamera()
@@ -334,11 +335,39 @@ export class MapScene {
       this.perspCamera.aspect = aspect
       this.perspCamera.updateProjectionMatrix()
     }
-    // 网格 LOD：1m 格不足 ~10px 时隐藏细网格防摩尔纹，10m 格不足 ~1.5px 时全部隐藏
-    const pxPerMeter = h / this.viewHeight
+    this.updateViewMetrics()
+  }
+
+  /** 网格 LOD 与比例尺：按地面每米像素刷新（1m 格 ~10px 显细网格防摩尔纹，10m 格 ~1.5px 全隐藏） */
+  private updateViewMetrics() {
+    const pxPerMeter = this.groundPxPerMeter()
     if (this.gridMinor) this.gridMinor.visible = pxPerMeter >= 10
     if (this.gridMajor) this.gridMajor.visible = pxPerMeter >= 1.5
     this.opts.onViewChange?.(pxPerMeter)
+  }
+
+  /**
+   * 地面网格每米屏幕像素。正交(平面)模式 = 视高换算；
+   * 3D 环绕模式按透视投影实测：把注视点(target)水平横向 1 米投影到屏幕量像素——
+   * 之前沿用正交公式导致 3D 下 LOD 档位与比例尺标注全错。
+   */
+  private groundPxPerMeter(): number {
+    const h = this.container.clientHeight || 1
+    if (!this.orbitMode || !this.perspCamera || !this.controls) {
+      return h / this.viewHeight
+    }
+    const cam = this.perspCamera
+    cam.updateMatrixWorld()
+    const target = this.controls.target
+    const dir = new THREE.Vector3().subVectors(cam.position, target)
+    const azLen = Math.hypot(dir.x, dir.y) || 1
+    const w = this.container.clientWidth || 1
+    const p1 = target.clone().project(cam)
+    const p2 = target.clone().add(new THREE.Vector3(-dir.y / azLen, dir.x / azLen, 0)).project(cam)
+    const px = ((p2.x - p1.x) * w) / 2
+    const py = ((p2.y - p1.y) * h) / 2
+    const result = Math.hypot(px, py)
+    return Number.isFinite(result) && result > 0 ? result : h / this.viewHeight
   }
 
   resize() {
