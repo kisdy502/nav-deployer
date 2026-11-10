@@ -225,6 +225,53 @@ function moveDesc(m: MoveTaskVO) {
   return m.task_type + (m.goal_x != null ? ` → (${fmtNum(m.goal_x)}, ${fmtNum(m.goal_y)})` : m.path_id ? ` 路线#${m.path_id}` : '')
 }
 
+/** 段级状态 */
+type SegState = 'done' | 'active' | 'pending' | 'failed'
+
+interface MoveSeg {
+  label: string
+  state: SegState
+}
+
+/** 一次导航的分段执行时间线：route_summary 拆段 + segment_seq/total 对齐进度（含起点接入段） */
+function moveStages(m: MoveTaskVO): MoveSeg[] {
+  if (!m.route_summary) return []
+  const pts = m.route_summary.split('→').map((s) => s.trim()).filter(Boolean)
+  if (pts.length < 2) {
+    return pts.length === 1 ? [{ label: `直达 ${pts[0]}`, state: segStateOf(m, 1, 1) }] : []
+  }
+  const terminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMEOUT'].includes(m.status ?? '')
+  const total = m.segment_total ?? pts.length - 1
+  const cur = m.segment_seq ?? (terminal ? total : 1)
+  const hop = Math.max(0, total - (pts.length - 1))
+  const segs: MoveSeg[] = []
+  if (hop > 0) {
+    segs.push({ label: `接入 ${pts[0]}`, state: segStateOf(m, 1, cur) })
+  }
+  for (let i = 0; i + 1 < pts.length; i++) {
+    segs.push({ label: `${pts[i]} → ${pts[i + 1]}`, state: segStateOf(m, i + 1 + hop, cur) })
+  }
+  return segs
+}
+
+function segStateOf(m: MoveTaskVO, segNo: number, cur: number): SegState {
+  const status = m.status ?? ''
+  if (status === 'SUCCEEDED') return 'done'
+  if (segNo < cur) return 'done'
+  if (segNo === cur) {
+    return ['FAILED', 'CANCELLED', 'TIMEOUT'].includes(status) ? 'failed' : 'active'
+  }
+  return 'pending'
+}
+
+function segTagType(state: SegState): 'success' | 'warning' | 'info' | 'danger' {
+  return { done: 'success', active: 'warning', pending: 'info', failed: 'danger' }[state]
+}
+
+function segLabel(state: SegState): string {
+  return { done: '已完成', active: '执行中', pending: '待执行', failed: '中断' }[state]
+}
+
 function rmsStatusType(status: string) {
   if (status === 'COMPLETED') return 'success'
   if (status === 'RUNNING' || status === 'PAUSED') return 'warning'
@@ -362,14 +409,23 @@ onUnmounted(() => {
           <el-table-column type="expand">
             <template #default="{ row }">
               <div class="stage-list">
-                <div v-for="m in row.innerMoves ?? []" :key="m.id" class="stage-item">
-                  <el-tag size="small" type="warning" effect="plain">内部导航</el-tag>
-                  <span class="stage-desc">{{ moveDesc(m) }}</span>
-                  <el-tag size="small" :type="stageStatusType(m.status ?? '')">{{ m.status }}</el-tag>
-                  <span class="stage-time">{{ fmtTime(m.created_at) }}</span>
-                  <span v-if="m.error_message" class="stage-msg">{{ m.error_message }}</span>
-                </div>
-                <div v-if="!(row.innerMoves ?? []).length" class="muted">无内部导航（原地充电/直达）</div>
+                <template v-if="row.move">
+                  <div v-for="(seg, i) in moveStages(row.move)" :key="i" class="stage-item">
+                    <el-tag size="small" :type="segTagType(seg.state)" effect="plain">{{ segLabel(seg.state) }}</el-tag>
+                    <span class="stage-desc">{{ seg.label }}</span>
+                  </div>
+                  <div v-if="!moveStages(row.move).length" class="muted">无路线摘要（旧任务）</div>
+                </template>
+                <template v-else-if="row.innerMoves?.length">
+                  <div v-for="m in row.innerMoves" :key="m.id" class="stage-item">
+                    <el-tag size="small" type="warning" effect="plain">内部导航</el-tag>
+                    <span class="stage-desc">{{ moveDesc(m) }}</span>
+                    <el-tag size="small" :type="stageStatusType(m.status ?? '')">{{ m.status }}</el-tag>
+                    <span class="stage-time">{{ fmtTime(m.created_at) }}</span>
+                    <span v-if="m.error_message" class="stage-msg">{{ m.error_message }}</span>
+                  </div>
+                </template>
+                <div v-else class="muted">无内部导航（原地充电/直达）</div>
               </div>
             </template>
           </el-table-column>
