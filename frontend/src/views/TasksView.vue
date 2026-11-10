@@ -158,6 +158,8 @@ interface LocalItem {
   kind: '移动' | '充电' | '救援充电'
   kindType: 'primary' | 'success' | 'danger'
   ref: string
+  /** 行程组内的移动任务（手动连续首尾相接的任务聚合；单条任务也是单元素组） */
+  moves?: MoveTaskVO[]
   move?: MoveTaskVO
   charge?: ChargeTaskVO
   /** 充电任务聚合的内部导航（source=charge:{id}），展开行显示 */
@@ -169,22 +171,45 @@ interface LocalItem {
   time: string
 }
 
-/** 手动发起的任务聚合时间线，新→旧；充电任务连同其内部导航（charge:{id}）聚合为一行，RMS 下发的不在此列 */
+/** 手动发起的任务聚合时间线，新→旧；连续首尾相接的手动导航归为一组行程，充电任务连同其内部导航聚合为一行 */
 const localTasks = computed<LocalItem[]>(() => {
   const items: LocalItem[] = []
-  for (const m of moveTasks.value) {
-    if (m.source && m.source !== 'manual') continue
+  const manualMoves = moveTasks.value
+    .filter((m) => !m.source || m.source === 'manual')
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+  const trips: MoveTaskVO[][] = []
+  for (const m of manualMoves) {
+    const group = trips[trips.length - 1]
+    const last = group?.[group.length - 1]
+    if (
+      last &&
+      tailPoint(last.route_summary) &&
+      tailPoint(last.route_summary) === headPoint(m.route_summary) &&
+      Date.parse(m.created_at) - Date.parse(last.created_at) <= 3 * 60 * 1000
+    ) {
+      group.push(m)
+    } else {
+      trips.push([m])
+    }
+  }
+  for (const trip of trips.slice().reverse()) {
+    const last = trip[trip.length - 1]
+    const head = headPoint(trip[0].route_summary)
+    const tail = tailPoint(last.route_summary)
+    const chain = trip.map((m) => m.route_summary || `#${m.id}`).join('；')
     items.push({
-      key: `m${m.id}`,
+      key: `t${trip[0].id}`,
       kind: '移动',
       kindType: 'primary',
-      ref: `#${m.id}`,
-      move: m,
-      status: m.status ?? '—',
-      statusType: stageStatusType(m.status ?? ''),
-      desc: moveDesc(m),
-      message: m.error_message,
-      time: m.created_at,
+      ref: trip.length > 1 ? `${trip.length} 段` : `#${trip[0].id}`,
+      moves: trip,
+      status: last.status ?? '—',
+      statusType: stageStatusType(last.status ?? ''),
+      desc: head && tail && head !== tail
+        ? `${head} → … → ${tail}`
+        : chain,
+      message: trip.map((m) => m.error_message).filter(Boolean).join('；') || null,
+      time: trip[0].created_at,
     })
   }
   for (const c of chargeTasks.value) {
@@ -213,8 +238,23 @@ const localTasks = computed<LocalItem[]>(() => {
   return items.sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
 })
 
+/** 路线摘要首点（"H9→P13→P2" → "H9"；空返回 null） */
+function headPoint(summary?: string | null): string | null {
+  if (!summary) return null
+  const pts = summary.split('→').map((s) => s.trim()).filter(Boolean)
+  return pts.length ? pts[0] : null
+}
+
+/** 路线摘要尾点 */
+function tailPoint(summary?: string | null): string | null {
+  if (!summary) return null
+  const pts = summary.split('→').map((s) => s.trim()).filter(Boolean)
+  return pts.length ? pts[pts.length - 1] : null
+}
+
 function localMoveActive(item: LocalItem) {
-  return item.move && ['CREATED', 'DISPATCHED', 'EXECUTING'].includes(item.move.status ?? '')
+  const last = item.moves?.[item.moves.length - 1]
+  return last && ['CREATED', 'DISPATCHED', 'EXECUTING'].includes(last.status ?? '')
 }
 
 // ==================== 展示辅助 ====================
@@ -231,12 +271,11 @@ async function loadSegments(taskId: number) {
   }
 }
 
-/** 展开回调：移动任务懒加载真实段记录 */
+/** 展开回调：行程组内每个任务懒加载真实段记录 */
 function onExpandRow(row: LocalItem, expanded: LocalItem[]) {
-  if (expanded.includes(row)) {
-    if (row.move) void loadSegments(row.move.id)
-    else if (row.charge && row.innerMoves?.length) void loadSegments(row.innerMoves[0].id)
-  }
+  if (!expanded.includes(row)) return
+  for (const m of row.moves ?? []) void loadSegments(m.id)
+  if (row.charge && row.innerMoves?.length) void loadSegments(row.innerMoves[0].id)
 }
 
 /** 移动任务描述：优先点位链摘要（H9→P13→P2），旧数据回退坐标 */
@@ -247,50 +286,6 @@ function moveDesc(m: MoveTaskVO) {
 
 /** 段级状态 */
 type SegState = 'done' | 'active' | 'pending' | 'failed'
-
-interface MoveSeg {
-  label: string
-  state: SegState
-}
-
-/** 一次导航的分段执行时间线：route_summary 拆段 + segment_seq/total 对齐进度（含起点接入段） */
-function moveStages(m: MoveTaskVO): MoveSeg[] {
-  if (!m.route_summary) return []
-  const pts = m.route_summary.split('→').map((s) => s.trim()).filter(Boolean)
-  if (pts.length < 2) {
-    return pts.length === 1 ? [{ label: `直达 ${pts[0]}`, state: segStateOf(m, 1, 1) }] : []
-  }
-  const terminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMEOUT'].includes(m.status ?? '')
-  const total = m.segment_total ?? pts.length - 1
-  const cur = m.segment_seq ?? (terminal ? total : 1)
-  const hop = Math.max(0, total - (pts.length - 1))
-  const segs: MoveSeg[] = []
-  if (hop > 0) {
-    segs.push({ label: `接入 ${pts[0]}`, state: segStateOf(m, 1, cur) })
-  }
-  for (let i = 0; i + 1 < pts.length; i++) {
-    segs.push({ label: `${pts[i]} → ${pts[i + 1]}`, state: segStateOf(m, i + 1 + hop, cur) })
-  }
-  return segs
-}
-
-function segStateOf(m: MoveTaskVO, segNo: number, cur: number): SegState {
-  const status = m.status ?? ''
-  if (status === 'SUCCEEDED') return 'done'
-  if (segNo < cur) return 'done'
-  if (segNo === cur) {
-    return ['FAILED', 'CANCELLED', 'TIMEOUT'].includes(status) ? 'failed' : 'active'
-  }
-  return 'pending'
-}
-
-function segTagType(state: SegState): 'success' | 'warning' | 'info' | 'danger' {
-  return ({ done: 'success', active: 'warning', pending: 'info', failed: 'danger' } as const)[state]
-}
-
-function segLabel(state: SegState): string {
-  return ({ done: '已完成', active: '执行中', pending: '待执行', failed: '中断' } as const)[state]
-}
 
 function segStatusOf(status: string): SegState {
   if (status === 'SUCCEEDED') return 'done'
@@ -436,27 +431,25 @@ onUnmounted(() => {
 
       <!-- 本机任务：页面上手动发起的移动/充电/救援充电；充电任务聚合其内部导航（展开查看路线） -->
       <el-tab-pane :label="`本机任务（${localTasks.length}）`" name="local">
-        <el-table :data="localTasks" size="small" border stripe @expand-change="onExpandRow">
+        <el-table :data="localTasks" size="small" border stripe row-key="key" @expand-change="onExpandRow">
           <el-table-column type="expand">
             <template #default="{ row }">
               <div class="stage-list">
-                <template v-if="row.move">
-                  <template v-if="segmentCache[row.move.id]?.length">
-                    <div v-for="seg in segmentCache[row.move.id]" :key="seg.id" class="stage-item">
-                      <el-tag size="small" :type="segTagType(segStatusOf(seg.status))" effect="plain">{{ segLabelOf(seg.status) }}</el-tag>
-                      <span class="stage-desc">{{ seg.source_code || '—' }} → {{ seg.target_code || fmtNum(seg.target_x ?? undefined) }}</span>
-                      <span class="stage-time">{{ fmtTime(seg.created_at) }} ~ {{ seg.finished_at ? fmtTime(seg.finished_at) : '…' }}</span>
-                      <span v-if="seg.message" class="stage-msg">{{ seg.message }}</span>
-                    </div>
-                  </template>
-                  <template v-else-if="segmentCache[row.move.id]">
-                    <div v-for="(seg, i) in moveStages(row.move)" :key="i" class="stage-item">
-                      <el-tag size="small" :type="segTagType(seg.state)" effect="plain">{{ segLabel(seg.state) }}</el-tag>
-                      <span class="stage-desc">{{ seg.label }}</span>
-                    </div>
-                    <div v-if="!moveStages(row.move).length" class="muted">无路线摘要（旧任务）</div>
-                  </template>
-                  <div v-else class="muted">加载中…</div>
+                <template v-if="row.moves">
+                  <div v-for="m in row.moves" :key="m.id" class="stage-item">
+                    <el-tag size="small" :type="stageStatusType(m.status ?? '')" effect="plain">{{ m.status }}</el-tag>
+                    <span class="stage-desc">{{ moveDesc(m) }}</span>
+                    <span class="stage-time">{{ fmtTime(m.created_at) }} ~ {{ m.finished_at ? fmtTime(m.finished_at) : '…' }}</span>
+                    <span v-if="m.error_message" class="stage-msg">{{ m.error_message }}</span>
+                    <template v-if="segmentCache[m.id]?.length">
+                      <span
+                        v-for="seg in segmentCache[m.id]"
+                        :key="seg.id"
+                        class="seg-chip"
+                        :class="segStatusOf(seg.status)"
+                      >{{ seg.source_code || '接入' }}→{{ seg.target_code }}·{{ segLabelOf(seg.status) }}</span>
+                    </template>
+                  </div>
                 </template>
                 <template v-else-if="row.innerMoves?.length">
                   <div v-for="m in row.innerMoves" :key="m.id" class="stage-item">
@@ -495,14 +488,14 @@ onUnmounted(() => {
           </el-table-column>
           <el-table-column label="耗时" width="80">
             <template #default="{ row }">
-              <span v-if="row.move">{{ fmtDuration(row.move) }}</span>
+              <span v-if="row.moves?.length">{{ fmtDuration({ created_at: row.moves[0].created_at, finished_at: row.moves[row.moves.length - 1].finished_at }) }}</span>
               <span v-else-if="row.charge">{{ fmtDuration({ created_at: row.charge.created_at, finished_at: row.charge.finished_at }) }}</span>
               <span v-else>—</span>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="90" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="localMoveActive(row)" size="small" type="warning" plain @click="doCancelMove(row.move!)">
+              <el-button v-if="localMoveActive(row)" size="small" type="warning" plain @click="doCancelMove(row.moves![row.moves!.length - 1])">
                 取消
               </el-button>
             </template>
@@ -623,5 +616,30 @@ onUnmounted(() => {
 
 .arrow {
   margin-left: 2px;
+}
+
+/* 行程组展开：任务行内的段级 chip */
+.seg-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid var(--el-border-color-light);
+  color: var(--el-text-color-secondary);
+}
+
+.seg-chip.done {
+  color: var(--el-color-success);
+  border-color: var(--el-color-success-light-7);
+}
+
+.seg-chip.active {
+  color: var(--el-color-warning);
+  border-color: var(--el-color-warning-light-7);
+}
+
+.seg-chip.failed {
+  color: var(--el-color-danger);
+  border-color: var(--el-color-danger-light-7);
 }
 </style>
