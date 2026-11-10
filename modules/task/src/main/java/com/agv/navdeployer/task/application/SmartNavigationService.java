@@ -35,14 +35,18 @@ public class SmartNavigationService {
     }
 
     public MoveTaskDTO createOptimizedMoveTask(String label, double x, double y, double yaw, String source) {
-        List<Long> pathIds = planRoutePathIds(label, x, y);
-        if (!pathIds.isEmpty()) {
-            return createFollowPathTask(pathIds.get(0), source);
+        List<RoutePlanService.RouteStep> steps = planRouteSteps(label, x, y);
+        if (!steps.isEmpty()) {
+            List<MoveTaskCreateCmd.ChainLeg> legs = steps.stream()
+                    .map(s -> new MoveTaskCreateCmd.ChainLeg(s.pathId(), s.fromWaypointCode(), s.toWaypointCode()))
+                    .toList();
+            return moveTaskService.create(new MoveTaskCreateCmd(
+                    "FOLLOW_PATH", null, steps.get(0).pathId(), null, null, null, null, Boolean.TRUE, legs), source);
         }
         return createGoalTask(x, y, yaw, source);
     }
 
-    public List<Long> planRoutePathIds(String label, double x, double y) {
+    public List<RoutePlanService.RouteStep> planRouteSteps(String label, double x, double y) {
         try {
             MapMeta publishedMap = mapMetaService.findPublished();
             if (publishedMap == null) {
@@ -71,17 +75,16 @@ public class SmartNavigationService {
                         robotWp.waypoint.getWaypointCode(), targetWp.waypoint.getWaypointCode());
                 return List.of();
             }
-            var pathIds = plan.steps().stream()
+            List<RoutePlanService.RouteStep> steps = plan.steps().stream()
                     .filter(s -> !s.isCrossFloor() && s.pathId() > 0)
-                    .map(RoutePlanService.RouteStep::pathId)
-                    .distinct()
                     .toList();
-            if (pathIds.isEmpty()) {
+            if (steps.isEmpty()) {
                 return List.of();
             }
             log.info("{} route navigation plan: paths={}, steps={}, totalCost={}s",
-                    label, pathIds, plan.steps().size(), String.format("%.1f", plan.totalCost()));
-            return pathIds;
+                    label, steps.stream().map(RoutePlanService.RouteStep::pathId).distinct().toList(),
+                    plan.steps().size(), String.format("%.1f", plan.totalCost()));
+            return steps;
         } catch (Exception e) {
             log.debug("route navigation plan failed, fallback GOAL: {}", e.getMessage());
             return List.of();

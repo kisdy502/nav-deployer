@@ -296,7 +296,18 @@ public class ChargeService {
         }
         String status = moveTask.status() == null ? "" : moveTask.status();
         switch (status) {
-            case "SUCCEEDED" -> beginStartCharging(task);
+            case "SUCCEEDED" -> {
+                // move 终点必须就是充电点（同点一致性防呆，非到桩精度；防规划/路线数据异常导致错误位置开充）
+                if (moveTask.goalX() != null && moveTask.goalY() != null
+                        && !Double.isNaN(task.x()) && !Double.isNaN(task.y())
+                        && Math.hypot(moveTask.goalX() - task.x(), moveTask.goalY() - task.y()) > 0.5) {
+                    finish(task, ChargeTask.Status.FAILED, String.format(java.util.Locale.ROOT,
+                            "导航终点(%.2f,%.2f)与充电点(%.2f,%.2f)不一致，已拒绝开始充电（路线/规划数据异常）",
+                            moveTask.goalX(), moveTask.goalY(), task.x(), task.y()));
+                    return;
+                }
+                beginStartCharging(task);
+            }
             case "FAILED", "TIMEOUT" -> finish(task, ChargeTask.Status.FAILED,
                     "导航到充电点失败: " + (moveTask.errorMessage() == null
                             || moveTask.errorMessage().isBlank()

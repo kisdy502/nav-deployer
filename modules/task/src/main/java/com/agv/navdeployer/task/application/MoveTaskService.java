@@ -221,22 +221,30 @@ public class MoveTaskService {
                 endPointSingle = true;
             }
             case MoveTask.TYPE_FOLLOW_PATH -> {
-                if (dto.pathId() == null) {
-                    throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id");
+                if (dto.pathId() == null && (dto.chain() == null || dto.chain().isEmpty())) {
+                    throw new IllegalArgumentException("FOLLOW_PATH 任务必须携带 path_id 或 chain");
                 }
-                MapPath v2Path = mapMetaService.getPath(dto.pathId());
-                if (v2Path == null) {
-                    throw new BusinessException(TaskErrorCode.PATH_NOT_FOUND, "路线 " + dto.pathId() + " 不存在（V2 路线）");
+                boolean chained = dto.chain() != null && !dto.chain().isEmpty();
+                Long headPathId = chained ? dto.chain().get(0).pathId() : dto.pathId();
+                requireDeployedPath(headPathId);
+                List<SegmentPlan> chain = new java.util.ArrayList<>();
+                if (chained) {
+                    for (var leg : dto.chain()) {
+                        requireDeployedPath(leg.pathId());
+                        chain.addAll(buildOrientedLegPlan(leg.pathId(), leg.fromCode(), leg.toCode(), dto.maxSpeed()));
+                    }
+                    segments = chain;
+                    log.info("FOLLOW_PATH 跨路线链: legs={}, segments={}, paths={}",
+                            dto.chain().size(), segments.size(),
+                            dto.chain().stream().map(l -> String.valueOf(l.pathId())).toList());
+                } else {
+                    segments = buildPathPlan(dto.pathId(), dto.maxSpeed());
                 }
-                if (!MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
-                    throw new IllegalStateException("路线 " + dto.pathId() + " 未部署（status=" + v2Path.getStatus() + "）");
-                }
-                segments = buildPathPlan(dto.pathId(), dto.maxSpeed());
                 if (segments.isEmpty()) {
-                    throw new IllegalStateException("路线 " + dto.pathId() + " 没有可执行的边");
+                    throw new IllegalStateException("路线 " + headPathId + " 没有可执行的边");
                 }
                 RobotPose pose = telemetry.mapPose();
-                if (pose != null && shouldReverseForNearestEnd(segments, pose.x(), pose.y())) {
+                if (!chained && pose != null && shouldReverseForNearestEnd(segments, pose.x(), pose.y())) {
                     SegmentPlan firstEdge = segments.get(0);
                     SegmentPlan lastEdge = segments.get(segments.size() - 1);
                     segments = reversePathPlan(segments);
@@ -256,7 +264,7 @@ public class MoveTaskService {
                             tuning.followPathStartRadius());
                 }
                 SegmentPlan last = segments.get(segments.size() - 1);
-                task.setPathId(dto.pathId());
+                task.setPathId(headPathId);
                 task.setGoalX(last.x());
                 task.setGoalY(last.y());
                 task.setGoalTheta(last.theta());
@@ -440,6 +448,65 @@ public class MoveTaskService {
             log.info("FOLLOW_PATH 使用 V2 路线: pathId={}, segments={}", pathId, v2Plan.size());
         }
         return v2Plan;
+    }
+
+    private void requireDeployedPath(Long pathId) {
+        MapPath v2Path = mapMetaService.getPath(pathId);
+        if (v2Path == null) {
+            throw new BusinessException(TaskErrorCode.PATH_NOT_FOUND, "路线 " + pathId + " 不存在（V2 路线）");
+        }
+        if (!MapPath.STATUS_DEPLOYED.equals(v2Path.getStatus())) {
+            throw new IllegalStateException("路线 " + pathId + " 未部署（status=" + v2Path.getStatus() + "）");
+        }
+    }
+
+    /**
+     * 按规划给定进出口定向一条路线的段：
+     * 与路线定义同向 → 原段；反向 → 整线倒序；环线/中途接入 → 截取 fromCode→toCode 子链。
+     */
+    private List<SegmentPlan> buildOrientedLegPlan(Long pathId, String fromCode, String toCode, Double maxSpeedOverride) {
+        List<SegmentPlan> raw = buildPathPlan(pathId, maxSpeedOverride);
+        if (raw.isEmpty() || fromCode == null || toCode == null) {
+            return raw;
+        }
+        SegmentPlan first = raw.get(0);
+        SegmentPlan last = raw.get(raw.size() - 1);
+        if (fromCode.equals(first.sourceCode()) && toCode.equals(last.targetCode())) {
+            return raw;
+        }
+        if (fromCode.equals(last.targetCode()) && toCode.equals(first.sourceCode())) {
+            return reversePathPlan(raw);
+        }
+        for (int i = 0; i < raw.size(); i++) {
+            if (!fromCode.equals(raw.get(i).sourceCode())) {
+                continue;
+            }
+            List<SegmentPlan> sub = new java.util.ArrayList<>();
+            for (int j = i; j < raw.size(); j++) {
+                sub.add(raw.get(j));
+                if (toCode.equals(raw.get(j).targetCode())) {
+                    log.info("FOLLOW_PATH pathId={} 环线/中途接入: 取段 {}..{}（{}→{}）",
+                            pathId, i + 1, j + 1, fromCode, toCode);
+                    return sub;
+                }
+            }
+        }
+        List<SegmentPlan> reversed = reversePathPlan(raw);
+        for (int i = 0; i < reversed.size(); i++) {
+            if (!fromCode.equals(reversed.get(i).sourceCode())) {
+                continue;
+            }
+            List<SegmentPlan> sub = new java.util.ArrayList<>();
+            for (int j = i; j < reversed.size(); j++) {
+                sub.add(reversed.get(j));
+                if (toCode.equals(reversed.get(j).targetCode())) {
+                    log.info("FOLLOW_PATH pathId={} 环线/中途接入(反向): 取段 {}..{}（{}→{}）",
+                            pathId, i + 1, j + 1, fromCode, toCode);
+                    return sub;
+                }
+            }
+        }
+        throw new IllegalStateException("路线 " + pathId + " 段链与规划进出口不匹配（" + fromCode + "→" + toCode + "）");
     }
 
     private List<SegmentPlan> buildV2PathPlan(Long pathId, Double maxSpeedOverride) {

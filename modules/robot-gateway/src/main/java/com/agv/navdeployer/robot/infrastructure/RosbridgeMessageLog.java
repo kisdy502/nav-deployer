@@ -84,7 +84,7 @@ public final class RosbridgeMessageLog {
         switch (op) {
             case "publish" -> {
                 String topic = message.path("topic").asText("");
-                if (rawLength > 100_000) {
+                if (rawLength > 8192) {
                     if (!allowSensor("in:big:" + topic)) {
                         return;
                     }
