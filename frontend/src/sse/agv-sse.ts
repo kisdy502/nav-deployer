@@ -27,6 +27,19 @@ export function connectAgvSse(handlers: AgvSseHandlers) {
     }
   }
 
+  // 页面后台时高频事件只保留最新一条原始数据（跳过 parse 与处理）：
+  // 浏览器对后台标签节流任务派发，切回时积压的几百条 telemetry/scan
+  // 一次性 parse+重建会把主线程卡死数十秒；10Hz 下切回后 100ms 内自然有新帧
+  let hiddenTelemetryRaw: string | null = null
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return
+    if (hiddenTelemetryRaw) {
+      const t = parse<TelemetrySnapshot>(hiddenTelemetryRaw)
+      if (t) handlers.onTelemetry?.(t)
+      hiddenTelemetryRaw = null
+    }
+  })
+
   const connect = () => {
     if (closed) return
     handlers.onStatus?.('connecting')
@@ -40,10 +53,15 @@ export function connectAgvSse(handlers: AgvSseHandlers) {
       }
     }
     es.addEventListener('telemetry', (e) => {
+      if (document.hidden) {
+        hiddenTelemetryRaw = e.data
+        return
+      }
       const t = parse<TelemetrySnapshot>(e.data)
       if (t) handlers.onTelemetry?.(t)
     })
     es.addEventListener('scan', (e) => {
+      if (document.hidden) return
       const t = parse<ScanCloudEvent>(e.data)
       if (t) handlers.onScan?.(t)
     })
