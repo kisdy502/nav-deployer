@@ -3,9 +3,9 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, WarningFilled } from '@element-plus/icons-vue'
-import { getRmsActiveTask, listMoveTasks, listRmsTasks, resetRmsTasks, cancelMoveTask } from '@/api/tasks'
+import { getRmsActiveTask, listMoveTaskSegments, listMoveTasks, listRmsTasks, resetRmsTasks, cancelMoveTask } from '@/api/tasks'
 import { listChargeTasks } from '@/api/charge'
-import type { ChargeTaskVO, MoveTaskVO, RmsTaskVO } from '@/types/api'
+import type { ChargeTaskVO, MoveTaskSegmentVO, MoveTaskVO, RmsTaskVO } from '@/types/api'
 
 const router = useRouter()
 const activeTab = ref('rms')
@@ -219,6 +219,26 @@ function localMoveActive(item: LocalItem) {
 
 // ==================== 展示辅助 ====================
 
+/** 展开行懒加载的段执行记录（task_id → 段列表） */
+const segmentCache = ref<Record<number, MoveTaskSegmentVO[]>>({})
+
+async function loadSegments(taskId: number) {
+  if (segmentCache.value[taskId]) return
+  try {
+    segmentCache.value = { ...segmentCache.value, [taskId]: await listMoveTaskSegments(taskId) }
+  } catch {
+    segmentCache.value = { ...segmentCache.value, [taskId]: [] }
+  }
+}
+
+/** 展开回调：移动任务懒加载真实段记录 */
+function onExpandRow(row: LocalItem, expanded: LocalItem[]) {
+  if (expanded.includes(row)) {
+    if (row.move) void loadSegments(row.move.id)
+    else if (row.charge && row.innerMoves?.length) void loadSegments(row.innerMoves[0].id)
+  }
+}
+
 /** 移动任务描述：优先点位链摘要（H9→P13→P2），旧数据回退坐标 */
 function moveDesc(m: MoveTaskVO) {
   if (m.route_summary) return m.route_summary
@@ -270,6 +290,17 @@ function segTagType(state: SegState): 'success' | 'warning' | 'info' | 'danger' 
 
 function segLabel(state: SegState): string {
   return ({ done: '已完成', active: '执行中', pending: '待执行', failed: '中断' } as const)[state]
+}
+
+function segStatusOf(status: string): SegState {
+  if (status === 'SUCCEEDED') return 'done'
+  if (status === 'EXECUTING') return 'active'
+  if (status === 'FAILED' || status === 'CANCELLED' || status === 'TIMEOUT') return 'failed'
+  return 'pending'
+}
+
+function segLabelOf(status: string): string {
+  return ({ SUCCEEDED: '已完成', EXECUTING: '执行中', FAILED: '失败', CANCELLED: '已取消', TIMEOUT: '超时' } as const)[status] ?? status
 }
 
 function rmsStatusType(status: string) {
@@ -405,16 +436,27 @@ onUnmounted(() => {
 
       <!-- 本机任务：页面上手动发起的移动/充电/救援充电；充电任务聚合其内部导航（展开查看路线） -->
       <el-tab-pane :label="`本机任务（${localTasks.length}）`" name="local">
-        <el-table :data="localTasks" size="small" border stripe>
+        <el-table :data="localTasks" size="small" border stripe @expand-change="onExpandRow">
           <el-table-column type="expand">
             <template #default="{ row }">
               <div class="stage-list">
                 <template v-if="row.move">
-                  <div v-for="(seg, i) in moveStages(row.move)" :key="i" class="stage-item">
-                    <el-tag size="small" :type="segTagType(seg.state)" effect="plain">{{ segLabel(seg.state) }}</el-tag>
-                    <span class="stage-desc">{{ seg.label }}</span>
-                  </div>
-                  <div v-if="!moveStages(row.move).length" class="muted">无路线摘要（旧任务）</div>
+                  <template v-if="segmentCache[row.move.id]?.length">
+                    <div v-for="seg in segmentCache[row.move.id]" :key="seg.id" class="stage-item">
+                      <el-tag size="small" :type="segTagType(segStatusOf(seg.status))" effect="plain">{{ segLabelOf(seg.status) }}</el-tag>
+                      <span class="stage-desc">{{ seg.source_code || '—' }} → {{ seg.target_code || fmtNum(seg.target_x ?? undefined) }}</span>
+                      <span class="stage-time">{{ fmtTime(seg.created_at) }} ~ {{ seg.finished_at ? fmtTime(seg.finished_at) : '…' }}</span>
+                      <span v-if="seg.message" class="stage-msg">{{ seg.message }}</span>
+                    </div>
+                  </template>
+                  <template v-else-if="segmentCache[row.move.id]">
+                    <div v-for="(seg, i) in moveStages(row.move)" :key="i" class="stage-item">
+                      <el-tag size="small" :type="segTagType(seg.state)" effect="plain">{{ segLabel(seg.state) }}</el-tag>
+                      <span class="stage-desc">{{ seg.label }}</span>
+                    </div>
+                    <div v-if="!moveStages(row.move).length" class="muted">无路线摘要（旧任务）</div>
+                  </template>
+                  <div v-else class="muted">加载中…</div>
                 </template>
                 <template v-else-if="row.innerMoves?.length">
                   <div v-for="m in row.innerMoves" :key="m.id" class="stage-item">

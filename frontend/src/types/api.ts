@@ -89,6 +89,23 @@ export interface MoveTaskVO {
   finished_at: string | null
 }
 
+/** 移动任务分段执行记录（一次导航每段的真实执行明细） */
+export interface MoveTaskSegmentVO {
+  id: number
+  task_id: number
+  seq: number
+  source_code: string | null
+  target_code: string | null
+  target_x: number | null
+  target_y: number | null
+  edge_type: string | null
+  max_speed: number | null
+  status: string
+  message: string | null
+  created_at: string
+  finished_at: string | null
+}
+
 export interface MoveTaskCreateDTO {
   task_type: MoveTaskType
   point_id?: number

@@ -1,5 +1,5 @@
 import { get, post } from './http'
-import type { MapModeTaskVO, MoveTaskCreateDTO, MoveTaskVO, RmsTaskVO } from '@/types/api'
+import type { MapModeTaskVO, MoveTaskCreateDTO, MoveTaskSegmentVO, MoveTaskVO, RmsTaskVO } from '@/types/api'
 
 export const getCurrentMapTask = () => get<MapModeTaskVO | null>('/map-mode-tasks/current')
 export const getRecentMapTasks = (limit = 20) => get<MapModeTaskVO[]>('/map-mode-tasks/recent', { limit })
@@ -12,6 +12,7 @@ export const createMoveTask = (dto: MoveTaskCreateDTO) => post<MoveTaskVO>('/mov
 export const cancelMoveTask = (id: number) => post<MoveTaskVO>(`/move-tasks/${id}/cancel`)
 export const getActiveMoveTask = () => get<MoveTaskVO | null>('/move-tasks/active')
 export const listMoveTasks = (limit = 50) => get<MoveTaskVO[]>('/move-tasks', { limit })
+export const listMoveTaskSegments = (id: number) => get<MoveTaskSegmentVO[]>(`/move-tasks/${id}/segments`)
 
 // ---------- RMS 任务运维（任务管理页） ----------
 export const getRmsActiveTask = () => get<RmsTaskVO | null>('/rms/tasks/active')

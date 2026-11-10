@@ -9,6 +9,7 @@ import com.agv.navdeployer.map.domain.MapWaypoint;
 import com.agv.navdeployer.task.application.cmd.MoveTaskCreateCmd;
 import com.agv.navdeployer.task.application.dto.MoveTaskDTO;
 import com.agv.navdeployer.task.domain.movetask.MoveTask;
+import com.agv.navdeployer.task.domain.movetask.MoveTaskSegment;
 import com.agv.navdeployer.task.domain.movetask.TaskErrorCode;
 import com.agv.navdeployer.task.domain.port.FollowControlPoint;
 import com.agv.navdeployer.task.domain.port.FollowEdgeCommand;
@@ -60,6 +61,7 @@ public class MoveTaskService {
     private final RobotOperationalService operationalService;
     private final MapAlignmentGuard mapAlignmentGuard;
     private final com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps;
+    private final com.agv.navdeployer.task.infrastructure.repository.mapper.MoveTaskSegmentMapper segmentMapper;
 
     // 单线程 worker 串行化任务启动；任务先落库再下发，防 result 回调早于事务可见
     private final ScheduledExecutorService worker =
@@ -80,7 +82,8 @@ public class MoveTaskService {
                            MapMetaService mapMetaService,
                            RobotOperationalService operationalService,
                            MapAlignmentGuard mapAlignmentGuard,
-                           com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps) {
+                           com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps,
+                           com.agv.navdeployer.task.infrastructure.repository.mapper.MoveTaskSegmentMapper segmentMapper) {
         this.moveTaskRepository = moveTaskRepository;
         this.moveTaskMapstruct = moveTaskMapstruct;
         this.robotConnection = robotConnection;
@@ -92,6 +95,7 @@ public class MoveTaskService {
         this.operationalService = operationalService;
         this.mapAlignmentGuard = mapAlignmentGuard;
         this.chargeProps = chargeProps;
+        this.segmentMapper = segmentMapper;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -320,6 +324,51 @@ public class MoveTaskService {
         return moveTaskMapstruct.toDTO(moveTaskRepository.findById(id));
     }
 
+    public java.util.List<MoveTaskSegment> listSegments(Long taskId) {
+        return segmentMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MoveTaskSegment>()
+                        .eq(MoveTaskSegment::getTaskId, taskId)
+                        .orderByAsc(MoveTaskSegment::getSeq));
+    }
+
+    private void insertSegmentRecord(TaskRuntime runtime, int seq, SegmentPlan plan) {
+        try {
+            MoveTaskSegment record = new MoveTaskSegment();
+            record.setTaskId(runtime.task.getId());
+            record.setSeq(seq);
+            record.setSourceCode(plan.sourceCode());
+            record.setTargetCode(plan.targetCode());
+            record.setTargetX(plan.x());
+            record.setTargetY(plan.y());
+            record.setEdgeType(plan.edgeType());
+            record.setMaxSpeed(plan.maxSpeed());
+            record.setStatus(MoveTaskSegment.STATUS_EXECUTING);
+            segmentMapper.insert(record);
+        } catch (Exception exception) {
+            log.warn("move task {} segment {} record insert failed: {}",
+                    runtime.task.getId(), seq, exception.getMessage());
+        }
+    }
+
+    private void closeSegmentRecord(TaskRuntime runtime, int seq, String status, String message) {
+        try {
+            com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<MoveTaskSegment> update =
+                    new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<MoveTaskSegment>()
+                            .eq(MoveTaskSegment::getTaskId, runtime.task.getId())
+                            .eq(MoveTaskSegment::getSeq, seq)
+                            .eq(MoveTaskSegment::getStatus, MoveTaskSegment.STATUS_EXECUTING)
+                            .set(MoveTaskSegment::getStatus, status)
+                            .set(MoveTaskSegment::getFinishedAt, java.time.LocalDateTime.now());
+            if (message != null && !message.isBlank()) {
+                update.set(MoveTaskSegment::getMessage, message);
+            }
+            segmentMapper.update(null, update);
+        } catch (Exception exception) {
+            log.warn("move task {} segment {} record close failed: {}",
+                    runtime.task.getId(), seq, exception.getMessage());
+        }
+    }
+
     private void dispatchSegment(TaskRuntime runtime, int seq) {
         MoveTask task = runtime.task;
         SegmentPlan plan = runtime.segments.get(seq - 1);
@@ -343,6 +392,7 @@ public class MoveTaskService {
         String goalId = robotCommands.dispatchFollowEdge(command, listenerFor(runtime, seq));
         runtime.currentGoalId = goalId;
 
+        insertSegmentRecord(runtime, seq, plan);
         task.markDispatchedGoal(goalId, seq);
         moveTaskRepository.update(task);
     }
@@ -395,10 +445,16 @@ public class MoveTaskService {
         MoveTask task = runtime.task;
         String terminal = terminalStatus(goalStatus, runtime.cancelRequested, runtime.timeoutRequested);
         if (MoveTask.STATUS_SUCCEEDED.equals(terminal) && seq < runtime.segments.size()) {
+            closeSegmentRecord(runtime, seq, MoveTaskSegment.STATUS_SUCCEEDED, message);
             dispatchSegment(runtime, seq + 1);
             publishTaskEvent(task);
             return;
         }
+        String segmentStatus = MoveTask.STATUS_SUCCEEDED.equals(terminal)
+                ? MoveTaskSegment.STATUS_SUCCEEDED : terminal;
+        closeSegmentRecord(runtime, seq, segmentStatus,
+                MoveTask.STATUS_SUCCEEDED.equals(terminal) ? message
+                        : terminalMessage(terminal, goalStatus, message));
         finalizeTask(runtime, terminal, terminalMessage(terminal, goalStatus, message));
     }
 
@@ -432,6 +488,10 @@ public class MoveTaskService {
         ScheduledFuture<?> watchdog = runtime.watchdog;
         if (watchdog != null) {
             watchdog.cancel(false);
+        }
+        if (runtime.currentSeq > 0) {
+            closeSegmentRecord(runtime, runtime.currentSeq,
+                    MoveTask.STATUS_SUCCEEDED.equals(status) ? MoveTaskSegment.STATUS_SUCCEEDED : status, message);
         }
         MoveTask task = runtime.task;
         task.markFinished(status, message);

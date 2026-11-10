@@ -62,4 +62,11 @@ public class MoveTaskController {
     public ApiResponse<MoveTaskDTO> get(@PathVariable Long id) {
         return ApiResponse.ok(moveTaskService.get(id));
     }
+
+    @Operation(summary = "任务分段执行记录",
+            description = "一次导航的每段执行明细（起止点位、状态、耗时、消息）；仅新任务有记录，历史任务为空")
+    @GetMapping("/{id}/segments")
+    public ApiResponse<List<com.agv.navdeployer.task.domain.movetask.MoveTaskSegment>> segments(@PathVariable Long id) {
+        return ApiResponse.ok(moveTaskService.listSegments(id));
+    }
 }
