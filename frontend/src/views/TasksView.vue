@@ -160,6 +160,8 @@ interface LocalItem {
   ref: string
   move?: MoveTaskVO
   charge?: ChargeTaskVO
+  /** 充电任务聚合的内部导航（source=charge:{id}），展开行显示 */
+  innerMoves?: MoveTaskVO[]
   status: string
   statusType: 'success' | 'warning' | 'danger' | 'info'
   desc: string
@@ -167,7 +169,7 @@ interface LocalItem {
   time: string
 }
 
-/** 手动发起的任务（移动 + 充电 + 救援充电）合并时间线，新→旧；RMS 下发的不在此列。 */
+/** 手动发起的任务聚合时间线，新→旧；充电任务连同其内部导航（charge:{id}）聚合为一行，RMS 下发的不在此列 */
 const localTasks = computed<LocalItem[]>(() => {
   const items: LocalItem[] = []
   for (const m of moveTasks.value) {
@@ -188,17 +190,22 @@ const localTasks = computed<LocalItem[]>(() => {
   for (const c of chargeTasks.value) {
     if (c.source !== 'manual' && c.source !== 'rescue') continue
     const rescue = c.source === 'rescue'
+    const innerMoves = moveTasks.value.filter((m) => m.source === `charge:${c.id}`)
+    const routeText = innerMoves.length && innerMoves[0].route_summary ? `：${innerMoves[0].route_summary}` : ''
     items.push({
       key: `c${c.id}`,
       kind: rescue ? '救援充电' : '充电',
       kindType: rescue ? 'danger' : 'success',
       ref: `#${c.id}`,
       charge: c,
+      innerMoves,
       status: c.status,
       statusType: stageStatusType(c.status),
-      desc: c.x != null
-        ? `去桩 (${fmtNum(c.x)}, ${fmtNum(c.y)}) 充至 ${fmtNum(c.target_battery_pct, 0)}%`
-        : `原地充至 ${fmtNum(c.target_battery_pct, 0)}%`,
+      desc: rescue
+        ? `原地充至 ${fmtNum(c.target_battery_pct, 0)}%`
+        : c.x != null
+          ? `去充电点充至 ${fmtNum(c.target_battery_pct, 0)}%${routeText}`
+          : `原地充至 ${fmtNum(c.target_battery_pct, 0)}%`,
       message: c.message,
       time: c.created_at,
     })
@@ -304,10 +311,10 @@ onUnmounted(() => {
             </template>
           </el-table-column>
           <el-table-column prop="task_id" label="任务 ID" min-width="230" show-overflow-tooltip />
-          <el-table-column label="模板 / 类型" width="130">
+          <el-table-column label="模板 / 类型" width="150">
             <template #default="{ row }">
               <div>{{ row.task_template_type || '—' }}</div>
-              <div class="sub">{{ row.task_type || '—' }}</div>
+              <div class="sub">{{ row.task_type || '—' }}{{ row.target_label ? ' → ' + row.target_label : '' }}</div>
             </template>
           </el-table-column>
           <el-table-column label="执行阶段" width="180">
@@ -349,9 +356,23 @@ onUnmounted(() => {
         </el-table>
       </el-tab-pane>
 
-      <!-- 本机任务：页面上手动发起的移动/充电/救援充电，与调度下发无关 -->
+      <!-- 本机任务：页面上手动发起的移动/充电/救援充电；充电任务聚合其内部导航（展开查看路线） -->
       <el-tab-pane :label="`本机任务（${localTasks.length}）`" name="local">
         <el-table :data="localTasks" size="small" border stripe>
+          <el-table-column type="expand">
+            <template #default="{ row }">
+              <div class="stage-list">
+                <div v-for="m in row.innerMoves ?? []" :key="m.id" class="stage-item">
+                  <el-tag size="small" type="warning" effect="plain">内部导航</el-tag>
+                  <span class="stage-desc">{{ moveDesc(m) }}</span>
+                  <el-tag size="small" :type="stageStatusType(m.status ?? '')">{{ m.status }}</el-tag>
+                  <span class="stage-time">{{ fmtTime(m.created_at) }}</span>
+                  <span v-if="m.error_message" class="stage-msg">{{ m.error_message }}</span>
+                </div>
+                <div v-if="!(row.innerMoves ?? []).length" class="muted">无内部导航（原地充电/直达）</div>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column label="类型" width="110">
             <template #default="{ row }">
               <el-tag size="small" :type="row.kindType" effect="plain">{{ row.kind }}</el-tag>
