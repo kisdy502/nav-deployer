@@ -15,6 +15,7 @@ import {
   Tickets,
 } from '@element-plus/icons-vue'
 import MapCanvas2 from '@/components/editor2/MapCanvas2.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import V2BrowsePanel from '@/components/editor2/V2BrowsePanel.vue'
 import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import MappingPanel2 from '@/components/editor2/MappingPanel2.vue'
@@ -285,6 +286,7 @@ onBeforeUnmount(() => {})
         <el-button :icon="OfficeBuilding" type="primary" plain @click="manage2Visible = true">地图管理</el-button>
         <el-button :icon="Tickets" plain @click="router.push('/tasks')">任务</el-button>
         <el-button :icon="Setting" plain @click="router.push('/config')">配置</el-button>
+        <ThemeToggle />
       </div>
     </header>
 

@@ -5,6 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, WarningFilled } from '@element-plus/icons-vue'
 import { getRmsActiveTask, listMoveTaskSegments, listMoveTasks, listRmsTasks, resetRmsTasks, cancelMoveTask } from '@/api/tasks'
 import { listChargeTasks } from '@/api/charge'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import type { ChargeTaskVO, MoveTaskSegmentVO, MoveTaskVO, RmsTaskVO } from '@/types/api'
 
 const router = useRouter()
@@ -346,6 +347,7 @@ onUnmounted(() => {
       <el-button :icon="ArrowLeft" @click="router.push('/')">返回主页</el-button>
       <span class="page-title">任务管理</span>
       <span class="spacer"></span>
+      <ThemeToggle />
       <el-button :icon="Refresh" @click="refresh">刷新</el-button>
     </header>
 
