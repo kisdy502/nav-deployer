@@ -198,7 +198,7 @@ const localTasks = computed<LocalItem[]>(() => {
       key: `t${trip[0].id}`,
       kind: '移动',
       kindType: 'primary',
-      ref: trip.length > 1 ? `${trip.length} 段` : `#${trip[0].id}`,
+      ref: `#${trip[0].id}`,
       moves: trip,
       status: last.status ?? '—',
       statusType: stageStatusType(last.status ?? ''),
