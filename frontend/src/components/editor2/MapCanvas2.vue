@@ -8,6 +8,7 @@ import { PathLayer, type PathRenderItem, type RenderEdge } from '@/three/PathLay
 import { PolygonLayer, type PolygonRenderItem } from '@/three/PolygonLayer'
 import { RobotLayer } from '@/three/RobotLayer'
 import { ScanLayer } from '@/three/ScanLayer'
+import { onThemeChange } from '@/utils/theme'
 import { registerRobotLayer } from '@/three/robotLayerRef'
 import PointLegend from '@/components/editor/PointLegend.vue'
 import Map3DViewer from '@/components/editor/Map3DViewer.vue'
@@ -79,6 +80,7 @@ const hint = computed(() => {
 })
 
 let scene: MapScene | null = null
+let offTheme: (() => void) | null = null
 let pointLayer: PointLayer
 let pathLayer: PathLayer
 let polygonLayer: PolygonLayer
@@ -392,6 +394,7 @@ onMounted(() => {
   })
   scene.pickRoot.add(polygonLayer.group, pathLayer.group, pointLayer.group, robotLayer.group, robotLayer.trailGroup)
   scene.scene.add(scanLayer.group)
+  offTheme = onThemeChange(() => scene?.applyTheme())
   // 区域/货架绘制、重定位工具接管左键，关闭左键空白平移（中键/右键仍可平移）
   scene.leftDragPanEnabled = store.tool !== 'zone' && store.tool !== 'shelf' && store.tool !== 'initialPose'
   scene.setViewRotation(viewRot.value)
@@ -490,6 +493,7 @@ onBeforeUnmount(() => {
   closeCtx()
   registerRobotLayer(null)
   store.stopLivePreview()
+  offTheme?.()
   scene?.dispose()
   scene = null
 })

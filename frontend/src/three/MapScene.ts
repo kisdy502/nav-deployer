@@ -3,6 +3,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Easing, Group, Tween } from '@tweenjs/tween.js'
 import { makeGridTexture, updateGridTexture } from './mapTexture'
+import { currentScenePalette } from './palette'
 import type { MapGridVO } from '@/types/api'
 
 export interface PickResult {
@@ -102,6 +103,7 @@ export class MapScene {
   private mapMesh: THREE.Mesh | null = null
   private mapBorder: THREE.LineLoop | null = null
   private mapTexture: THREE.DataTexture | null = null
+  private lastGrid: MapGridVO | null = null
   private mapPixelWidth = 0
   private mapPixelHeight = 0
   private mapResolution = 0
@@ -152,7 +154,8 @@ export class MapScene {
     const w = container.clientWidth || 800
     const h = container.clientHeight || 600
 
-    this.scene.background = new THREE.Color(0xeef1f6)
+    const p = currentScenePalette()
+    this.scene.background = new THREE.Color(p.bg)
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 4000)
     this.camera.position.set(0, 0, 100)
 
@@ -185,8 +188,8 @@ export class MapScene {
     this.scene.add(this.pickRoot)
 
     // 世界系网格：细网格 1m / 粗网格 10m（RViz 风格），位于地图之上、实体之下
-    this.gridMinor = makeWorldGrid(1000, 1000, 0xa8afbd, 0xdde1e8, 0.5)
-    this.gridMajor = makeWorldGrid(1000, 100, 0xa8afbd, 0xd2d7e0, 0.55)
+    this.gridMinor = makeWorldGrid(1000, 1000, p.gridMinor.center, p.gridMinor.line, 0.5)
+    this.gridMajor = makeWorldGrid(1000, 100, p.gridMajor.center, p.gridMajor.line, 0.55)
     this.gridGroup.add(this.gridMinor, this.gridMajor)
     this.gridGroup.position.z = 0.06
     this.scene.add(this.gridGroup)
@@ -511,6 +514,7 @@ export class MapScene {
   setMap(grid: MapGridVO) {
     const w = grid.width * grid.resolution
     const h = grid.height * grid.resolution
+    this.lastGrid = grid
     const canReuse = this.mapMesh != null
       && this.mapTexture != null
       && this.mapPixelWidth === grid.width
@@ -534,7 +538,7 @@ export class MapScene {
           new THREE.Vector3(w, h, 0.02),
           new THREE.Vector3(0, h, 0.02),
         ]),
-        new THREE.LineBasicMaterial({ color: 0xb9bdc7 }),
+        new THREE.LineBasicMaterial({ color: currentScenePalette().mapBorder }),
       )
       this.mapGroup.add(this.mapMesh, this.mapBorder)
       this.mapPixelWidth = grid.width
@@ -561,9 +565,33 @@ export class MapScene {
     }
   }
 
+  /** 主题切换：背景/网格（GridHelper 顶点色烘焙，需重建）/地图边框/栅格纹理重画 */
+  applyTheme() {
+    const p = currentScenePalette()
+    this.scene.background = new THREE.Color(p.bg)
+    if (this.mapBorder) {
+      (this.mapBorder.material as THREE.LineBasicMaterial).color.set(p.mapBorder)
+    }
+    const visibleMinor = this.gridMinor?.visible ?? true
+    const visibleMajor = this.gridMajor?.visible ?? true
+    for (const grid of [this.gridMinor, this.gridMajor]) {
+      if (!grid) continue
+      this.gridGroup.remove(grid)
+      grid.geometry.dispose()
+      ;(grid.material as THREE.Material).dispose()
+    }
+    this.gridMinor = makeWorldGrid(1000, 1000, p.gridMinor.center, p.gridMinor.line, 0.5)
+    this.gridMajor = makeWorldGrid(1000, 100, p.gridMajor.center, p.gridMajor.line, 0.55)
+    this.gridMinor.visible = visibleMinor
+    this.gridMajor.visible = visibleMajor
+    this.gridGroup.add(this.gridMinor, this.gridMajor)
+    if (this.mapTexture && this.lastGrid) {
+      updateGridTexture(this.mapTexture, this.lastGrid)
+    }
+  }
+
   /** Three.js 的 clear() 只解绑对象，不释放 geometry/material/texture，必须显式销毁。 */
-  private disposeMapResources() {
-    if (this.mapMesh) {
+  private disposeMapResources() {    if (this.mapMesh) {
       this.mapMesh.geometry.dispose()
       ;(this.mapMesh.material as THREE.Material).dispose()
     }
