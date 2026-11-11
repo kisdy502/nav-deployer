@@ -443,8 +443,8 @@ onBeforeUnmount(() => {})
   justify-content: space-between;
   gap: 16px;
   padding: 10px 16px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .header-title {
@@ -485,8 +485,8 @@ onBeforeUnmount(() => {})
 
 .rail {
   width: 48px;
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color-light);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -501,7 +501,7 @@ onBeforeUnmount(() => {})
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #606266;
+  color: var(--el-text-color-regular);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -509,13 +509,13 @@ onBeforeUnmount(() => {})
 }
 
 .rail-btn:hover {
-  background: #f5f7fa;
-  color: #409eff;
+  background: var(--el-fill-color-light);
+  color: var(--el-color-primary);
 }
 
 .rail-btn.active {
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 .rail-divider {
@@ -540,11 +540,11 @@ onBeforeUnmount(() => {})
   z-index: 30;
   width: 20px;
   height: 64px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--el-border-color);
   border-right: none;
   border-radius: 6px 0 0 6px;
   background: rgba(255, 255, 255, 0.92);
-  color: #606266;
+  color: var(--el-text-color-regular);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -553,14 +553,14 @@ onBeforeUnmount(() => {})
 }
 
 .panel-toggle:hover {
-  color: #409eff;
-  border-color: #409eff;
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
 }
 
 .browse-right {
   width: 300px;
-  background: #fff;
-  border-left: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-left: 1px solid var(--el-border-color-light);
 }
 
 .browse-footer {
@@ -578,8 +578,8 @@ onBeforeUnmount(() => {})
   display: grid;
   gap: 6px;
   font-size: 13px;
-  color: #606266;
-  background: #f5f7fa;
+  color: var(--el-text-color-regular);
+  background: var(--el-fill-color-light);
   border-radius: 8px;
   padding: 12px 16px;
   margin-top: 8px;

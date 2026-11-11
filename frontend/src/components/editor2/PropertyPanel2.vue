@@ -604,12 +604,12 @@ function floorWaypoints(floorCode: string) {
   padding: 10px;
   overflow-y: auto;
   height: 100%;
-  background: #fff;
+  background: var(--el-bg-color);
 }
 
 .prop-panel h4 {
   margin: 4px 0 12px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .panel-head {
@@ -621,7 +621,7 @@ function floorWaypoints(floorCode: string) {
 
 .panel-head h4 {
   margin: 4px 0 0;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .head-info {
@@ -632,7 +632,7 @@ function floorWaypoints(floorCode: string) {
 .head-code {
   display: block;
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   font-family: monospace;
   margin-bottom: 8px;
 }
@@ -644,11 +644,11 @@ function floorWaypoints(floorCode: string) {
 }
 
 .segment-card {
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--el-border-color-light);
   border-radius: 6px;
   padding: 8px;
   margin-bottom: 8px;
-  background: #fafafa;
+  background: var(--el-fill-color-lighter);
 }
 
 .segment-head {
@@ -657,7 +657,7 @@ function floorWaypoints(floorCode: string) {
   align-items: center;
   margin-bottom: 4px;
   font-size: 13px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .cp-row {
@@ -670,13 +670,13 @@ function floorWaypoints(floorCode: string) {
 
 .cp-label {
   font-size: 11px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   min-width: 32px;
 }
 
 .cp-hint {
   font-size: 11px;
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   line-height: 1.5;
   padding: 2px 0;
 }

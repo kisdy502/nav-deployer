@@ -148,7 +148,7 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
 
 .floor-label {
   font-size: 13px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .section {
@@ -158,7 +158,7 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
 .section-title {
   font-size: 12.5px;
   font-weight: 600;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 4px;
   padding: 0 4px;
 }
@@ -171,17 +171,17 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
   padding: 5px 8px;
   border-radius: 4px;
   font-size: 13px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   cursor: pointer;
 }
 
 .row:hover {
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 .row.active {
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 .row-title {
@@ -194,13 +194,13 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
 
 .row-sub {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   flex-shrink: 0;
 }
 
 .empty {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   padding: 4px 8px;
 }
 </style>

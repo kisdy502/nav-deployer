@@ -490,8 +490,8 @@ onBeforeUnmount(() => {
 }
 
 .editor-header {
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
   padding: 0;
 }
 
@@ -505,8 +505,8 @@ onBeforeUnmount(() => {
   width: 262px;
   flex-shrink: 0;
   display: flex;
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color-light);
   overflow: hidden;
   transition: width 0.18s ease;
 }
@@ -523,7 +523,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 8px 0;
-  border-right: 1px solid #f0f2f5;
+  border-right: 1px solid var(--el-border-color-extra-light);
 }
 
 .rail-tab {
@@ -536,19 +536,19 @@ onBeforeUnmount(() => {
   border: none;
   background: transparent;
   border-radius: 8px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   cursor: pointer;
   font: inherit;
 }
 
 .rail-tab:hover {
-  color: #409eff;
-  background: #f5f7fa;
+  color: var(--el-color-primary);
+  background: var(--el-fill-color-light);
 }
 
 .rail-tab.on {
-  color: #409eff;
-  background: #ecf5ff;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 
 .rail-label {
@@ -558,12 +558,12 @@ onBeforeUnmount(() => {
 
 .rail-count {
   font-size: 10px;
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   line-height: 1;
 }
 
 .rail-tab.on .rail-count {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .left-list {
@@ -580,14 +580,14 @@ onBeforeUnmount(() => {
   padding: 8px 8px 6px 12px;
   font-size: 12.5px;
   font-weight: 600;
-  color: #909399;
-  border-bottom: 1px solid #f0f2f5;
+  color: var(--el-text-color-secondary);
+  border-bottom: 1px solid var(--el-border-color-extra-light);
 }
 
 .left-collapse {
   border: none;
   background: transparent;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
@@ -595,8 +595,8 @@ onBeforeUnmount(() => {
 }
 
 .left-collapse:hover {
-  color: #409eff;
-  background: #ecf5ff;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 
 .list-scroll {
@@ -612,20 +612,20 @@ onBeforeUnmount(() => {
   padding: 6px 10px;
   cursor: pointer;
   font-size: 12.5px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .list-item:hover {
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 .list-item.active {
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 .list-item.add {
-  color: #409eff;
+  color: var(--el-color-primary);
   justify-content: center;
 }
 
@@ -656,7 +656,7 @@ onBeforeUnmount(() => {
   font-size: 11px;
   line-height: 1;
   padding: 3px 0;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   border-radius: 3px;
 }
 
@@ -664,12 +664,12 @@ onBeforeUnmount(() => {
 .item-code {
   flex-shrink: 0;
   font-size: 10px;
-  color: #c0c4cc;
+  color: var(--el-text-color-placeholder);
   font-family: monospace;
 }
 
 .list-item.active .item-type {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .editor-main {
@@ -688,11 +688,11 @@ onBeforeUnmount(() => {
   height: 64px;
   min-width: 20px;
   padding: 0 3px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--el-border-color);
   border-right: none;
   border-radius: 6px 0 0 6px;
   background: rgba(255, 255, 255, 0.92);
-  color: #606266;
+  color: var(--el-text-color-regular);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -701,8 +701,8 @@ onBeforeUnmount(() => {
 }
 
 .right-panel-handle:hover {
-  color: #409eff;
-  border-color: #409eff;
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
 }
 
 .right-panel-handle .handle-text {
@@ -713,8 +713,8 @@ onBeforeUnmount(() => {
 }
 
 .editor-right {
-  background: #fff;
-  border-left: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-left: 1px solid var(--el-border-color-light);
 }
 
 .editor-footer {

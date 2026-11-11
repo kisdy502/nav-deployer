@@ -341,7 +341,7 @@ function togglePreview() {
 }
 
 .section {
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--el-border-color-light);
   border-radius: 8px;
   padding: 12px;
 }
@@ -349,7 +349,7 @@ function togglePreview() {
 .section-title {
   font-weight: 600;
   margin-bottom: 10px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .btn-row {
@@ -360,7 +360,7 @@ function togglePreview() {
 }
 
 .muted {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -369,15 +369,15 @@ function togglePreview() {
   margin-bottom: 12px;
   font-size: 12.5px;
   line-height: 1.6;
-  color: #606266;
-  background: #f5f7fa;
+  color: var(--el-text-color-regular);
+  background: var(--el-fill-color-light);
   border-radius: 6px;
   padding: 8px 10px;
 }
 
 .task-state {
   font-size: 12.5px;
-  color: #409eff;
+  color: var(--el-color-primary);
   margin-bottom: 6px;
 }
 </style>
