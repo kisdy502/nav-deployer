@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Refresh } from '@element-plus/icons-vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import { getSystemConfig } from '@/api/system'
 import type { SystemConfig } from '@/types/api'
 
@@ -53,6 +54,7 @@ onMounted(load)
       <el-button :icon="ArrowLeft" @click="router.push('/')">返回主页</el-button>
       <span class="page-title">系统配置</span>
       <span class="spacer"></span>
+      <ThemeToggle />
       <el-button :icon="Refresh" @click="load">刷新</el-button>
     </header>
 
