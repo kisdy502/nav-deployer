@@ -194,9 +194,6 @@ const localTasks = computed<LocalItem[]>(() => {
   }
   for (const trip of trips.slice().reverse()) {
     const last = trip[trip.length - 1]
-    const head = headPoint(trip[0].route_summary)
-    const tail = tailPoint(last.route_summary)
-    const chain = trip.map((m) => m.route_summary || `#${m.id}`).join('；')
     items.push({
       key: `t${trip[0].id}`,
       kind: '移动',
@@ -205,9 +202,7 @@ const localTasks = computed<LocalItem[]>(() => {
       moves: trip,
       status: last.status ?? '—',
       statusType: stageStatusType(last.status ?? ''),
-      desc: head && tail && head !== tail
-        ? `${head} → … → ${tail}`
-        : chain,
+      desc: tripChainOf(trip),
       message: trip.map((m) => m.error_message).filter(Boolean).join('；') || null,
       time: trip[0].created_at,
     })
@@ -237,6 +232,18 @@ const localTasks = computed<LocalItem[]>(() => {
   }
   return items.sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
 })
+
+/** 行程组完整点位链：各任务 route_summary 顺序拼接（相邻接点去重），如 "H7→C2→C5→P21" */
+function tripChainOf(trip: MoveTaskVO[]): string {
+  const pts: string[] = []
+  for (const m of trip) {
+    const chain = m.route_summary ?? ''
+    for (const p of chain.split('→').map((s) => s.trim()).filter(Boolean)) {
+      if (!pts.length || pts[pts.length - 1] !== p) pts.push(p)
+    }
+  }
+  return pts.length ? pts.join('→') : trip.map((m) => `#${m.id}`).join('；')
+}
 
 /** 路线摘要首点（"H9→P13→P2" → "H9"；空返回 null） */
 function headPoint(summary?: string | null): string | null {
