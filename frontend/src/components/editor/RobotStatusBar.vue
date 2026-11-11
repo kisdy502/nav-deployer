@@ -113,7 +113,7 @@ const armState = computed<{ label: string; color: string } | null>(() => {
     : { label: '展开', color: '#e6a23c' }
 })
 
-/** 雷达简化展示：点云已上图绘制，状态栏只留健康指示（✓/✗），明细放悬停提示 */
+/** 雷达简化展示：点云已上图绘制，状态栏只留健康指示（✓绿/✗红，各自独立），明细放悬停提示 */
 const scanView = computed(() => {
   const s1 = robot.snapshot?.scan1
   const s2 = robot.snapshot?.scan2
@@ -121,9 +121,14 @@ const scanView = computed(() => {
   const p2 = robot.scan2Cloud
   const fmt = (s: typeof s1, cloud: typeof p1) =>
     s ? `${s.range_count ?? '-'}点（${s.min_range ?? '-'}~${s.max_range ?? '-'}m${cloud?.points?.length ? '，点云✓' : '，无点云'}）` : '无数据'
-  const mark = (s: typeof s1) => (s ? '✓' : '✗')
+  const markOf = (s: typeof s1, cloud: typeof p1) => ({
+    ok: s != null,
+    mark: s ? '✓' : '✗',
+    color: s ? '#67c23a' : '#f56c6c',
+    tip: `${s ? '正常' : '无数据'}：${fmt(s, cloud)}`,
+  })
   return {
-    text: `雷达 ${mark(s1)}${mark(s2)}`,
+    marks: [markOf(s1, p1), markOf(s2, p2)],
     healthy: s1 != null && s2 != null,
     tip: `雷达1: ${fmt(s1, p1)} | 雷达2: ${fmt(s2, p2)}`,
   }
@@ -263,11 +268,14 @@ async function onCancelTask() {
           </span>
         </template>
         <el-divider direction="vertical" />
-        <span
-          class="muted"
-          :style="scanView.healthy ? '' : 'color: #e6a23c'"
-          :title="scanView.tip"
-        >{{ scanView.text }}</span>
+        <span class="muted" :title="scanView.tip">雷达
+          <b
+            v-for="(m, i) in scanView.marks"
+            :key="i"
+            :style="{ color: m.color }"
+            :title="m.tip"
+          >{{ m.mark }}</b>
+        </span>
       </template>
       <template v-else>
         <span class="muted">等待机器人遥测…</span>
