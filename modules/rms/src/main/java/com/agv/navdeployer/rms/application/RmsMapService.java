@@ -236,9 +236,18 @@ public class RmsMapService {
             return BodyReply.success("map exported: " + mapName,
                     Map.of("native_included", nativePackage != null));
         } catch (Exception exception) {
-            log.warn("RMS mapping/get 失败: {}", exception.getMessage());
-            return BodyReply.failure(500, "map export failed: " + exception.getMessage());
+            log.warn("RMS mapping/get 失败: {}", rootMessage(exception), exception);
+            return BodyReply.failure(500, "map export failed: " + rootMessage(exception));
         }
+    }
+
+    /** 异常摘要：message 为 null 的异常（超时/TLS 等）回退异常类名，避免日志只剩 "null" */
+    private static String rootMessage(Throwable throwable) {
+        Throwable root = throwable;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        return root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
     }
 
     private void uploadZipToUrl(String url, String mapName, byte[] body) throws Exception {
