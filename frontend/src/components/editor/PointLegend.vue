@@ -36,11 +36,11 @@ function toggle() {
       <span v-for="(style, type) in POINT_STYLES" :key="type" class="legend-item">
         <svg viewBox="-1 -1 2 2" aria-hidden="true">
           <circle r="1" :fill="style.color" />
-          <polygon points="1,0 0,-1 0,1" fill="#52667a" />
+          <polygon points="1,0 0,-1 0,1" fill="var(--el-text-color-secondary)" />
           <polygon
             v-if="style.outline.length > 0"
             :points="style.outline.map(([x, y]) => (x * 0.5 - 0.5) + ',' + -y * 0.5).join(' ')"
-            fill="#52667a"
+            fill="var(--el-text-color-secondary)"
           />
         </svg>
         {{ style.label }}
@@ -59,14 +59,14 @@ function toggle() {
 </template>
 
 <style scoped>
-.point-legend { position: absolute; bottom: 44px; left: 10px; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; max-width: calc(100% - 40px); padding: 7px 10px; background: rgba(255,255,255,.94); border: 1px solid var(--el-border-color); border-radius: 6px; color: var(--el-text-color-primary); font-size: 12px; pointer-events: auto; }
+.point-legend { position: absolute; bottom: 44px; left: 10px; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; max-width: calc(100% - 40px); padding: 7px 10px; background: var(--el-bg-color-overlay); border: 1px solid var(--el-border-color); border-radius: 6px; color: var(--el-text-color-primary); font-size: 12px; pointer-events: auto; }
 .legend-item { display: inline-flex; align-items: center; gap: 5px; }
 svg { width: 26px; height: 26px; }
-.direction { align-self: center; color: #172b4d; }
+.direction { align-self: center; color: var(--el-text-color-primary); }
 .legend-toggle { border: none; background: transparent; color: var(--el-color-primary); font-size: 12px; cursor: pointer; padding: 0 2px; white-space: nowrap; }
 .legend-toggle:hover { text-decoration: underline; }
 
-.scale-bar { position: absolute; bottom: 10px; left: 10px; z-index: 10; display: flex; align-items: flex-end; gap: 8px; padding: 4px 10px; background: rgba(255,255,255,.94); border: 1px solid var(--el-border-color); border-radius: 6px; color: var(--el-text-color-primary); font-size: 12px; pointer-events: none; }
+.scale-bar { position: absolute; bottom: 10px; left: 10px; z-index: 10; display: flex; align-items: flex-end; gap: 8px; padding: 4px 10px; background: var(--el-bg-color-overlay); border: 1px solid var(--el-border-color); border-radius: 6px; color: var(--el-text-color-primary); font-size: 12px; pointer-events: none; }
 /* ┌─┐ 形比例尺：三边 2px 整数 border（两端竖线+底线），宽度随缩放换算并以过渡平滑 */
 .bar { height: 8px; border-left: 2px solid var(--el-text-color-primary); border-right: 2px solid var(--el-text-color-primary); border-bottom: 2px solid var(--el-text-color-primary); transition: width .15s ease-out; }
 .scale-label { font-weight: 600; white-space: nowrap; line-height: 1; padding-bottom: 1px; }

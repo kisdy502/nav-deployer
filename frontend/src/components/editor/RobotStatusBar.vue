@@ -349,8 +349,8 @@ async function onCancelTask() {
   gap: 8px;
   padding: 0 8px;
   font-size: 12px;
-  background: #fff;
-  border-top: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border-top: 1px solid var(--el-border-color-light);
 }
 
 /* 状态栏空间紧张：收紧竖分隔线与按钮内边距 */
@@ -390,7 +390,7 @@ async function onCancelTask() {
 }
 
 .muted {
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .charging-badge {

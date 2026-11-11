@@ -1623,8 +1623,8 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
 .ctx-menu {
   position: fixed;
   z-index: 3000;
-  background: #fff;
-  border: 1px solid #e4e7ed;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   padding: 4px;
@@ -1639,7 +1639,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
 }
 
 .ctx-item:hover {
-  background: #f5f7fa;
+  background: var(--el-fill-color-light);
 }
 
 .ctx-item.danger {
@@ -1647,7 +1647,7 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
 }
 
 .muted {
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .tip-line {
@@ -1700,17 +1700,17 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
 }
 
 .nd-chip {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #dcdfe6;
+  background: var(--el-bg-color-overlay);
+  border: 1px solid var(--el-border-color);
   border-radius: 4px;
   padding: 2px 10px;
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .nd-chip--hint {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .nd-chip--warn {
@@ -1733,8 +1733,8 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
 
 .nd-chip--btn:hover,
 .nd-chip--active {
-  color: #409eff;
-  border-color: #409eff;
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary);
 }
 
 .nd-chip--active {
