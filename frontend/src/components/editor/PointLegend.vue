@@ -36,7 +36,7 @@ function toggle() {
       <span v-for="(style, type) in POINT_STYLES" :key="type" class="legend-item">
         <svg viewBox="-1 -1 2 2" aria-hidden="true">
           <circle r="1" :fill="style.color" />
-          <polygon points="1,0 0,-1 0,1" fill="var(--el-text-color-secondary)" />
+          <polygon points="0.62,0 0.22,0.69 0.22,-0.69" fill="var(--el-text-color-secondary)" />
           <polygon
             v-if="style.outline.length > 0"
             :points="style.outline.map(([x, y]) => (x * 0.5 - 0.5) + ',' + -y * 0.5).join(' ')"
