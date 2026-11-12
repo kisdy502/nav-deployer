@@ -4,9 +4,9 @@ import { pointStyle } from '@/utils/pointStyle'
 
 /** 圆盘半径（加大：点位更醒目）；前半圆=朝向箭头（v1 经典样式），后半圆=类型符号（偏移避让）。 */
 const R = 0.5
-/** 类型符号缩放与后偏移：符号显眼（占后半圆主体），与缩小后的箭头互不重叠 */
-const SYMBOL_SCALE = 0.85
-const SYMBOL_OFFSET = 0.42
+/** 后半圆符号缩放：配合 -0.5R 偏移，与箭头半圆互不重叠 */
+const SYMBOL_SCALE = 0.55
+const SYMBOL_OFFSET = 0.5
 /** 图形/箭头配色：温和的青灰（替代扎眼的深藏青 #172b4d） */
 const GLYPH_COLOR = 0x52667a
 /** 类型串（v2 小写 / v1 大写）→ 颜色，未知类型回退普通点样式 */
@@ -94,13 +94,12 @@ export class PointLayer {
       new THREE.MeshBasicMaterial({ color: GLYPH_COLOR, side: THREE.DoubleSide }))
     symbol.position.z = 0.025
     symbol.userData.pick = { type: 'point', id: p.id }
-    // 朝向箭头：顶角 120° 的短箭头（长度 ~0.4R），只占圆盘前沿小区块，
-    // 不再覆盖半圆——把主要面积让给类型符号（v1 大半圆三角在类型分类后过喧宾夺主）。
+    // 朝向箭头占前半圆（圆心→边缘的大三角，v1 经典样式），后半圆留给类型符号。
     // 仅箭头与符号随 yaw 旋转（符号保持在朝向反侧的后半圆内）。
     const arrowShape = new THREE.Shape()
-    arrowShape.moveTo(R * 0.62, 0)
-    arrowShape.lineTo(R * 0.22, R * 0.69)
-    arrowShape.lineTo(R * 0.22, -R * 0.69)
+    arrowShape.moveTo(R, 0)
+    arrowShape.lineTo(0, R)
+    arrowShape.lineTo(0, -R)
     arrowShape.closePath()
     const arrow = new THREE.Mesh(
       new THREE.ShapeGeometry(arrowShape),
