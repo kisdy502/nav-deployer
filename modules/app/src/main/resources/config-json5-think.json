@@ -1,0 +1,17 @@
+{
+  "connect": {
+    "endpoints": [
+      "tcp/10.6.34.53:7447"
+    ]
+  },
+  "mode": "client",
+  "scouting": {
+    "multicast": {
+      "enabled": false
+    },
+    "gossip": {
+      "enabled": false
+    }
+  },
+  "namespace": "test-dispatch"
+}
