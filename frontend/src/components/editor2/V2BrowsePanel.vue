@@ -11,28 +11,12 @@ const emit = defineEmits<{
   (e: 'locate-bounds', pts: { x: number; y: number }[]): void
 }>()
 
+/** 点击列表 = 仅选中高亮 + 点位平移居中（保持当前缩放）；路线/区域/货架不再 fitView（缩放被重置很打断浏览） */
 function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', id: number) {
   store.select(kind, id)
   if (kind === 'waypoint') {
     const w = store.waypointById.get(id)
     if (w) emit('locate-point', { x: w.x, y: w.y })
-  } else if (kind === 'zone' || kind === 'shelf') {
-    const entity = kind === 'zone'
-      ? store.zones.find((z) => z.id === id)
-      : store.shelves.find((s) => s.id === id)
-    const pts = (entity?.vertices ?? []).map((v) => ({ x: v[0], y: v[1] }))
-    if (pts.length === 1) emit('locate-point', pts[0])
-    else if (pts.length > 1) emit('locate-bounds', pts)
-  } else if (kind === 'path') {
-    const path = store.paths.find((p) => p.id === id)
-    const pts: { x: number; y: number }[] = []
-    for (const segment of path?.segments ?? []) {
-      const source = store.waypointById.get(segment.source_waypoint_id)
-      const target = store.waypointById.get(segment.target_waypoint_id)
-      if (source) pts.push({ x: source.x, y: source.y })
-      if (target) pts.push({ x: target.x, y: target.y })
-    }
-    if (pts.length > 1) emit('locate-bounds', pts)
   }
 }
 </script>
