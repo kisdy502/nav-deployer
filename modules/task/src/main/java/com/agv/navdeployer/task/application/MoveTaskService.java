@@ -591,7 +591,8 @@ public class MoveTaskService {
 
         insertSegmentRecord(runtime, seq + runtime.recordBase, plan);
         task.markDispatchedGoal(goalId, seq);
-        moveTaskRepository.update(task);
+        // 条件更新（仅非终态）：段下发登记若因 CPU 饥饿迟到提交，不能把已终结任务覆盖回 DISPATCHED
+        moveTaskRepository.updateDispatch(task);
     }
 
     private FollowEdgeListener listenerFor(TaskRuntime runtime, int seq) {

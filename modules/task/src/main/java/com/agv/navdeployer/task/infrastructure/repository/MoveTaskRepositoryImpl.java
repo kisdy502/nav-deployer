@@ -58,6 +58,18 @@ public class MoveTaskRepositoryImpl implements MoveTaskRepository {
     }
 
     @Override
+    public void updateDispatch(MoveTask task) {
+        moveTaskMapper.update(null, Wrappers.lambdaUpdate(MoveTask.class)
+                .eq(MoveTask::getId, task.getId())
+                .in(MoveTask::getStatus, MoveTask.STATUS_CREATED, MoveTask.STATUS_DISPATCHED,
+                        MoveTask.STATUS_EXECUTING)
+                .set(MoveTask::getGoalId, task.getGoalId())
+                .set(MoveTask::getSegmentSeq, task.getSegmentSeq())
+                .set(MoveTask::getStatus, task.getStatus())
+                .set(MoveTask::getUpdatedAt, LocalDateTime.now()));
+    }
+
+    @Override
     public MoveTask findById(Long id) {
         MoveTask task = moveTaskMapper.selectById(id);
         if (task == null) {

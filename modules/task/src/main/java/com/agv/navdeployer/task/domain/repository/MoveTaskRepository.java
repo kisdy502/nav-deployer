@@ -13,6 +13,9 @@ public interface MoveTaskRepository {
     /** feedback 周期刷新：只更新位姿/状态字段，且仅当任务仍处于非终态（防迟到事务覆盖终态判定） */
     void updateFeedback(MoveTask task, boolean markExecuting);
 
+    /** 段下发登记：goal/段号/状态，仅当任务仍处于非终态（防迟到提交把已终结任务覆盖回 DISPATCHED） */
+    void updateDispatch(MoveTask task);
+
     List<MoveTask> findNonTerminal();
 
     MoveTask findById(Long id);
