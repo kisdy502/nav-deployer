@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { WAYPOINT_TYPE_LABELS, ZONE_TYPE_LABELS, CONN_TYPE_LABELS } from '@/types/map2'
+import { pointStyle, POINT_UNIFIED_COLOR, outlineSvgPoints } from '@/utils/pointStyle'
 
 /** 主页右侧浏览面板（v2 地图）：楼层切换 + 点位/路线/区域/货架/连接列表，点击定位。 */
 const store = useMapEditor2Store()
@@ -64,6 +65,15 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
         :class="{ active: store.selection?.kind === 'waypoint' && store.selection.id === w.id }"
         @click="selectAndLocate('waypoint', w.id)"
       >
+        <svg viewBox="-1 -1 2 2" class="row-icon" aria-hidden="true">
+          <circle r="1" :fill="POINT_UNIFIED_COLOR" />
+          <polygon
+            v-if="pointStyle(w.wp_type).outline.length > 0"
+            :points="outlineSvgPoints(pointStyle(w.wp_type), 0.75, 0)"
+            :fill="pointStyle(w.wp_type).color"
+            fill-rule="evenodd"
+          />
+        </svg>
         <span class="row-title">{{ w.waypoint_code }}</span>
         <span class="row-sub">{{ WAYPOINT_TYPE_LABELS[w.wp_type] ?? w.wp_type }}</span>
       </div>
@@ -164,11 +174,11 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
 }
 
 .row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 5px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
   border-radius: 4px;
   font-size: 13px;
   color: var(--el-text-color-primary);
@@ -182,6 +192,12 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
 .row.active {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
+}
+
+.row-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }
 
 .row-title {
