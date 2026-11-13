@@ -298,14 +298,14 @@ onBeforeUnmount(() => {
                 @click="selectListItem('waypoint', w.id)"
               >
                 <span class="item-glyph" :title="WAYPOINT_TYPE_LABELS[w.wp_type] ?? w.wp_type">
+                  <!-- 通用定位 pin 造型（带尖圆立于底盘圆），pin 体颜色=类型色，列表小尺寸下比逐类型几何图形更可辨 -->
                   <svg viewBox="-1 -1 2 2" aria-hidden="true">
-                    <circle r="1" :fill="pointStyle(w.wp_type).color" />
-                    <polygon points="1,0 0,-1 0,1" fill="#52667a" />
-                    <polygon
-                      v-if="pointStyle(w.wp_type).outline.length > 0"
-                      :points="pointStyle(w.wp_type).outline.map(([x, y]) => (x * 0.5 - 0.5) + ',' + -y * 0.5).join(' ')"
-                      fill="#52667a"
+                    <ellipse cx="0" cy="0.62" rx="0.7" ry="0.22" fill="#8a9aa5" />
+                    <path
+                      d="M 0,0.5 C -0.45,0.05 -0.55,-0.2 -0.55,-0.4 A 0.55,0.55 0 1,1 0.55,-0.4 C 0.55,-0.2 0.45,0.05 0,0.5 Z"
+                      :fill="pointStyle(w.wp_type).color"
                     />
+                    <circle cy="-0.4" r="0.2" fill="#ffffff" />
                   </svg>
                 </span>
                 <span class="item-title">{{ w.waypoint_code }}</span>
