@@ -391,6 +391,19 @@ function floorWaypoints(floorCode: string) {
   <div class="prop-panel">
     <template v-if="kind === 'waypoint' && store.selectedWaypoint">
       <div class="panel-head">
+        <!-- 选中点位图标（与地图/图例同源：绿盘+类型色图形），类型切换实时跟随 -->
+        <span class="panel-head-icon">
+          <svg viewBox="-1 -1 2 2" class="wp-icon wp-icon-lg" aria-hidden="true">
+            <circle r="1" :fill="POINT_UNIFIED_COLOR" />
+            <polygon
+              v-if="pointStyle(waypointForm.wp_type).outline.length > 0"
+              :points="outlineSvgPoints(pointStyle(waypointForm.wp_type), 0.75, 0)"
+              :fill="pointStyle(waypointForm.wp_type).color"
+              fill-rule="evenodd"
+            />
+          </svg>
+          {{ pointStyle(waypointForm.wp_type).label }}
+        </span>
         <el-button size="small" text type="primary" class="locate-btn" @click="locateSelected">定位</el-button>
       </div>
       <el-form label-width="72px" size="small">
@@ -642,8 +655,29 @@ function floorWaypoints(floorCode: string) {
 .panel-head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-bottom: 4px;
+}
+
+.panel-head-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.wp-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  vertical-align: -2px;
+}
+
+.wp-icon-lg {
+  width: 22px;
+  height: 22px;
 }
 
 .panel-head h4 {
@@ -692,13 +726,6 @@ function floorWaypoints(floorCode: string) {
   align-items: center;
   gap: 3px;
   min-width: 0;
-}
-
-.wp-icon {
-  width: 14px;
-  height: 14px;
-  flex: none;
-  vertical-align: -2px;
 }
 
 .cp-row {
