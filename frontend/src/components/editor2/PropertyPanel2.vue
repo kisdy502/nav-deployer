@@ -11,6 +11,7 @@ import {
   type WaypointType,
   type ZoneType,
 } from '@/types/map2'
+import { pointStyle, POINT_UNIFIED_COLOR, outlineSvgPoints } from '@/utils/pointStyle'
 
 /** 右侧属性面板：当前选中实体的表单编辑（保存 = 调对应 v2 接口）。 */
 const emit = defineEmits<{
@@ -344,6 +345,10 @@ function waypointCode(id: number) {
   return (w?.name || w?.waypoint_code) ?? id
 }
 
+function waypointStyle(id: number) {
+  return pointStyle(store.waypointById.get(id)?.wp_type ?? 'path')
+}
+
 function addConnEndpoint() {
   connForm.connections.push({ floor_id: store.floors[0]?.floor.floor_code ?? '', waypoint_id: '' })
 }
@@ -519,7 +524,29 @@ function floorWaypoints(floorCode: string) {
       <el-divider content-position="left">段（{{ pathForm.segments.length }}，曲线=贝塞尔）</el-divider>
       <div v-for="(segment, si) in pathForm.segments" :key="si" class="segment-card">
         <div class="segment-head">
-          <span>{{ si + 1 }}. {{ waypointCode(segment.source_waypoint_id) }} → {{ waypointCode(segment.target_waypoint_id) }}</span>
+          <span class="segment-endpoints">
+            {{ si + 1 }}.
+            <svg viewBox="-1 -1 2 2" class="wp-icon" aria-hidden="true">
+              <circle r="1" :fill="POINT_UNIFIED_COLOR" />
+              <polygon
+                v-if="waypointStyle(segment.source_waypoint_id).outline.length > 0"
+                :points="outlineSvgPoints(waypointStyle(segment.source_waypoint_id), 0.75, 0)"
+                :fill="waypointStyle(segment.source_waypoint_id).color"
+                fill-rule="evenodd"
+              />
+            </svg>
+            {{ waypointCode(segment.source_waypoint_id) }} →
+            <svg viewBox="-1 -1 2 2" class="wp-icon" aria-hidden="true">
+              <circle r="1" :fill="POINT_UNIFIED_COLOR" />
+              <polygon
+                v-if="waypointStyle(segment.target_waypoint_id).outline.length > 0"
+                :points="outlineSvgPoints(waypointStyle(segment.target_waypoint_id), 0.75, 0)"
+                :fill="waypointStyle(segment.target_waypoint_id).color"
+                fill-rule="evenodd"
+              />
+            </svg>
+            {{ waypointCode(segment.target_waypoint_id) }}
+          </span>
           <el-button size="small" text :type="segment.segment_type === 'CURVE' ? 'warning' : 'info'" @click="toggleSegmentType(segment)">
             {{ segment.segment_type === 'CURVE' ? '曲线' : '直线' }}
           </el-button>
@@ -658,6 +685,20 @@ function floorWaypoints(floorCode: string) {
   margin-bottom: 4px;
   font-size: 13px;
   color: var(--el-text-color-primary);
+}
+
+.segment-endpoints {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.wp-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  vertical-align: -2px;
 }
 
 .cp-row {
