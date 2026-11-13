@@ -14,7 +14,7 @@ import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { useRobotStore } from '@/stores/robot'
 import { WAYPOINT_TYPE_LABELS, ZONE_TYPE_LABELS, CONN_TYPE_LABELS, type ConnType } from '@/types/map2'
-import { pointStyle } from '@/utils/pointStyle'
+import { pointStyle, POINT_UNIFIED_COLOR } from '@/utils/pointStyle'
 
 /** v2 多楼层地图编辑器：布局对齐 v1 EditorView（工具栏/左列表/画布/右属性/状态栏/浮动按钮），并整合主页地图功能（建图/遥控/重定位/测量）。 */
 const props = defineProps<{ id: string }>()
@@ -298,14 +298,14 @@ onBeforeUnmount(() => {
                 @click="selectListItem('waypoint', w.id)"
               >
                 <span class="item-glyph" :title="WAYPOINT_TYPE_LABELS[w.wp_type] ?? w.wp_type">
-                  <!-- 通用定位 pin 造型（带尖圆立于底盘圆），pin 体颜色=类型色，列表小尺寸下比逐类型几何图形更可辨 -->
                   <svg viewBox="-1 -1 2 2" aria-hidden="true">
-                    <ellipse cx="0" cy="0.62" rx="0.7" ry="0.22" fill="#8a9aa5" />
-                    <path
-                      d="M 0,0.5 C -0.45,0.05 -0.55,-0.2 -0.55,-0.4 A 0.55,0.55 0 1,1 0.55,-0.4 C 0.55,-0.2 0.45,0.05 0,0.5 Z"
+                    <circle r="1" :fill="POINT_UNIFIED_COLOR" />
+                    <polygon points="1,0 0,-1 0,1" fill="#52667a" />
+                    <polygon
+                      v-if="pointStyle(w.wp_type).outline.length > 0"
+                      :points="pointStyle(w.wp_type).outline.map(([x, y]) => (x * 0.5 - 0.5) + ',' + -y * 0.5).join(' ')"
                       :fill="pointStyle(w.wp_type).color"
                     />
-                    <circle cy="-0.4" r="0.2" fill="#ffffff" />
                   </svg>
                 </span>
                 <span class="item-title">{{ w.waypoint_code }}</span>
