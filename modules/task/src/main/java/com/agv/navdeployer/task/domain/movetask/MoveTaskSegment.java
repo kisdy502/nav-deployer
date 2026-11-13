@@ -22,6 +22,7 @@ public class MoveTaskSegment {
     public static final String STATUS_FAILED = "FAILED";
     public static final String STATUS_CANCELLED = "CANCELLED";
     public static final String STATUS_TIMEOUT = "TIMEOUT";
+    public static final String STATUS_INTERRUPTED = "INTERRUPTED";
 
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;

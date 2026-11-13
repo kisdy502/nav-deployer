@@ -20,6 +20,7 @@ export type MoveTaskStatus =
   | 'CREATED'
   | 'DISPATCHED'
   | 'EXECUTING'
+  | 'PAUSED'
   | 'SUCCEEDED'
   | 'FAILED'
   | 'CANCELLED'

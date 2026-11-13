@@ -261,7 +261,7 @@ public class RmsTaskExecutor {
             }
             default -> {
                 if (!"CREATED".equals(moveStatus) && !"DISPATCHED".equals(moveStatus)
-                        && !"EXECUTING".equals(moveStatus)) {
+                        && !"EXECUTING".equals(moveStatus) && !"PAUSED".equals(moveStatus)) {
                     log.warn("rms task {} internal move task {} unexpected status {}, abort rms task",
                             taskId, moveTaskId, moveStatus);
                     fail(task, RmsTaskStatus.AGV_NODE_FAILED,

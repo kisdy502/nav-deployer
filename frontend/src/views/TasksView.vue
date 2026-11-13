@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Refresh, WarningFilled } from '@element-plus/icons-vue'
-import { getRmsActiveTask, listMoveTaskSegments, listMoveTasks, listRmsTasks, resetRmsTasks, cancelMoveTask } from '@/api/tasks'
+import { getRmsActiveTask, listMoveTaskSegments, listMoveTasks, listRmsTasks, resetRmsTasks, cancelMoveTask, pauseMoveTask, resumeMoveTask } from '@/api/tasks'
 import { listChargeTasks } from '@/api/charge'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import type { ChargeTaskVO, MoveTaskSegmentVO, MoveTaskVO, RmsTaskVO } from '@/types/api'
@@ -262,7 +262,32 @@ function tailPoint(summary?: string | null): string | null {
 
 function localMoveActive(item: LocalItem) {
   const last = item.moves?.[item.moves.length - 1]
-  return last && ['CREATED', 'DISPATCHED', 'EXECUTING'].includes(last.status ?? '')
+  return last && ['CREATED', 'DISPATCHED', 'EXECUTING', 'PAUSED'].includes(last.status ?? '')
+}
+
+function localMovePaused(item: LocalItem) {
+  const last = item.moves?.[item.moves.length - 1]
+  return last?.status === 'PAUSED'
+}
+
+async function doPauseMove(task: MoveTaskVO) {
+  try {
+    await pauseMoveTask(task.id)
+    ElMessage.success(`已暂停移动任务 ${task.id}，机器人就地停止`)
+    await refresh()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '暂停失败')
+  }
+}
+
+async function doResumeMove(task: MoveTaskVO) {
+  try {
+    await resumeMoveTask(task.id)
+    ElMessage.success(`已恢复移动任务 ${task.id}，从当前位置重规划续走`)
+    await refresh()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复失败')
+  }
 }
 
 // ==================== 展示辅助 ====================
@@ -502,11 +527,22 @@ onUnmounted(() => {
               <span v-else>—</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="localMoveActive(row)" size="small" type="warning" plain @click="doCancelMove(row.moves![row.moves!.length - 1])">
-                取消
-              </el-button>
+              <template v-if="localMoveActive(row)">
+                <el-button v-if="!localMovePaused(row)" size="small" type="primary" plain
+                  @click="doPauseMove(row.moves![row.moves!.length - 1])">
+                  暂停
+                </el-button>
+                <el-button v-else size="small" type="success" plain
+                  @click="doResumeMove(row.moves![row.moves!.length - 1])">
+                  恢复
+                </el-button>
+                <el-button size="small" type="warning" plain
+                  @click="doCancelMove(row.moves![row.moves!.length - 1])">
+                  取消
+                </el-button>
+              </template>
             </template>
           </el-table-column>
         </el-table>

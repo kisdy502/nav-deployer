@@ -25,6 +25,7 @@ public class MoveTask {
     public static final String STATUS_CREATED = "CREATED";
     public static final String STATUS_DISPATCHED = "DISPATCHED";
     public static final String STATUS_EXECUTING = "EXECUTING";
+    public static final String STATUS_PAUSED = "PAUSED";
     public static final String STATUS_SUCCEEDED = "SUCCEEDED";
     public static final String STATUS_FAILED = "FAILED";
     public static final String STATUS_CANCELLED = "CANCELLED";
