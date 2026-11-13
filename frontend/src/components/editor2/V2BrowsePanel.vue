@@ -67,9 +67,10 @@ function selectAndLocate(kind: 'waypoint' | 'zone' | 'shelf' | 'path' | 'conn', 
       >
         <svg viewBox="-1 -1 2 2" class="row-icon" aria-hidden="true">
           <circle r="1" :fill="POINT_UNIFIED_COLOR" />
+          <polygon points="1,0 0,-1 0,1" fill="#52667a" />
           <polygon
             v-if="pointStyle(w.wp_type).outline.length > 0"
-            :points="outlineSvgPoints(pointStyle(w.wp_type), 0.75, 0)"
+            :points="outlineSvgPoints(pointStyle(w.wp_type))"
             :fill="pointStyle(w.wp_type).color"
             fill-rule="evenodd"
           />
