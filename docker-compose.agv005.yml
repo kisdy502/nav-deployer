@@ -1,0 +1,68 @@
+# AGV003 专属上位机实例（与主实例 app=AGV002 并行）：
+#   启动：docker compose -f docker-compose.agv005.yml -p nav-deployer up -d
+#   前端 http://localhost:5174  后端 http://localhost:8183
+# 隔离三要素：
+#   - 独立数据库 nav_deployer_005（同一 robot-postgres 实例内多库，flyway 自动建表）
+#   - 独立 docker 网络 chassis-agv005_agv_network（ws://agv-bridge:9090 在该网络内解析到 AGV003 的桥，
+#     与 AGV002 网络里的同名容器互不可见——同名不同网，天然隔离）
+#   - 独立 RMS 身份（SN/NAME），zenoh 按 SN 区分两台车
+# 一键部署见 docker/multi-robot/deploy-agv003.ps1（含仿真栈/建库/健康检查）
+services:
+  app-agv005:
+    image: ${APP_IMAGE:-nav-deployer:v0.0.7}
+    container_name: nav-deployer-agv005
+    ports:
+      - "5176:8083"
+      - "8185:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://robot-postgres:5432/nav_deployer_005
+      SPRING_DATASOURCE_USERNAME: robot_user
+      SPRING_DATASOURCE_PASSWORD: robot_password
+      SPRING_DATA_REDIS_HOST: robot-redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINIO_ENDPOINT: http://robot-ceph-rgw:7480
+      MINIO_EXTERNAL_PORT: "7480"
+      MINIO_ACCESS_KEY: cephadmin
+      MINIO_SECRET_KEY: cephpassword
+      MINIO_BUCKET: user-avatars
+      MINIO_MAPS_BUCKET: nav-maps
+      SIM_AGV_ENABLED: "true"
+      SIM_AGV_WS_URL: ws://agv-bridge:9090
+      SIM_AGV_HTTP_PORT: "8080"
+      SIM_AGV_TF_CHILD_FRAME: AGV005/base_link
+      NATIVE_MAP_TOKEN: zioneer.com
+      NATIVE_MAP_BASE_URL: http://agv-bridge:8091
+      RMS_ENABLED: "true"
+      RMS_ROBOT_SN: jy-agv005-20261113-multicar
+      RMS_ROBOT_NAME: JYTREE005
+      RMS_ZENOH_CONFIG_FILE: /app/config/zenoh.json5
+      RMS_INSPECTION_IMAGE_DIR: /app/inspection-images
+    networks:
+      - default
+      - robot005
+      - platform
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_logs_005:/app/logs
+      - rms_templates_005:/app/data/rms-templates
+      - ./modules/app/src/main/resources/config-json5-think.json:/app/config/zenoh.json5:ro
+      - type: bind
+        source: ${INSPECTION_IMAGE_HOST_DIR:-./docker/inspection-images}
+        target: /app/inspection-images
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+
+networks:
+  robot005:
+    external: true
+    name: chassis-agv005_agv_network
+  platform:
+    external: true
+    name: robot-platform-network
+
+volumes:
+  app_logs_005:
+  rms_templates_005:

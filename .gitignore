@@ -45,4 +45,4 @@ build/
 docker/inspection-images/*
 !docker/inspection-images/.gitkeep
 
-!docker/multi-robot/chassis-agv003/.env
+!docker/multi-robot/chassis-agv00*/.env
