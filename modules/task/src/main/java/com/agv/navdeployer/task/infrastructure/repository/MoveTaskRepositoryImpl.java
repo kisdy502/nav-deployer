@@ -45,7 +45,7 @@ public class MoveTaskRepositoryImpl implements MoveTaskRepository {
     public MoveTask findLatestActive() {
         return moveTaskMapper.selectOne(Wrappers.lambdaQuery(MoveTask.class)
                 .in(MoveTask::getStatus, MoveTask.STATUS_CREATED, MoveTask.STATUS_DISPATCHED,
-                        MoveTask.STATUS_EXECUTING)
+                        MoveTask.STATUS_EXECUTING, MoveTask.STATUS_PAUSED)
                 .orderByDesc(MoveTask::getId)
                 .last("LIMIT 1"));
     }
@@ -62,7 +62,7 @@ public class MoveTaskRepositoryImpl implements MoveTaskRepository {
     public int markStaleInterrupted(String errorMessage) {
         LambdaUpdateWrapper<MoveTask> wrapper = Wrappers.lambdaUpdate(MoveTask.class)
                 .in(MoveTask::getStatus, MoveTask.STATUS_CREATED, MoveTask.STATUS_DISPATCHED,
-                        MoveTask.STATUS_EXECUTING)
+                        MoveTask.STATUS_EXECUTING, MoveTask.STATUS_PAUSED)
                 .set(MoveTask::getStatus, MoveTask.STATUS_FAILED)
                 .set(MoveTask::getErrorMessage, errorMessage)
                 .set(MoveTask::getFinishedAt, LocalDateTime.now());

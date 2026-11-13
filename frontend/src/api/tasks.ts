@@ -10,6 +10,8 @@ export const discardMapping = () => post<MapModeTaskVO>('/map-mode-tasks/discard
 
 export const createMoveTask = (dto: MoveTaskCreateDTO) => post<MoveTaskVO>('/move-tasks', dto)
 export const cancelMoveTask = (id: number) => post<MoveTaskVO>(`/move-tasks/${id}/cancel`)
+export const pauseMoveTask = (id: number) => post<MoveTaskVO>(`/move-tasks/${id}/pause`)
+export const resumeMoveTask = (id: number) => post<MoveTaskVO>(`/move-tasks/${id}/resume`)
 export const getActiveMoveTask = () => get<MoveTaskVO | null>('/move-tasks/active')
 export const listMoveTasks = (limit = 50) => get<MoveTaskVO[]>('/move-tasks', { limit })
 export const listMoveTaskSegments = (id: number) => get<MoveTaskSegmentVO[]>(`/move-tasks/${id}/segments`)

@@ -49,6 +49,8 @@ public class MoveTaskService {
     private static final Logger log = LoggerFactory.getLogger(MoveTaskService.class);
     private static final long FEEDBACK_DB_WRITE_INTERVAL_MS = 1000L;
     private static final long FORCE_FINALIZE_DELAY_MS = 15000L;
+    // 与 SmartNavigationService 保持一致：目标/机器人位置与最近点位的匹配半径
+    private static final double WAYPOINT_MATCH_RADIUS = 1.5;
 
     private final MoveTaskRepository moveTaskRepository;
     private final MoveTaskMapstruct moveTaskMapstruct;
@@ -62,6 +64,7 @@ public class MoveTaskService {
     private final MapAlignmentGuard mapAlignmentGuard;
     private final com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps;
     private final com.agv.navdeployer.task.infrastructure.repository.mapper.MoveTaskSegmentMapper segmentMapper;
+    private final com.agv.navdeployer.map.application.RoutePlanService routePlanService;
 
     // 单线程 worker 串行化任务启动；任务先落库再下发，防 result 回调早于事务可见
     private final ScheduledExecutorService worker =
@@ -83,7 +86,8 @@ public class MoveTaskService {
                            RobotOperationalService operationalService,
                            MapAlignmentGuard mapAlignmentGuard,
                            com.agv.navdeployer.task.domain.charge.ChargeProperties chargeProps,
-                           com.agv.navdeployer.task.infrastructure.repository.mapper.MoveTaskSegmentMapper segmentMapper) {
+                           com.agv.navdeployer.task.infrastructure.repository.mapper.MoveTaskSegmentMapper segmentMapper,
+                           com.agv.navdeployer.map.application.RoutePlanService routePlanService) {
         this.moveTaskRepository = moveTaskRepository;
         this.moveTaskMapstruct = moveTaskMapstruct;
         this.robotConnection = robotConnection;
@@ -96,6 +100,7 @@ public class MoveTaskService {
         this.mapAlignmentGuard = mapAlignmentGuard;
         this.chargeProps = chargeProps;
         this.segmentMapper = segmentMapper;
+        this.routePlanService = routePlanService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -299,11 +304,176 @@ public class MoveTaskService {
         if (runtime == null) {
             throw new IllegalStateException("任务 " + id + " 不在执行中，无法取消");
         }
+        if (MoveTask.STATUS_PAUSED.equals(runtime.task.getStatus())) {
+            finalizeTask(runtime, MoveTask.STATUS_CANCELLED, "暂停中取消");
+            return moveTaskMapstruct.toDTO(runtime.task);
+        }
         runtime.cancelRequested = true;
         robotCommands.cancelGoal(runtime.currentGoalId);
         scheduleForceFinalize(runtime, MoveTask.STATUS_CANCELLED, "已下发取消，但未收到 action_result，强制终结");
         log.info("move task cancel requested: id={}, goal={}", id, runtime.currentGoalId);
         return moveTaskMapstruct.toDTO(runtime.task);
+    }
+
+    /**
+     * 立即暂停：cancel_goal 中断当前段，机器人就地停住；runtime 保留（占用 goal 槽，阻止新任务插队），
+     * 恢复时从当前位置重规划到原目标（剩余段作废，段内无中间续点）。
+     */
+    public MoveTaskDTO pause(Long id) {
+        TaskRuntime runtime = activeRuntimes.get(id);
+        if (runtime == null) {
+            throw new IllegalStateException("任务 " + id + " 不在执行中，无法暂停");
+        }
+        if (MoveTask.STATUS_PAUSED.equals(runtime.task.getStatus()) || runtime.pauseRequested) {
+            return moveTaskMapstruct.toDTO(runtime.task);
+        }
+        runtime.pauseRequested = true;
+        try {
+            robotCommands.cancelGoal(runtime.currentGoalId);
+        } catch (Exception exception) {
+            log.warn("pause cancel_goal dispatch failed: id={}, {}", id, exception.getMessage());
+        }
+        schedulePauseGuard(runtime);
+        log.info("move task pause requested: id={}, goal={}, seq={}/{}, robot=({},{})",
+                id, runtime.currentGoalId, runtime.currentSeq, runtime.segments.size(),
+                runtime.task.getCurrentX(), runtime.task.getCurrentY());
+        return moveTaskMapstruct.toDTO(runtime.task);
+    }
+
+    /** 机器人未回 action_result 时的兜底：延迟强制转 PAUSED（与取消的 force finalize 对称） */
+    private void schedulePauseGuard(TaskRuntime runtime) {
+        worker.schedule(() -> {
+            if (activeRuntimes.get(runtime.task.getId()) == runtime
+                    && MoveTask.STATUS_PAUSED.equals(runtime.task.getStatus())) {
+                return;
+            }
+            if (activeRuntimes.get(runtime.task.getId()) != runtime || !runtime.pauseRequested) {
+                return;
+            }
+            log.warn("move task pause guard fired: id={}, no action_result, force pause", runtime.task.getId());
+            if (runtime.currentSeq > 0) {
+                closeSegmentRecord(runtime, runtime.currentSeq + runtime.recordBase,
+                        MoveTaskSegment.STATUS_INTERRUPTED, "暂停中断（未收到 action_result，强制暂停）");
+            }
+            pauseFinalize(runtime);
+            publishTaskEvent(runtime.task);
+        }, FORCE_FINALIZE_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void pauseFinalize(TaskRuntime runtime) {
+        ScheduledFuture<?> watchdog = runtime.watchdog;
+        if (watchdog != null) {
+            watchdog.cancel(false);
+        }
+        runtime.pauseRequested = false;
+        runtime.cancelRequested = false;
+        runtime.timeoutRequested = false;
+        runtime.currentSeq = 0;
+        runtime.currentGoalId = "";
+        MoveTask task = runtime.task;
+        task.setStatus(MoveTask.STATUS_PAUSED);
+        if (task.getErrorMessage() == null || task.getErrorMessage().isBlank()) {
+            task.setErrorMessage("已暂停");
+        }
+        moveTaskRepository.update(task);
+        log.info("move task paused: id={}, no={}, robot=({},{})",
+                task.getId(), task.getTaskNo(), task.getCurrentX(), task.getCurrentY());
+    }
+
+    /**
+     * 恢复：从机器人当前位置重规划到原目标（规划器保证接续路线，机器人可能停在段中间），
+     * 替换剩余段后继续 follow_edge 闭环；段执行记录编号续在原任务之后。
+     */
+    public MoveTaskDTO resume(Long id) {
+        TaskRuntime runtime = activeRuntimes.get(id);
+        if (runtime == null || !MoveTask.STATUS_PAUSED.equals(runtime.task.getStatus())) {
+            throw new IllegalStateException("任务 " + id + " 不在暂停状态，无法恢复");
+        }
+        if (!robotConnection.isConnected()) {
+            throw new IllegalStateException("机器人连接未就绪，无法恢复任务");
+        }
+        var status = telemetry.status();
+        if (status == null || !status.poseInitialized()) {
+            throw new IllegalStateException("机器人定位未收敛（pose_initialized=false），无法恢复任务");
+        }
+        if (telemetry.statusFresh() && status.mode() != null
+                && !"NAVIGATION".equals(status.mode())) {
+            throw new IllegalStateException("机器人 mode=" + status.mode() + "（切图/建图中），无法恢复任务");
+        }
+        if (!telemetry.armMovementAllowed()) {
+            throw new IllegalStateException("机械臂未归位（arm_state=" + telemetry.armState() + "），无法恢复移动");
+        }
+        RobotPose pose = telemetry.mapPose();
+        if (pose == null) {
+            throw new IllegalStateException("无法获取机器人当前位置，暂不能恢复");
+        }
+        MoveTask task = runtime.task;
+        List<SegmentPlan> replan = replanSegmentsForResume(task, pose);
+        runtime.recordBase += runtime.segments.size();
+        runtime.segments = replan;
+        runtime.endPointSingle = true;
+        task.setSegmentTotal(runtime.recordBase + replan.size());
+        String resumeChain = routeChainOf(replan);
+        task.setRouteSummary(task.getRouteSummary() + " ⏸续 " + resumeChain);
+        task.setStatus(MoveTask.STATUS_DISPATCHED);
+        task.setAgvState(null);
+        moveTaskRepository.update(task);
+        runtime.watchdog = worker.schedule(() -> onWatchdog(runtime),
+                tuning.goalTimeoutSeconds(), TimeUnit.SECONDS);
+        dispatchSegment(runtime, 1);
+        log.info("move task resumed: id={}, no={}, replan segments={}, plan={}",
+                task.getId(), task.getTaskNo(), replan.size(), resumeChain);
+        publishTaskEvent(task);
+        return moveTaskMapstruct.toDTO(task);
+    }
+
+    /** 暂停恢复重规划：规划器给接续链（跨路线 legs），失败兜底 GOAL 单段直连原目标 */
+    private List<SegmentPlan> replanSegmentsForResume(MoveTask task, RobotPose pose) {
+        List<SegmentPlan> chain = new ArrayList<>();
+        try {
+            var published = mapMetaService.findPublished();
+            if (published != null) {
+                List<MapWaypoint> waypoints = mapMetaService.listWaypoints(published.getId());
+                var robotWp = nearestWaypointWithin(waypoints, pose.x(), pose.y(), WAYPOINT_MATCH_RADIUS * 2);
+                var targetWp = nearestWaypointWithin(waypoints, task.getGoalX(), task.getGoalY(),
+                        WAYPOINT_MATCH_RADIUS);
+                if (robotWp != null && targetWp != null) {
+                    var plan = routePlanService.plan(published.getId(),
+                            robotWp.getId(), targetWp.getId());
+                    if (plan.found() && !plan.steps().isEmpty()) {
+                        for (var step : plan.steps()) {
+                            if (step.isCrossFloor() || step.pathId() <= 0) {
+                                continue;
+                            }
+                            chain.addAll(buildOrientedLegPlan(step.pathId(),
+                                    step.fromWaypointCode(), step.toWaypointCode(), null));
+                        }
+                        if (!chain.isEmpty()) {
+                            return chain;
+                        }
+                    }
+                }
+            }
+        } catch (Exception exception) {
+            log.warn("resume replan failed, fallback GOAL: {}", exception.getMessage());
+        }
+        return List.of(new SegmentPlan("", "", task.getGoalX(), task.getGoalY(),
+                task.getGoalTheta() == null ? 0.0 : task.getGoalTheta(),
+                "STRAIGHT", List.of(), null, false, false,
+                Double.NaN, Double.NaN, Double.NaN));
+    }
+
+    private MapWaypoint nearestWaypointWithin(List<MapWaypoint> waypoints, double x, double y, double radius) {
+        MapWaypoint nearest = null;
+        double nearestDistance = Double.MAX_VALUE;
+        for (MapWaypoint waypoint : waypoints) {
+            double distance = Math.hypot(waypoint.getX() - x, waypoint.getY() - y);
+            if (distance < nearestDistance) {
+                nearest = waypoint;
+                nearestDistance = distance;
+            }
+        }
+        return nearestDistance <= radius ? nearest : null;
     }
 
     public MoveTaskDTO active() {
@@ -392,7 +562,7 @@ public class MoveTaskService {
         String goalId = robotCommands.dispatchFollowEdge(command, listenerFor(runtime, seq));
         runtime.currentGoalId = goalId;
 
-        insertSegmentRecord(runtime, seq, plan);
+        insertSegmentRecord(runtime, seq + runtime.recordBase, plan);
         task.markDispatchedGoal(goalId, seq);
         moveTaskRepository.update(task);
     }
@@ -443,19 +613,34 @@ public class MoveTaskService {
             return;
         }
         MoveTask task = runtime.task;
-        String terminal = terminalStatus(goalStatus, runtime.cancelRequested, runtime.timeoutRequested);
+        String terminal = terminalStatus(goalStatus, runtime.cancelRequested, runtime.timeoutRequested,
+                runtime.pauseRequested);
+        if (MoveTask.STATUS_PAUSED.equals(terminal) && seq < runtime.segments.size()) {
+            // 暂停请求：无论本段成败都停在当前段边界（含"刚好走完本段"的竞态），剩余段作废待恢复重规划
+            closeSegmentRecord(runtime, seq + runtime.recordBase, MoveTaskSegment.STATUS_INTERRUPTED,
+                    "暂停中断（剩余段待恢复后重规划）");
+            pauseFinalize(runtime);
+            publishTaskEvent(task);
+            return;
+        }
         if (MoveTask.STATUS_SUCCEEDED.equals(terminal) && seq < runtime.segments.size()) {
-            closeSegmentRecord(runtime, seq, MoveTaskSegment.STATUS_SUCCEEDED, message);
+            closeSegmentRecord(runtime, seq + runtime.recordBase, MoveTaskSegment.STATUS_SUCCEEDED, message);
             dispatchSegment(runtime, seq + 1);
             publishTaskEvent(task);
             return;
         }
         String segmentStatus = MoveTask.STATUS_SUCCEEDED.equals(terminal)
                 ? MoveTaskSegment.STATUS_SUCCEEDED : terminal;
-        closeSegmentRecord(runtime, seq, segmentStatus,
+        closeSegmentRecord(runtime, seq + runtime.recordBase, segmentStatus,
                 MoveTask.STATUS_SUCCEEDED.equals(terminal) ? message
                         : terminalMessage(terminal, goalStatus, message));
-        finalizeTask(runtime, terminal, terminalMessage(terminal, goalStatus, message));
+        if (MoveTask.STATUS_PAUSED.equals(terminal)) {
+            // 暂停请求打在最后一段上：任务实际已到终点，按暂停收口（恢复时重规划会发现已在目标点）
+            pauseFinalize(runtime);
+        } else {
+            finalizeTask(runtime, terminal, terminalMessage(terminal, goalStatus, message));
+        }
+        publishTaskEvent(task);
     }
 
     private void onWatchdog(TaskRuntime runtime) {
@@ -490,7 +675,7 @@ public class MoveTaskService {
             watchdog.cancel(false);
         }
         if (runtime.currentSeq > 0) {
-            closeSegmentRecord(runtime, runtime.currentSeq,
+            closeSegmentRecord(runtime, runtime.currentSeq + runtime.recordBase,
                     MoveTask.STATUS_SUCCEEDED.equals(status) ? MoveTaskSegment.STATUS_SUCCEEDED : status, message);
         }
         MoveTask task = runtime.task;
@@ -702,11 +887,13 @@ public class MoveTaskService {
         return distEnd < distStart;
     }
 
-    static String terminalStatus(int goalStatus, boolean cancelRequested, boolean timeoutRequested) {
+    static String terminalStatus(int goalStatus, boolean cancelRequested, boolean timeoutRequested,
+                                 boolean pauseRequested) {
         return switch (goalStatus) {
             case 4 -> MoveTask.STATUS_SUCCEEDED;
-            case 5 -> timeoutRequested ? MoveTask.STATUS_TIMEOUT : MoveTask.STATUS_CANCELLED;
-            default -> MoveTask.STATUS_FAILED;
+            case 5 -> timeoutRequested ? MoveTask.STATUS_TIMEOUT
+                    : pauseRequested ? MoveTask.STATUS_PAUSED : MoveTask.STATUS_CANCELLED;
+            default -> pauseRequested ? MoveTask.STATUS_PAUSED : MoveTask.STATUS_FAILED;
         };
     }
 
@@ -741,14 +928,16 @@ public class MoveTaskService {
 
     private static final class TaskRuntime {
         final MoveTask task;
-        final List<SegmentPlan> segments;
-        final boolean endPointSingle;
+        List<SegmentPlan> segments;
+        boolean endPointSingle;
         volatile int currentSeq;
         volatile String currentGoalId = "";
         volatile boolean cancelRequested;
         volatile boolean timeoutRequested;
+        volatile boolean pauseRequested;
         volatile long lastFeedbackWriteMs;
         volatile ScheduledFuture<?> watchdog;
+        int recordBase;
 
         TaskRuntime(MoveTask task, List<SegmentPlan> segments, boolean endPointSingle) {
             this.task = task;

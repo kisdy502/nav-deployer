@@ -38,10 +38,24 @@ public class MoveTaskController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(moveTaskService.create(cmd)));
     }
 
-    @Operation(summary = "取消在途任务", description = "cancel_action_goal，终态由 action_result 确认")
+    @Operation(summary = "取消在途任务", description = "cancel_action_goal，终态由 action_result 确认；暂停中任务可直接取消")
     @PostMapping("/{id}/cancel")
     public ApiResponse<MoveTaskDTO> cancel(@PathVariable Long id) {
         return ApiResponse.ok(moveTaskService.cancel(id));
+    }
+
+    @Operation(summary = "暂停在途任务（立即停）",
+            description = "cancel_goal 中断当前段机器人就地停住，任务转 PAUSED；恢复时从当前位置重规划续走")
+    @PostMapping("/{id}/pause")
+    public ApiResponse<MoveTaskDTO> pause(@PathVariable Long id) {
+        return ApiResponse.ok(moveTaskService.pause(id));
+    }
+
+    @Operation(summary = "恢复暂停任务",
+            description = "规划器从机器人当前位置重算到原目标的接续路线，替换剩余段后继续执行")
+    @PostMapping("/{id}/resume")
+    public ApiResponse<MoveTaskDTO> resume(@PathVariable Long id) {
+        return ApiResponse.ok(moveTaskService.resume(id));
     }
 
     @Operation(summary = "当前在途任务", description = "无在途任务时 data=null")

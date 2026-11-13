@@ -248,8 +248,30 @@ public class RmsTaskService {
         }
         logRmsCommand("task/pause", task);
         registry.transition(taskId, RmsTaskStatus.PAUSED);
-        cancelInternalMove(task);
+        pauseInternalTask(task);
         return BodyReply.success("paused", task.toInfoReport());
+    }
+
+    /** 真暂停：穿透到内部任务暂停（move 中断当前段就地停 / charge 断充），机械臂序列由 dwell 状态检查自动挂起 */
+    private void pauseInternalTask(RmsTask task) {
+        Long moveTaskId = task.internalMoveTaskId();
+        if (moveTaskId != null) {
+            try {
+                moveTaskService.pause(moveTaskId);
+            } catch (Exception exception) {
+                log.warn("pause internal move task {} for rms task {}: {}",
+                        moveTaskId, task.taskId(), exception.getMessage());
+            }
+        }
+        Long chargeTaskId = task.internalChargeTaskId();
+        if (chargeTaskId != null) {
+            try {
+                chargeService.pause("rms task pause: " + task.taskId());
+            } catch (Exception exception) {
+                log.warn("pause internal charge task {} for rms task {}: {}",
+                        chargeTaskId, task.taskId(), exception.getMessage());
+            }
+        }
     }
 
     public BodyReply resumeTask(String taskId) {
@@ -270,8 +292,47 @@ public class RmsTaskService {
         }
         logRmsCommand("task/resume", task);
         registry.transition(taskId, RmsTaskStatus.RUNNING);
-        executor.execute(task.taskId());
+        try {
+            resumeInternalTask(task);
+        } catch (Exception exception) {
+            task.setMessage("恢复失败: " + exception.getMessage());
+            registry.transition(taskId, RmsTaskStatus.FAILED);
+            resultReporter.report(registry.find(taskId).orElse(task));
+            return BodyReply.failure(500, "resume failed: " + exception.getMessage());
+        }
         return BodyReply.success("resumed", task.toInfoReport());
+    }
+
+    /**
+     * 真恢复：内部任务在（move 从当前位置重规划续走 / charge 重新合闸），无内部任务的
+     * （纯机械臂/动作序列）重跑执行链（序列幂等：展开/收拢从头执行，已到位相位很快跳过）。
+     */
+    private void resumeInternalTask(RmsTask task) {
+        Long moveTaskId = task.internalMoveTaskId();
+        if (moveTaskId != null) {
+            try {
+                moveTaskService.resume(moveTaskId);
+                return;
+            } catch (Exception exception) {
+                log.warn("resume internal move task {} for rms task {}: {}",
+                        moveTaskId, task.taskId(), exception.getMessage());
+                throw exception instanceof RuntimeException runtimeException
+                        ? runtimeException : new IllegalStateException(exception);
+            }
+        }
+        Long chargeTaskId = task.internalChargeTaskId();
+        if (chargeTaskId != null) {
+            try {
+                chargeService.resume();
+                return;
+            } catch (Exception exception) {
+                log.warn("resume internal charge task {} for rms task {}: {}",
+                        chargeTaskId, task.taskId(), exception.getMessage());
+                throw exception instanceof RuntimeException runtimeException
+                        ? runtimeException : new IllegalStateException(exception);
+            }
+        }
+        executor.execute(task.taskId());
     }
 
     public BodyReply stopTask(String taskId) {

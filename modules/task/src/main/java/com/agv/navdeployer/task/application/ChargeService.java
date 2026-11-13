@@ -222,6 +222,75 @@ public class ChargeService {
         callSetCharging(false);
     }
 
+    /**
+     * 充电暂停：MOVING 阶段暂停底层移动（机器人就地停）；STARTING/CHARGING 阶段断充。
+     * 恢复时按 pausedFrom 回到原阶段继续（移动重规划续走 / 重新合闸充电）。
+     */
+    public synchronized ChargeTaskDTO pause(String reason) {
+        ChargeTask task = current;
+        if (task == null || task.status().terminal()) {
+            throw new IllegalStateException("没有进行中的充电任务");
+        }
+        if (task.status() == ChargeTask.Status.PAUSED) {
+            return vo(task);
+        }
+        ChargeTask.Status phase = task.status();
+        task.setPausedFrom(phase);
+        if (!task.transitionTo(ChargeTask.Status.PAUSED)) {
+            return vo(task);
+        }
+        task.stamp(ChargeTask.Status.PAUSED);
+        String finalReason = reason == null || reason.isBlank() ? "暂停" : reason;
+        task.setMessage(finalReason);
+        log.info("charge task {} paused at phase {}: {}", task.id(), phase, finalReason);
+        if (phase == ChargeTask.Status.MOVING && task.internalMoveTaskId() != null) {
+            Long moveTaskId = task.internalMoveTaskId();
+            worker.execute(() -> pauseMoveQuietly(moveTaskId));
+        } else {
+            callSetCharging(false);
+        }
+        publish(task, true);
+        return vo(task);
+    }
+
+    public synchronized ChargeTaskDTO resume() {
+        ChargeTask task = current;
+        if (task == null || task.status() != ChargeTask.Status.PAUSED) {
+            throw new IllegalStateException("没有暂停中的充电任务");
+        }
+        ChargeTask.Status from = task.pausedFrom() == null ? ChargeTask.Status.CHARGING : task.pausedFrom();
+        if (!task.transitionTo(from)) {
+            return vo(task);
+        }
+        task.stamp(from);
+        task.setMessage("已恢复（从 " + from + " 继续）");
+        log.info("charge task {} resumed from phase {}", task.id(), from);
+        if (from == ChargeTask.Status.MOVING && task.internalMoveTaskId() != null) {
+            Long moveTaskId = task.internalMoveTaskId();
+            worker.execute(() -> resumeMoveQuietly(moveTaskId));
+        } else {
+            callSetCharging(true);
+        }
+        publish(task, true);
+        return vo(task);
+    }
+
+    private void pauseMoveQuietly(Long moveTaskId) {
+        try {
+            moveTaskService.pause(moveTaskId);
+        } catch (Exception exception) {
+            log.warn("pause internal move task {} for charge task: {}", moveTaskId, exception.getMessage());
+        }
+    }
+
+    private void resumeMoveQuietly(Long moveTaskId) {
+        try {
+            moveTaskService.resume(moveTaskId);
+        } catch (Exception exception) {
+            log.warn("resume internal move task {} for charge task: {}", moveTaskId, exception.getMessage());
+        }
+    }
+
     /** 急停联动：CHARGING 会话以 CANCELLED 收口，无论如何都发断充指令 */
     public synchronized void emergencyInterrupt() {
         ChargeTask task = current;
@@ -264,7 +333,8 @@ public class ChargeService {
                 return;
             }
             if (System.currentTimeMillis() - task.createdAtMs() > props.getMaxDurationMs()
-                    && task.status() != ChargeTask.Status.CHARGING) {
+                    && task.status() != ChargeTask.Status.CHARGING
+                    && task.status() != ChargeTask.Status.PAUSED) {
                 finish(task, ChargeTask.Status.FAILED,
                         "充电任务超时（超过 max_duration_ms=" + props.getMaxDurationMs() + "ms）");
                 return;

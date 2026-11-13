@@ -77,6 +77,7 @@ export const MOVE_TASK_STATUS_TAG: Record<MoveTaskStatus, { label: string; type:
   CREATED: { label: '已创建', type: 'info' },
   DISPATCHED: { label: '已下发', type: 'info' },
   EXECUTING: { label: '执行中', type: 'warning' },
+  PAUSED: { label: '已暂停', type: 'warning' },
   SUCCEEDED: { label: '成功', type: 'success' },
   FAILED: { label: '失败', type: 'danger' },
   CANCELLED: { label: '已取消', type: 'info' },
