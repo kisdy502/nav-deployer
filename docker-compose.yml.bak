@@ -1,0 +1,98 @@
+# 基础设施（PostgreSQL/Redis/MinIO/zenoh/Nacos）全部复用 qc-robot 平台栈：
+#   D:\workspace\qc-robot\root-manager-platform-run\infrastructure\docker-compose.yml
+#   启动：docker compose -f infrastructure/docker-compose.yml up -d postgres redis nacos ceph-rgw ceph-init zenoh-router-1 zenoh-router-2 zenoh-router-3
+#   - PostgreSQL: robot-postgres   (localhost:55432, robot_user/robot_password, 库 nav_deployer)
+#   - Redis:      robot-redis      (localhost:6379)
+#   - MinIO:      robot-ceph-rgw   (localhost:7480, cephadmin/cephpassword)
+# 本文件只负责应用容器（IDEA 本地跑时无需本文件）。
+services:
+  # Spring Boot 应用（镜像内已包含前端构建产物，8083 直接访问完整 UI）
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ${APP_IMAGE:-nav-deployer:v0.0.7}
+    container_name: nav-deployer-app
+    ports:
+      # 与 IDEA 时代地址完全一致：前端 http://localhost:5173、后端 http://localhost:8083
+      # （不再保留 IDEA/Docker 双实例并行，容器独占这些端口）
+      - "5173:8083"
+      - "8083:8083"
+    environment:
+      # 基础设施与 zenoh 路由同在 robot-platform-network：直接用容器 DNS + 容器内端口
+      # （postgres 容器内是 5432，宿主机 55432 仅本机 IDEA 用）
+      SPRING_DATASOURCE_URL: jdbc:postgresql://robot-postgres:5432/nav_deployer
+      SPRING_DATASOURCE_USERNAME: robot_user
+      SPRING_DATASOURCE_PASSWORD: robot_password
+      SPRING_DATA_REDIS_HOST: robot-redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINIO_ENDPOINT: http://robot-ceph-rgw:7480
+      # 预签名 URL 的 MinIO 对外端口（host 按浏览器访问地址自动推导）
+      MINIO_EXTERNAL_PORT: "7480"
+      MINIO_ACCESS_KEY: cephadmin
+      MINIO_SECRET_KEY: cephpassword
+      MINIO_BUCKET: user-avatars
+      MINIO_MAPS_BUCKET: nav-maps
+      # 与仿真机器人共享网络，直接使用桥接服务的 Docker DNS 名称。
+      SIM_AGV_ENABLED: ${SIM_AGV_ENABLED:-true}
+      SIM_AGV_WS_URL: ${SIM_AGV_WS_URL:-ws://agv-bridge:9090}
+      # 机器人统一 HTTP 端口（地图/3D/mesh/原生包），host 取 SIM_AGV_WS_URL 的主机名，须与机器人 HTTP_PORT 一致
+      SIM_AGV_HTTP_PORT: ${SIM_AGV_HTTP_PORT:-8080}
+      SIM_AGV_TF_CHILD_FRAME: ${SIM_AGV_TF_CHILD_FRAME:-AGV002/base_link}
+      NATIVE_MAP_TOKEN: ${NATIVE_MAP_TOKEN:-}
+      # ---- RMS 对接（zenoh）----
+      # 未显式关闭时容器会连接打包内置的 zenoh 路由（config-json5.json）并自动注册
+      RMS_ENABLED: ${RMS_ENABLED:-true}
+      # 多实例/与本机开发同时运行时必须指定不同 SN（默认从固定种子生成，重复会互相顶号）
+      RMS_ROBOT_SN: ${RMS_ROBOT_SN:-}
+      # 多实例时给不同显示名，便于 RMS 页面区分
+      RMS_ROBOT_NAME: ${RMS_ROBOT_NAME:-JY历飞雨}
+      # 切换 zenoh 环境时挂载外部配置并设置此路径（bj/cc/sz 变体见 src/main/resources）
+      # 默认加载 docker 变体：endpoints 指向 host.docker.internal:7447（宿主机发布端口 → zenoh-router-1）；
+      # 容器内 localhost 连不到任何 zenoh，IDEA 本机开发才用 classpath 的 localhost 变体
+      RMS_ZENOH_CONFIG_FILE: ${RMS_ZENOH_CONFIG_FILE:-/app/config/zenoh.json5}
+      # ---- RMS 日志收集/质检图片/teach 采集样例目录（Linux 容器需挂载真实路径，Windows 默认值无效）----
+      RMS_INSPECTION_IMAGE_DIR: ${RMS_INSPECTION_IMAGE_DIR:-}
+      RMS_TEACH_SAMPLE_DIR: ${RMS_TEACH_SAMPLE_DIR:-}
+    networks:
+      - default
+      - robot
+      # 基础设施网络（postgres/redis/minio/zenoh-router）：DB 与 zenoh 走容器内网 DNS，
+      # 不依赖 host.docker.internal（部分引擎/防火墙下该路径不通，曾致 DB 连不上崩溃循环）
+      - platform
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # 日志持久化（RMS log/collect 打包的就是这里的文件）
+      - app_logs:/app/logs
+      # RMS 任务模板持久化（task_template/add 下发的模板落盘；容器重建后无需重新下发，
+      # 路径对应 rms.template_dir 默认值 data/rms-templates，可用 RMS_TEMPLATE_DIR 覆盖）
+      - rms_templates:/app/data/rms-templates
+      # zenoh 连接配置（docker 变体：host.docker.internal:7447；切换 bj/cc/sz 环境替换左侧文件名）
+      - ./modules/app/src/main/resources/config-json5-cz.json:/app/config/zenoh.json5:ro
+      # teach 采集 / 质检图片样例目录挂载示例：
+      # - ./docker/samples:/app/samples:ro     # 配合 RMS_TEACH_SAMPLE_DIR=/app/samples
+      # 质检图片样例目录：默认仓库内样例目录（相对路径由 Compose 解析为绝对路径，
+      # Docker Desktop / WSL 引擎均可用；放 jpg/png 进 docker/inspection-images 即生效）。
+      # 要用本机图片时在 .env 设 INSPECTION_IMAGE_HOST_DIR（按运行环境写对形式）：
+      #   Docker Desktop(PowerShell/Git Bash): C:/Users/think/Pictures
+      #   WSL 内 Compose:                     /mnt/c/Users/think/Pictures
+      - type: bind
+        source: ${INSPECTION_IMAGE_HOST_DIR:-./docker/inspection-images}
+        target: /app/inspection-images
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+
+networks:
+  robot:
+    external: true
+    name: ${ROBOT_DOCKER_NETWORK:-simulated_chassis_agv_network}
+  platform:
+    external: true
+    name: ${PLATFORM_DOCKER_NETWORK:-robot-platform-network}
+
+volumes:
+  app_logs:
+  rms_templates:

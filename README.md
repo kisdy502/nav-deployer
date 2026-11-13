@@ -76,3 +76,15 @@ kubectl delete -f k8s/ && kubectl apply -f k8s/                  # 重新部署�
 
 # 日常调试
 docker compose up -d postgres redis minio
+
+
+
+ ROSBRIDGE-WS - >>>>> 【接收|变化】机器人→上位机 | op=publish | topic=/agv/status | payload={"op":"publish","topic":"/agv/status","msg":{"header":{"stamp":{"sec":5526,"nanosec":642000000},"frame_id":"map"},"agv_id":"AGV002","state":"IDLE","battery":46.56856155395508,"battery_state":"DISCHARGING","charging":false,"charge_connected":false,"battery_data_valid":true,"pose_initialized":true,"active_command_id":"","active_node_id":"","mode":"NAVIGATION","map_name":"map1027S","slam_alive":false,"map_age_sec":263113}}
+
+2026-11-09 17:18:06.959 [Thread-4] INFO  [traceId=,spanId=,robot_code=] RMS-ZENOH - >>>>> 【下行|查询】RMS→上位机 | key=zioneer/qc-robot/robot/RB_20261105_00065/api/v1/mapping/download | payload=[map URL redacted]
+
+2026-11-09 17:18:09.324 [rms-closed-loop] INFO  [traceId=,spanId=,robot_code=] c.a.n.r.i.gateway.RmsCommandGateway - RMS query key=zioneer/qc-robot/robot/RB_20261105_00065/api/v1/mapping/download segment=mapping/download reply_status=502 reply_msg=Lightning 地图服务连接或传输失败: Connection refused (connect failed)（baseUrl=http://agv-bridge:8080）
+
+2026-11-09 17:18:09.325 [rms-closed-loop] INFO  [traceId=,spanId=,robot_code=] RMS-ZENOH - <<<<< 【上行|响应】上位机→RMS | key=zioneer/qc-robot/robot/RB_20261105_00065/api/v1/mapping/download | reply={"status":502,"msg":"Lightning 地图服务连接或传输失败: Connection refused (connect failed)（baseUrl=http://agv-bridge:8080）","timestamp":1794215889321,"data":{}}
+
+2026-11-09 17:18:12.102 [WebSocketConnectReadThread-74] INFO  [traceId=,spanId=,robot_code=] ROSBRIDGE-WS - >>>>> 【接收|变化】机器人→上位机 | op=publish | topic=/agv/status | payload={"op":"publish","topic":"/agv/status","msg":{"header":{"stamp":
