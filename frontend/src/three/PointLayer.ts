@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
-import { pointStyle } from '@/utils/pointStyle'
+import { pointStyle, POINT_UNIFIED_COLOR } from '@/utils/pointStyle'
 
 /** 圆盘半径（加大：点位更醒目）；前半圆=朝向箭头（v1 经典样式），后半圆=类型符号（偏移避让）。 */
 const R = 0.5
@@ -45,6 +45,7 @@ interface PointVisual {
   disc: THREE.Mesh
   discMat: THREE.MeshBasicMaterial
   symbol: THREE.Mesh
+  symbolMat: THREE.MeshBasicMaterial
   pointType: string
   arrow: THREE.Mesh
   ring: THREE.Mesh
@@ -90,8 +91,8 @@ export class PointLayer {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(R, 32), discMat)
     disc.position.z = 0.01
     disc.userData.pick = { type: 'point', id: p.id }
-    const symbol = new THREE.Mesh(symbolGeometry(p.point_type),
-      new THREE.MeshBasicMaterial({ color: GLYPH_COLOR, side: THREE.DoubleSide }))
+    const symbolMat = new THREE.MeshBasicMaterial({ color: pointTypeColor(p.point_type), side: THREE.DoubleSide })
+    const symbol = new THREE.Mesh(symbolGeometry(p.point_type), symbolMat)
     symbol.position.z = 0.025
     symbol.userData.pick = { type: 'point', id: p.id }
     // 朝向箭头占前半圆（圆心→边缘的大三角，v1 经典样式），后半圆留给类型符号。
@@ -138,7 +139,7 @@ export class PointLayer {
 
     root.add(disc, symbol, arrow, ring, halo, handle, label)
     this.group.add(root)
-    return { root, disc, discMat, symbol, pointType: p.point_type, arrow, ring, halo, handle, labelInner: inner, x: p.x, y: p.y, yaw: p.yaw }
+    return { root, disc, discMat, symbol, symbolMat, pointType: p.point_type, arrow, ring, halo, handle, labelInner: inner, x: p.x, y: p.y, yaw: p.yaw }
   }
 
   private updateVisual(v: PointVisual, p: MapPointLike, selected: boolean) {
@@ -147,7 +148,9 @@ export class PointLayer {
     v.yaw = p.yaw
     v.root.position.x = p.x
     v.root.position.y = p.y
-    v.discMat.color.setHex(pointTypeColor(p.point_type))
+    // 圆盘统一绿；类型区分只靠图标颜色（整点换色视觉太花，平衡方案）
+    v.discMat.color.setHex(new THREE.Color(POINT_UNIFIED_COLOR).getHex())
+    v.symbolMat.color.setHex(pointTypeColor(p.point_type))
     // 路径点（及 outline 为空的类型）不画符号，只留朝向箭头
     v.symbol.visible = pointStyle(p.point_type).outline.length > 0
     if (v.pointType !== p.point_type) {

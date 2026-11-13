@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Box, Connection, Crop, Location, Odometer, Operation, Position, Share, Switch, VideoPlay } from '@element-plus/icons-vue'
 import EditorToolbar2 from '@/components/editor2/EditorToolbar2.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 import MapCanvas2 from '@/components/editor2/MapCanvas2.vue'
 import PropertyPanel2 from '@/components/editor2/PropertyPanel2.vue'
 import MappingPanel2 from '@/components/editor2/MappingPanel2.vue'
@@ -260,6 +261,7 @@ onBeforeUnmount(() => {
         @remove-floor="removeFloor"
         @open-manage="manageVisible = true"
       />
+      <ThemeToggle />
     </el-header>
 
     <el-container class="editor-body">
@@ -492,7 +494,11 @@ onBeforeUnmount(() => {
 .editor-header {
   background: var(--el-bg-color);
   border-bottom: 1px solid var(--el-border-color-light);
-  padding: 0;
+  padding: 0 8px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .editor-body {

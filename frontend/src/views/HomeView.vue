@@ -543,7 +543,7 @@ onBeforeUnmount(() => {})
   border: 1px solid var(--el-border-color);
   border-right: none;
   border-radius: 6px 0 0 6px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--el-bg-color-overlay);
   color: var(--el-text-color-regular);
   cursor: pointer;
   display: flex;

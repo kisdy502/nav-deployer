@@ -43,7 +43,7 @@ public final class PresignedUrlPut {
         for (String contentType : candidates) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .header("Content-Type", contentType)
+//                    .header("Content-Type", contentType)
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
                     .timeout(Duration.ofSeconds(HTTP_TIMEOUT_SEC))
                     .build();
