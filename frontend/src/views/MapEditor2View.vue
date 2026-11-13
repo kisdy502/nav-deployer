@@ -14,7 +14,7 @@ import RobotStatusBar from '@/components/editor/RobotStatusBar.vue'
 import { useMapEditor2Store } from '@/stores/mapEditor2'
 import { useRobotStore } from '@/stores/robot'
 import { WAYPOINT_TYPE_LABELS, ZONE_TYPE_LABELS, CONN_TYPE_LABELS, type ConnType } from '@/types/map2'
-import { pointStyle, POINT_UNIFIED_COLOR } from '@/utils/pointStyle'
+import { pointStyle, POINT_UNIFIED_COLOR, outlineSvgPoints } from '@/utils/pointStyle'
 
 /** v2 多楼层地图编辑器：布局对齐 v1 EditorView（工具栏/左列表/画布/右属性/状态栏/浮动按钮），并整合主页地图功能（建图/遥控/重定位/测量）。 */
 const props = defineProps<{ id: string }>()
@@ -303,8 +303,9 @@ onBeforeUnmount(() => {
                     <polygon points="1,0 0,-1 0,1" fill="#52667a" />
                     <polygon
                       v-if="pointStyle(w.wp_type).outline.length > 0"
-                      :points="pointStyle(w.wp_type).outline.map(([x, y]) => (x * 0.5 - 0.5) + ',' + -y * 0.5).join(' ')"
+                      :points="outlineSvgPoints(pointStyle(w.wp_type))"
                       :fill="pointStyle(w.wp_type).color"
+                      fill-rule="evenodd"
                     />
                   </svg>
                 </span>

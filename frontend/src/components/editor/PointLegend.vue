@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { POINT_STYLES, POINT_UNIFIED_COLOR } from '@/utils/pointStyle'
+import { POINT_STYLES, POINT_UNIFIED_COLOR, outlineSvgPoints } from '@/utils/pointStyle'
 
 /** 点位类型图例 + 地图比例尺：每次进入页面一律折叠（不占画布）；会话内可点击展开/收起，不记忆状态。 */
 const expanded = ref(false)
@@ -39,8 +39,9 @@ function toggle() {
           <polygon points="1,0 0,-1 0,1" fill="var(--el-text-color-secondary)" />
           <polygon
             v-if="style.outline.length > 0"
-            :points="style.outline.map(([x, y]) => (x * 0.5 - 0.5) + ',' + -y * 0.5).join(' ')"
+            :points="outlineSvgPoints(style)"
             :fill="style.color"
+            fill-rule="evenodd"
           />
         </svg>
         {{ style.label }}

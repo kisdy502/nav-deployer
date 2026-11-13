@@ -30,7 +30,13 @@ const LEGACY_ALIAS: Record<string, PointStyleKey> = {
 export const POINT_UNIFIED_COLOR = '#95d475'
 export const GLYPH_BASE_COLOR = '#52667a'
 
-export const POINT_STYLES: Record<PointStyleKey, { color: string; label: string; outline: number[][] }> = {
+export const POINT_STYLES: Record<PointStyleKey, {
+  color: string
+  label: string
+  outline: number[][]
+  /** 可选挖孔环（如重定位 pin 空心）；渲染端须配 evenodd / Shape.holes */
+  holes?: number[][]
+}> = {
   // 路径点：无图形符号（outline 为空 → 圆盘上只留朝向箭头）
   path: { color: POINT_UNIFIED_COLOR, label: '路径点', outline: [] },
   charge: {
@@ -76,12 +82,16 @@ export const POINT_STYLES: Record<PointStyleKey, { color: string; label: string;
   relocation: {
     color: '#8e24aa',
     label: '重定位点',
-    // 定位 pin 剪影：带尖圆立于底盘圆上（单连通多边形，尖与底盘重叠融合）
+    // 空心定位 pin：带尖圆立于底盘圆上（单连通外环），头圆中心挖孔（holes + evenodd）
     outline: [
-      [-0.5, -0.35], [-0.38, -0.72], [-0.15, -0.84], [0.15, -0.84], [0.38, -0.72], [0.5, -0.35],
-      [0.16, 0.35],
-      [0.68, 0.52], [0.42, 0.82], [-0.42, 0.82], [-0.68, 0.52],
-      [-0.16, 0.35],
+      [-0.5, 0.35], [-0.38, 0.72], [-0.15, 0.84], [0.15, 0.84], [0.38, 0.72], [0.5, 0.35],
+      [0.16, -0.35],
+      [0.68, -0.52], [0.42, -0.82], [-0.42, -0.82], [-0.68, -0.52],
+      [-0.16, -0.35],
+    ],
+    holes: [
+      [0.24, 0.38], [0.17, 0.55], [0, 0.62], [-0.17, 0.55],
+      [-0.24, 0.38], [-0.17, 0.21], [0, 0.16], [0.17, 0.21],
     ],
   },
   parking: {
@@ -118,3 +128,21 @@ export const normalizePointType = (type: string): PointStyleKey => {
 }
 
 export const pointStyle = (type: string) => POINT_STYLES[normalizePointType(type)]
+
+/**
+ * 类型图形的 SVG polygon points 串（外环 + 可选孔环拼接），须配合 fill-rule="evenodd"。
+ * scale/offset 用于把 outline 坐标适配进列表/图例的小圆内（与朝向箭头共存时整体左移缩放）。
+ */
+export const outlineSvgPoints = (
+  style: ReturnType<typeof pointStyle>,
+  scale = 0.5,
+  offsetX = -0.5,
+): string => {
+  const ring = (points: number[][]) =>
+    points.map(([x, y]) => `${x * scale + offsetX},${-y * scale}`).join(' ')
+  const rings = [ring(style.outline)]
+  if (style.holes?.length) {
+    rings.push(ring(style.holes))
+  }
+  return rings.join(' ')
+}

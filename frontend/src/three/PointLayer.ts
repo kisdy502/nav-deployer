@@ -25,6 +25,17 @@ function symbolGeometry(type: string): THREE.BufferGeometry {
     else shape.lineTo(x * R * SYMBOL_SCALE, y * R * SYMBOL_SCALE)
   })
   shape.closePath()
+  // 挖孔环（如重定位空心 pin）：THREE.Shape.holes，孔内透出圆盘底色
+  const holes = pointStyle(type).holes
+  if (holes?.length) {
+    const hole = new THREE.Path()
+    holes.forEach(([x, y], i) => {
+      if (i === 0) hole.moveTo(x * R * SYMBOL_SCALE, y * R * SYMBOL_SCALE)
+      else hole.lineTo(x * R * SYMBOL_SCALE, y * R * SYMBOL_SCALE)
+    })
+    hole.closePath()
+    shape.holes.push(hole)
+  }
   return new THREE.ShapeGeometry(shape)
 }
 
