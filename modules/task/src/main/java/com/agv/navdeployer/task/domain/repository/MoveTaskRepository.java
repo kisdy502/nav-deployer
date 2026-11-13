@@ -10,6 +10,11 @@ public interface MoveTaskRepository {
 
     void update(MoveTask task);
 
+    /** feedback 周期刷新：只更新位姿/状态字段，且仅当任务仍处于非终态（防迟到事务覆盖终态判定） */
+    void updateFeedback(MoveTask task, boolean markExecuting);
+
+    List<MoveTask> findNonTerminal();
+
     MoveTask findById(Long id);
 
     MoveTask findLatestActive();
@@ -17,9 +22,9 @@ public interface MoveTaskRepository {
     List<MoveTask> findList(String status, int limit);
 
     /**
-     * 服务重启恢复：把非终态任务批量标记为 FAILED
+     * 将库中指定非终态批量改为 FAILED
      *
-     * @return 恢复条数
+     * @return 恢复数
      */
     int markStaleInterrupted(String errorMessage);
 }

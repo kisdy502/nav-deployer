@@ -33,6 +33,31 @@ public class MoveTaskRepositoryImpl implements MoveTaskRepository {
     }
 
     @Override
+    public void updateFeedback(MoveTask task, boolean markExecuting) {
+        // 条件更新：任务一旦终态（或已暂停收口）就不再刷新——迟到的 feedback 事务无法覆盖 FAILED/SUCCEEDED
+        LambdaUpdateWrapper<MoveTask> wrapper = Wrappers.lambdaUpdate(MoveTask.class)
+                .eq(MoveTask::getId, task.getId())
+                .in(MoveTask::getStatus, MoveTask.STATUS_CREATED, MoveTask.STATUS_DISPATCHED,
+                        MoveTask.STATUS_EXECUTING)
+                .set(MoveTask::getCurrentX, task.getCurrentX())
+                .set(MoveTask::getCurrentY, task.getCurrentY())
+                .set(MoveTask::getCurrentTheta, task.getCurrentTheta())
+                .set(MoveTask::getAgvState, task.getAgvState())
+                .set(MoveTask::getUpdatedAt, LocalDateTime.now());
+        if (markExecuting) {
+            wrapper.set(MoveTask::getStatus, MoveTask.STATUS_EXECUTING);
+        }
+        moveTaskMapper.update(null, wrapper);
+    }
+
+    @Override
+    public List<MoveTask> findNonTerminal() {
+        return moveTaskMapper.selectList(Wrappers.lambdaQuery(MoveTask.class)
+                .in(MoveTask::getStatus, MoveTask.STATUS_CREATED, MoveTask.STATUS_DISPATCHED,
+                        MoveTask.STATUS_EXECUTING, MoveTask.STATUS_PAUSED));
+    }
+
+    @Override
     public MoveTask findById(Long id) {
         MoveTask task = moveTaskMapper.selectById(id);
         if (task == null) {

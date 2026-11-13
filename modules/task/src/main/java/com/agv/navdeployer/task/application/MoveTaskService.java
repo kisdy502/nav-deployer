@@ -107,7 +107,34 @@ public class MoveTaskService {
     public void recoverStaleTasks() {
         int recovered = moveTaskRepository.markStaleInterrupted("服务重启，任务中断");
         if (recovered > 0) {
-            log.warn("recovered {} stale move tasks to FAILED on startup", recovered);
+            log.warn("recovered {} stale tasks after restart", recovered);
+        }
+        reapZombieTasks();
+    }
+
+    /**
+     * 僵尸任务巡检（每分钟）：库中非终态 + 内存无 runtime + 超时未更新 → 强制 FAILED。
+     * 兜底收尾链路异常（如迟到事务覆盖终态）导致的 DISPATCHED 僵尸——它会卡死 RMS busy 锁。
+     */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
+    public void reapZombieTasks() {
+        try {
+            java.time.LocalDateTime staleBefore = java.time.LocalDateTime.now().minusMinutes(5);
+            for (MoveTask task : moveTaskRepository.findNonTerminal()) {
+                if (activeRuntimes.containsKey(task.getId())) {
+                    continue;
+                }
+                if (task.getUpdatedAt() != null && task.getUpdatedAt().isAfter(staleBefore)) {
+                    continue;
+                }
+                task.markFinished(MoveTask.STATUS_FAILED,
+                        "僵尸任务清理：运行时已丢失且超过 5 分钟无更新，强制终结（防 busy 锁死）");
+                moveTaskRepository.update(task);
+                log.warn("zombie move task reaped: id={}, stale since {}", task.getId(), task.getUpdatedAt());
+                publishTaskEvent(task);
+            }
+        } catch (Exception exception) {
+            log.debug("zombie reap failed: {}", exception.getMessage());
         }
     }
 
@@ -603,7 +630,8 @@ public class MoveTaskService {
         long now = System.currentTimeMillis();
         if (statusChanged || now - runtime.lastFeedbackWriteMs >= FEEDBACK_DB_WRITE_INTERVAL_MS) {
             runtime.lastFeedbackWriteMs = now;
-            moveTaskRepository.update(task);
+            // 条件更新（仅非终态时刷新）：防迟到的 feedback 事务把已终结的 FAILED 覆盖回 DISPATCHED（曾致 busy 锁死）
+            moveTaskRepository.updateFeedback(task, statusChanged);
             publishTaskEvent(task);
         }
     }
