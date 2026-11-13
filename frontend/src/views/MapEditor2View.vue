@@ -501,6 +501,12 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+/* 工具栏必须占满 header 剩余宽度，否则其内部 space-between 失效导致按钮组全部挤到左边 */
+.editor-header :deep(.toolbar) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .editor-body {
   flex: 1;
   min-height: 0;
