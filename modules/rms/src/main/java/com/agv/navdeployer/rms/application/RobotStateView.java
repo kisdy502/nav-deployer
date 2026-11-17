@@ -113,9 +113,8 @@ public class RobotStateView {
 
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
-        String mode = status == null || status.mode() == null
-                ? "unknown"
-                : status.mode().toLowerCase(Locale.ROOT);
+
+        String mode = rmsMode();
         String mapName = status == null || status.mapName() == null ? "-" : status.mapName();
         double x = pose == null ? 0.0 : pose.x();
         double y = pose == null ? 0.0 : pose.y();
@@ -177,6 +176,11 @@ public class RobotStateView {
         );
     }
 
+    /** RMS 的 mode 是操控模式词表（auto/manual），机器人侧 /agv/status 的 mode 是导航状态（navigation/mapping），语义不同不可透传；仿真无手动模式，恒 auto */
+    private String rmsMode() {
+        return "auto";
+    }
+
     private static double round(double v) {
         return Math.round(v * 1000.0) / 1000.0;
     }
@@ -221,8 +225,7 @@ public class RobotStateView {
         double x = pose == null ? 0.0 : pose.x();
         double y = pose == null ? 0.0 : pose.y();
         double yaw = pose == null ? 0.0 : pose.yaw();
-        String mode = status == null || status.mode() == null
-                ? "auto" : status.mode().toLowerCase(Locale.ROOT);
+        String mode = rmsMode();
         String mapName = status == null || status.mapName() == null ? "-" : status.mapName();
         double pct = batteryPct(status);
         String now = OffsetDateTime.now().toLocalDateTime().toString();
@@ -262,7 +265,7 @@ public class RobotStateView {
                         odom == null ? 0.0 : round(odom.x()),
                         odom == null ? 0.0 : round(odom.y()))),
                 new BodyFullStatusData.Position(
-                        "L1",
+                        "map",
                         round(Math.cos(yaw / 2.0)), 0.0, 0.0, round(Math.sin(yaw / 2.0)),
                         now,
                         round(x), round(y), 0.0, round(yaw)),
