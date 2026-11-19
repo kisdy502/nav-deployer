@@ -103,16 +103,24 @@ if (-not $ready) {
 }
 
 Write-Host "== 4/4 start deployer $($slotCfg.Container) ==" -ForegroundColor Cyan
+
+# PS 5.1 trap: EAP=Stop + native stderr redirect (2>$null) aborts the script when
+# "docker inspect <missing>" writes to stderr. Query existence via "docker ps -a" instead.
+function Test-ContainerExists([string]$name) {
+    $found = docker ps -a --filter "name=^/$name$" --format "{{.Names}}"
+    return ("$found".Trim() -eq $name)
+}
+
 if ($slotCfg.Legacy) {
     $legacyCtr = "nav-deployer-$($slotCfg.Legacy)"
-    if (docker inspect $legacyCtr 2>$null) {
+    if (Test-ContainerExists $legacyCtr) {
         docker rm -f $legacyCtr | Out-Null
         Write-Host "  removed legacy container $legacyCtr" -ForegroundColor Yellow
     }
 }
 $ctr = $slotCfg.Container
-if (docker inspect $ctr 2>$null) {
-    $proj = docker inspect $ctr --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>$null
+if (Test-ContainerExists $ctr) {
+    $proj = docker inspect $ctr --format '{{index .Config.Labels "com.docker.compose.project"}}'
     if (-not $proj) {
         Write-Host "  takeover legacy unmanaged container $ctr" -ForegroundColor Yellow
         docker rm -f $ctr | Out-Null

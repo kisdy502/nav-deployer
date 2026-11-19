@@ -51,20 +51,28 @@ docker compose --env-file $ENVFILE -f docker-compose.slot-a.yml build app-slot-a
 if ($LASTEXITCODE -ne 0) { throw "docker compose build failed" }
 
 Write-Host "== 3/3 recreate slots: $($Slot -join ',') ==" -ForegroundColor Cyan
+
+# PS 5.1 trap: EAP=Stop + native stderr redirect (2>$null) aborts the script when
+# "docker inspect <missing>" writes to stderr. Query existence via "docker ps -a" instead.
+function Test-ContainerExists([string]$name) {
+    $found = docker ps -a --filter "name=^/$name$" --format "{{.Names}}"
+    return ("$found".Trim() -eq $name)
+}
+
 foreach ($s in $Slot) {
     $cfg = Slot-Cfg $s
     if (-not $cfg -or -not (Test-Path $cfg.File)) { Write-Host "  skip slot $s (unknown or missing $($cfg.File))" -ForegroundColor Yellow; continue }
 
     if ($cfg.Legacy) {
         $legacyCtr = "nav-deployer-$($cfg.Legacy)"
-        if (docker inspect $legacyCtr 2>$null) {
+        if (Test-ContainerExists $legacyCtr) {
             docker rm -f $legacyCtr | Out-Null
             Write-Host "  slot $s : removed legacy container $legacyCtr" -ForegroundColor Yellow
         }
     }
     $ctr = $cfg.Container
-    if (docker inspect $ctr 2>$null) {
-        $proj = docker inspect $ctr --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>$null
+    if (Test-ContainerExists $ctr) {
+        $proj = docker inspect $ctr --format '{{index .Config.Labels "com.docker.compose.project"}}'
         if (-not $proj) {
             Write-Host "  slot $s : takeover legacy unmanaged container $ctr" -ForegroundColor Yellow
             docker rm -f $ctr | Out-Null
