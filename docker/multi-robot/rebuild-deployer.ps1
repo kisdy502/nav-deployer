@@ -22,9 +22,11 @@ $machineEnv = @{}
 Get-Content $ENVFILE | ForEach-Object {
     if ($_ -match '^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$') { $machineEnv[$Matches[1]] = $Matches[2].Trim() }
 }
-if (-not $Slot) {
+# powershell -File invocation passes "-Slot A,B" as ONE string; split it back into an array
+$Slot = @($Slot | ForEach-Object { $_.Split(',') } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+if (-not $Slot -or -not $Slot[0]) {
     if (-not $machineEnv.ContainsKey('SLOTS') -or -not $machineEnv['SLOTS']) { throw "SLOTS not defined in machines\$Machine.env" }
-    $Slot = $machineEnv['SLOTS'].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    $Slot = @($machineEnv['SLOTS'].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
 
 function Slot-Cfg([string]$s) {
