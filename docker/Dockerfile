@@ -52,10 +52,14 @@ RUN groupadd -r spring && useradd -r -g spring spring \
 
 COPY --from=build /build/modules/app/target/*.jar app.jar
 
+# 仓库 data/rms-templates 预置为种子目录；命名卷非空时 Docker 不会用镜像内容回填，
+# 由入口 cp -n 只补卷里缺失的模板（运行期经 task_template/add 下发/更新的版本不动）
+COPY --chown=spring:spring data/rms-templates /app/rms-templates-seed
+
 # 容器内 JVM 按内存百分比自适应堆大小
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Duser.timezone=Asia/Shanghai"
 
 EXPOSE 8083
 
 USER spring
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh", "-c", "cp -n /app/rms-templates-seed/. /app/data/rms-templates/ >/dev/null 2>&1 || true; exec java $JAVA_OPTS -jar /app/app.jar"]

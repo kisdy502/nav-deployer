@@ -1,21 +1,20 @@
-# AGV003 专属上位机实例（与主实例 app=AGV002 并行）：
-#   启动：docker compose -f docker-compose.agv004.yml -p nav-deployer up -d
-#   前端 http://localhost:5174  后端 http://localhost:8183
-# 隔离三要素：
-#   - 独立数据库 nav_deployer_004（同一 robot-postgres 实例内多库，flyway 自动建表）
-#   - 独立 docker 网络 chassis-agv004_agv_network（ws://agv-bridge:9090 在该网络内解析到 AGV003 的桥，
-#     与 AGV002 网络里的同名容器互不可见——同名不同网，天然隔离）
-#   - 独立 RMS 身份（SN/NAME），zenoh 按 SN 区分两台车
-# 一键部署见 docker/multi-robot/deploy-agv003.ps1（含仿真栈/建库/健康检查）
+# 槽位 C 上位机实例（每台机器的第 3 台车，前端 5175 / 后端 8184）：
+#   启动：docker compose --env-file docker/multi-robot/machines/<机号>.env -f docker-compose.slot-c.yml -p nav-deployer up -d
+#   首次部署：docker/multi-robot/deploy-slot.ps1 -Slot C -Machine <机号>
+# 槽位隔离三要素（同机多槽、跨机同配置）：
+#   - 独立数据库 nav_deployer_c（本机 robot-postgres 内多库，flyway 自动建表）
+#   - 独立 docker 网络 chassis-slot-c_agv_network（ws://agv-bridge:9090 解析到本槽仿真桥）
+#   - RMS 身份从 machines/<机号>.env 注入（RMS_SN_C/RMS_NAME_C，全局唯一，缺失即报错）
+# 端口表与机器布局见 docker/multi-robot/README.md
 services:
-  app-agv004:
+  app-slot-c:
     image: ${APP_IMAGE:-nav-deployer:v0.0.7}
-    container_name: nav-deployer-agv004
+    container_name: nav-deployer-c
     ports:
       - "5175:8083"
       - "8184:8083"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://robot-postgres:5432/nav_deployer_004
+      SPRING_DATASOURCE_URL: jdbc:postgresql://robot-postgres:5432/nav_deployer_c
       SPRING_DATASOURCE_USERNAME: robot_user
       SPRING_DATASOURCE_PASSWORD: robot_password
       SPRING_DATA_REDIS_HOST: robot-redis
@@ -29,23 +28,23 @@ services:
       SIM_AGV_ENABLED: "true"
       SIM_AGV_WS_URL: ws://agv-bridge:9090
       SIM_AGV_HTTP_PORT: "8080"
-      SIM_AGV_TF_CHILD_FRAME: AGV004/base_link
+      SIM_AGV_TF_CHILD_FRAME: ${AGV_ID_C:-AGV004}/base_link
       NATIVE_MAP_TOKEN: zioneer.com
       NATIVE_MAP_BASE_URL: http://agv-bridge:8091
       RMS_ENABLED: "true"
-      RMS_ROBOT_SN: jy-agv004-20261113-multicar
-      RMS_ROBOT_NAME: JYTREE004
+      RMS_ROBOT_SN: ${RMS_SN_C:?RMS_SN_C missing -- pass --env-file docker/multi-robot/machines/<id>.env}
+      RMS_ROBOT_NAME: ${RMS_NAME_C:?RMS_NAME_C missing -- pass --env-file docker/multi-robot/machines/<id>.env}
       RMS_ZENOH_CONFIG_FILE: /app/config/zenoh.json5
       RMS_INSPECTION_IMAGE_DIR: /app/inspection-images
     networks:
       - default
-      - robot004
+      - robot-slot-c
       - platform
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - app_logs_004:/app/logs
-      - rms_templates_004:/app/data/rms-templates
+      - app_logs_c:/app/logs
+      - rms_templates_c:/app/data/rms-templates
       - ./modules/app/src/main/resources/config-json5-think.json:/app/config/zenoh.json5:ro
       - type: bind
         source: ${INSPECTION_IMAGE_HOST_DIR:-./docker/inspection-images}
@@ -56,13 +55,13 @@ services:
     restart: unless-stopped
 
 networks:
-  robot004:
+  robot-slot-c:
     external: true
-    name: chassis-agv004_agv_network
+    name: chassis-slot-c_agv_network
   platform:
     external: true
     name: robot-platform-network
 
 volumes:
-  app_logs_004:
-  rms_templates_004:
+  app_logs_c:
+  rms_templates_c:

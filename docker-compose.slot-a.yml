@@ -1,0 +1,72 @@
+# 槽位 A 上位机实例（每台机器的第 1 台车，前端 5173 / 后端 8083；全舰队唯一带 build 的槽位文件）：
+#   启动：docker compose --env-file docker/multi-robot/machines/<机号>.env -f docker-compose.slot-a.yml -p nav-deployer up -d
+#   首次部署：docker/multi-robot/deploy-slot.ps1 -Slot A -Machine <机号>
+#   本机开发：bash deploy.sh up（自动带 machines/dev.env）
+# 槽位隔离三要素（同机多槽、跨机同配置）：
+#   - 数据库 nav_deployer（沿用历史库名，不叫 nav_deployer_a：dev/存量机的地图与任务数据在库里，改名=丢数据重导）
+#   - docker 网络 simulated_chassis_agv_network（槽 A 仿真栈 = D:\workspace\simulated_chassis，ws://agv-bridge:9090）
+#   - RMS 身份从 machines/<机号>.env 注入（RMS_SN_A/RMS_NAME_A，全局唯一，缺失即报错）
+# 端口表与机器布局见 docker/multi-robot/README.md
+services:
+  app-slot-a:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: ${APP_IMAGE:-nav-deployer:v0.0.7}
+    container_name: nav-deployer-a
+    ports:
+      - "5173:8083"
+      - "8083:8083"
+    environment:
+      # 基础设施与 zenoh 路由同在 robot-platform-network：直接用容器 DNS + 容器内端口
+      SPRING_DATASOURCE_URL: jdbc:postgresql://robot-postgres:5432/nav_deployer
+      SPRING_DATASOURCE_USERNAME: robot_user
+      SPRING_DATASOURCE_PASSWORD: robot_password
+      SPRING_DATA_REDIS_HOST: robot-redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINIO_ENDPOINT: http://robot-ceph-rgw:7480
+      MINIO_EXTERNAL_PORT: "7480"
+      MINIO_ACCESS_KEY: cephadmin
+      MINIO_SECRET_KEY: cephpassword
+      MINIO_BUCKET: user-avatars
+      MINIO_MAPS_BUCKET: nav-maps
+      SIM_AGV_ENABLED: ${SIM_AGV_ENABLED:-true}
+      SIM_AGV_WS_URL: ${SIM_AGV_WS_URL:-ws://agv-bridge:9090}
+      SIM_AGV_HTTP_PORT: ${SIM_AGV_HTTP_PORT:-8080}
+      SIM_AGV_TF_CHILD_FRAME: ${AGV_ID_A:-AGV002}/base_link
+      NATIVE_MAP_TOKEN: ${NATIVE_MAP_TOKEN:-}
+      RMS_ENABLED: ${RMS_ENABLED:-true}
+      RMS_ROBOT_SN: ${RMS_SN_A:?RMS_SN_A missing -- pass --env-file docker/multi-robot/machines/<id>.env}
+      RMS_ROBOT_NAME: ${RMS_NAME_A:?RMS_NAME_A missing -- pass --env-file docker/multi-robot/machines/<id>.env}
+      RMS_ZENOH_CONFIG_FILE: ${RMS_ZENOH_CONFIG_FILE:-/app/config/zenoh.json5}
+      RMS_INSPECTION_IMAGE_DIR: ${RMS_INSPECTION_IMAGE_DIR:-}
+      RMS_TEACH_SAMPLE_DIR: ${RMS_TEACH_SAMPLE_DIR:-}
+    networks:
+      - default
+      - robot-slot-a
+      - platform
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app_logs_a:/app/logs
+      - rms_templates_a:/app/data/rms-templates
+      - ./modules/app/src/main/resources/config-json5-think.json:/app/config/zenoh.json5:ro
+      - type: bind
+        source: ${INSPECTION_IMAGE_HOST_DIR:-./docker/inspection-images}
+        target: /app/inspection-images
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+
+networks:
+  robot-slot-a:
+    external: true
+    name: ${ROBOT_DOCKER_NETWORK:-simulated_chassis_agv_network}
+  platform:
+    external: true
+    name: ${PLATFORM_DOCKER_NETWORK:-robot-platform-network}
+
+volumes:
+  app_logs_a:
+  rms_templates_a:

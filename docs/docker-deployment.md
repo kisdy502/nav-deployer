@@ -1,6 +1,6 @@
 # Docker 打包与部署
 
-更新日期：2026-11-03。对应根目录 `docker-compose.yml`、`deploy.sh` 和 `docker/Dockerfile`。
+更新日期：2026-11-18。对应根目录 `docker-compose.slot-a.yml`（槽 A，本机开发单车）、`deploy.sh` 和 `docker/Dockerfile`。
 
 ## 快速启动与 build / up 区别
 
@@ -15,7 +15,7 @@ bash deploy.sh up
 
 | 命令 | 实际作用 |
 |---|---|
-| `bash deploy.sh build` | 执行 `docker compose build app`，只构建上位机镜像，不启动容器 |
+| `bash deploy.sh build` | 执行 `docker compose build app-slot-a`，只构建上位机镜像，不启动容器 |
 | `bash deploy.sh up` | 执行 `docker compose up -d --build`，构建应用并后台启动或更新 postgres、redis、minio、app |
 | `bash deploy.sh start` | 执行 `docker compose up -d --no-build`，不构建直接用现有镜像启动——上位机代码未变时秒起，适合"稳定跑上位机"模式 |
 | `bash deploy.sh logs` | 跟随上位机日志 |
@@ -42,15 +42,16 @@ docker network inspect simulated_chassis_agv_network
 
 该命令只检查网络是否存在和其中的容器，不会创建或修改网络。网络由机器人项目创建，
 提示不存在时先启动机器人或设置实际网络名。确认后无需每次执行。
-上位机启动后，网络中应出现 `nav-deployer-app`；同时它仍在项目默认网络连接数据库等服务。
+上位机启动后，网络中应出现 `nav-deployer-a`（槽 A 容器名）；同时它仍在项目默认网络连接数据库等服务。
 
 访问 http://localhost:8083 。`build` 和 `up` 使用相同的 Compose 镜像标签。
 `up` 会构建并启动全部服务；已有数据库和对象存储数据卷会保留。
 
 ## 根目录 .env
 
-没有 `.env` 时手动新建，与 `docker-compose.yml` 同级；已有文件时按需修改并保留其他配置。
-Compose 自动读取它用于变量替换，无需添加 `env_file`。建议配置如下：
+没有 `.env` 时手动新建，与 `docker-compose.slot-a.yml` 同级；已有文件时按需修改并保留其他配置。
+Compose 自动读取它用于变量替换（`deploy.sh` 传入的 `machines/dev.env` 优先级更高），无需添加 `env_file`。
+注意：RMS 身份（SN）一律写在 `docker/multi-robot/machines/dev.env`，不要放根 `.env`。建议配置如下：
 
 ```dotenv
 ROBOT_DOCKER_NETWORK=simulated_chassis_agv_network
