@@ -45,7 +45,7 @@ if (-not $NoPull) {
 }
 
 Write-Host "== 2/3 build image (nav-deployer:v0.0.7) ==" -ForegroundColor Cyan
-docker compose -f docker-compose.slot-a.yml build app-slot-a
+docker compose --env-file $ENVFILE -f docker-compose.slot-a.yml build app-slot-a
 if ($LASTEXITCODE -ne 0) { throw "docker compose build failed" }
 
 Write-Host "== 3/3 recreate slots: $($Slot -join ',') ==" -ForegroundColor Cyan
