@@ -136,6 +136,8 @@ export class MapScene {
   private controls: OrbitControls | null = null
   private orbitMode = false
   private rightStart: { x: number; y: number } | null = null
+  /** 环绕模式左键旋转开关：重定位等拖拽工具接管左键时关闭，拖拽中视角保持不动 */
+  private orbitRotateEnabled = true
 
   // 镜头跟随机器人：RViz 式硬锁（每帧对齐，零延迟零追赶），手动平移/定位后自动退出
   private followEnabled = false
@@ -266,6 +268,7 @@ export class MapScene {
         this.controls.maxPolarAngle = Math.PI / 2 - 0.04
         this.controls.minDistance = 1.5
         this.controls.maxDistance = 700
+        this.controls.enableRotate = this.orbitRotateEnabled
         // 3D 下缩放/旋转改变地面像素密度，实时刷新 LOD 与比例尺
         this.controls.addEventListener('change', () => this.updateViewMetrics())
       }
@@ -295,6 +298,16 @@ export class MapScene {
 
   get isOrbitMode() {
     return this.orbitMode
+  }
+
+  /**
+   * 环绕模式左键旋转开关：重定位等拖拽工具激活时关闭（拖拽只转雷达预览，
+   * 视角角度保持不动，否则两者一起动难以精准对位）；工具退出后恢复。
+   * 右键平移 / 滚轮缩放不受影响。
+   */
+  setOrbitRotateEnabled(on: boolean) {
+    this.orbitRotateEnabled = on
+    if (this.controls) this.controls.enableRotate = on
   }
 
   get isFollowEnabled() {

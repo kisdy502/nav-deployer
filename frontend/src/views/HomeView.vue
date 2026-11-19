@@ -196,6 +196,8 @@ async function startMappingNow() {
 // ---------- 未定位冷启动引导 ----------
 // 机器人整机重启后既无建图也无定位（pose_initialized=false），页面却仍展示上次地图，
 // 误导"机器人在图中"。检测到该状态时引导：选图启动定位 / 开始建图 / 仅浏览。
+// 会话内曾定位就绪（seenInitialized）后失新 ≠ 冷启动：那是 TF 过期（负载过高等），
+// 机器人侧会自动恢复，不弹引导，只挂横幅提示。
 const locateGuide = reactive({
   visible: false,
   mapId: undefined as number | undefined,
@@ -209,6 +211,16 @@ const needsLocalization = computed(() =>
   // 状态失新（桥接连着但机器人停发 /agv/status）不判"未定位"：残留末帧可能已过期
   && robot.snapshot?.status_fresh !== false
   && !robot.status.pose_initialized
+  && !robot.seenInitialized
+  && robot.status.mode !== 'MAPPING'
+  && robot.status.mode !== 'RELOCALIZING')
+
+const localizationLost = computed(() =>
+  robot.connStatus === 'open'
+  && robot.status != null
+  && robot.snapshot?.status_fresh !== false
+  && !robot.status.pose_initialized
+  && robot.seenInitialized
   && robot.status.mode !== 'MAPPING'
   && robot.status.mode !== 'RELOCALIZING')
 
@@ -289,6 +301,14 @@ onBeforeUnmount(() => {})
         <ThemeToggle />
       </div>
     </header>
+
+    <el-alert
+      v-if="localizationLost"
+      class="loc-lost-bar"
+      type="warning"
+      show-icon
+      :closable="false"
+      title="机器人定位暂时失新（负载过高或 TF 超时），通常在负载恢复后数秒内自动继续；期间导航下发已被拦截，无需重新选图定位" />
 
     <div class="browse-body">
       <!-- 左侧编辑菜单栏 -->
@@ -445,6 +465,11 @@ onBeforeUnmount(() => {})
   padding: 10px 16px;
   background: var(--el-bg-color);
   border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.loc-lost-bar {
+  flex-shrink: 0;
+  padding: 4px 16px;
 }
 
 .header-title {

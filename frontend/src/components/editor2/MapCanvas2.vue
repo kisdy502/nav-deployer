@@ -395,8 +395,10 @@ onMounted(() => {
   scene.pickRoot.add(polygonLayer.group, pathLayer.group, pointLayer.group, robotLayer.group, robotLayer.trailGroup)
   scene.scene.add(scanLayer.group)
   offTheme = onThemeChange(() => scene?.applyTheme())
-  // 区域/货架绘制、重定位工具接管左键，关闭左键空白平移（中键/右键仍可平移）
+  // 区域/货架绘制、重定位工具接管左键，关闭左键空白平移（中键/右键仍可平移）；
+  // 3D 环绕下重定位拖拽同理关闭左键旋转——拖拽只转雷达预览，视角角度不动
   scene.leftDragPanEnabled = store.tool !== 'zone' && store.tool !== 'shelf' && store.tool !== 'initialPose'
+  scene.setOrbitRotateEnabled(store.tool !== 'initialPose')
   scene.setViewRotation(viewRot.value)
   registerRobotLayer(robotLayer)
 
@@ -584,6 +586,8 @@ watch(
     hidePosePreview()
     if (scene) {
       scene.leftDragPanEnabled = tool !== 'zone' && tool !== 'shelf' && tool !== 'initialPose'
+      // 重定位激活时暂停 3D 环绕左键旋转（拖拽只转雷达预览，视角角度不动），退出恢复
+      scene.setOrbitRotateEnabled(tool !== 'initialPose')
     }
   },
 )
@@ -1515,8 +1519,10 @@ function onCtx(hit: PickResult | null, world: THREE.Vector3, ev: MouseEvent) {  
         v-if="robot.status && !robot.status.pose_initialized
           && robot.status.mode !== 'MAPPING' && robot.status.mode !== 'RELOCALIZING'"
         class="nd-chip nd-chip--warn"
-        title="机器人当前无建图无定位，画面是上位机存档地图（仅为浏览）"
-      >⚠ 机器人未定位 · 仅为地图浏览</span>
+        :title="robot.seenInitialized
+          ? '定位暂时失新（如仿真负载过高导致 TF 过期），机器人侧负载恢复后数秒内自动恢复，期间画面位姿可能冻结'
+          : '机器人当前无建图无定位，画面是上位机存档地图（仅为浏览）'"
+      >{{ robot.seenInitialized ? '⚠ 定位失新 · 等待自动恢复' : '⚠ 机器人未定位 · 仅为地图浏览' }}</span>
     </div>
     <div class="nd-overlay nd-overlay--tr">
       <button class="nd-chip nd-chip--btn" :disabled="!map3dName" @click="show3d = true">三维地图</button>

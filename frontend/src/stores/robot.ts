@@ -17,6 +17,9 @@ export const useRobotStore = defineStore('robot', () => {
   const scan1Cloud = shallowRef<ScanCloud | null>(null)
   const scan2Cloud = shallowRef<ScanCloud | null>(null)
   const started = ref(false)
+  // 本 SSE 会话内曾见过 pose_initialized=true：用于区分"冷启动未定位"与
+  // "定位失新（节点存活、TF 过期，可自动恢复）"。桥接断连≈机器人重启，回冷启动语义
+  const seenInitialized = ref(false)
 
   const pose = computed(() => snapshot.value?.pose ?? null)
   const velocity = computed(() => snapshot.value?.velocity ?? null)
@@ -28,6 +31,8 @@ export const useRobotStore = defineStore('robot', () => {
   const charging = computed(() => status.value?.charging ?? null)
 
   function applySnapshot(t: TelemetrySnapshot) {
+    if (!t.connected) seenInitialized.value = false
+    else if (t.status?.pose_initialized) seenInitialized.value = true
     const p = t.pose
     if (p) {
       const last = trail.value[trail.value.length - 1]
@@ -107,6 +112,7 @@ export const useRobotStore = defineStore('robot', () => {
     status,
     battery,
     charging,
+    seenInitialized,
     start,
     control,
     setInitialPose,

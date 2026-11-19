@@ -102,6 +102,14 @@ const batteryView = computed(() => {
 const notLocalized = computed(() =>
   !!robot.status && robot.snapshot?.status_fresh !== false
   && !robot.status.pose_initialized
+  && !robot.seenInitialized
+  && robot.status.mode !== 'MAPPING' && robot.status.mode !== 'RELOCALIZING')
+
+/** 定位失新：会话内曾就绪、当前 TF 过期（负载过高等），机器人侧可自动恢复，勿按冷启动引导 */
+const localizationLost = computed(() =>
+  !!robot.status && robot.snapshot?.status_fresh !== false
+  && !robot.status.pose_initialized
+  && robot.seenInitialized
   && robot.status.mode !== 'MAPPING' && robot.status.mode !== 'RELOCALIZING')
 
 /** 机械臂归位联锁状态（角色映射 + 单臂 profile 回退，与后端 ArmStateMonitor 同参数；闸门以后端判定为准） */
@@ -238,6 +246,12 @@ async function onCancelTask() {
           <el-divider direction="vertical" />
           <span style="color: #e6a23c" title="机器人既无建图也无定位，当前画面仅为上位机存档地图浏览；回到主页可选图启动定位或开始建图">
             ⚠ 机器人未定位（仅为地图浏览）
+          </span>
+        </template>
+        <template v-else-if="localizationLost">
+          <el-divider direction="vertical" />
+          <span style="color: #e6a23c" title="定位暂时失新（如仿真负载过高导致 TF 过期），机器人侧负载恢复后数秒内自动恢复；期间导航下发被后端拦截">
+            ⚠ 定位失新 · 等待自动恢复
           </span>
         </template>
         <el-divider direction="vertical" />
