@@ -62,4 +62,5 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -Duser.timezone=Asia/Shanghai"
 EXPOSE 8083
 
 USER spring
-ENTRYPOINT ["sh", "-c", "cp -n /app/rms-templates-seed/. /app/data/rms-templates/ >/dev/null 2>&1 || true; exec java $JAVA_OPTS -jar /app/app.jar"]
+# GNU cp 无 -r 时会静默跳过 "src/." 目录（BSD 写法陷阱），必须 cp -rn
+ENTRYPOINT ["sh", "-c", "cp -rn /app/rms-templates-seed/. /app/data/rms-templates/ >/dev/null 2>&1 || true; exec java $JAVA_OPTS -jar /app/app.jar"]
