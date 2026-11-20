@@ -1,5 +1,10 @@
 ﻿server:
   port: 8083
+  # 大 JSON 响应压缩（实时栅格 ~5MB → ~数百KB）；SSE(text/event-stream) 不在清单内不受影响
+  compression:
+    enabled: true
+    mime-types: application/json
+    min-response-size: 4096
   tomcat:
     accesslog:
       enabled: true

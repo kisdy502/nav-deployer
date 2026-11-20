@@ -30,9 +30,9 @@
 # 【最常用】改了上位机代码，某台机器全部车重建（在对应机器上执行）
 powershell -ExecutionPolicy Bypass -File D:\workspace\nav-deployer\docker\multi-robot\rebuild-deployer.ps1 -Machine 205
 
-# 只重建该机的部分槽位 / 跳过 git pull
-powershell -ExecutionPolicy Bypass -File rebuild-deployer.ps1 -Machine 205 -Slot A,B
-powershell -ExecutionPolicy Bypass -File rebuild-deployer.ps1 -Machine 205 -NoPull
+# cd到项目根目录，只重建该机的部分槽位 / 跳过 git pull
+powershell -ExecutionPolicy Bypass -File docker/multi-robot/rebuild-deployer.ps1 -Machine 205 -Slot A,B
+powershell -ExecutionPolicy Bypass -File docker/multi-robot/rebuild-deployer.ps1 -Machine 205 -NoPull
 
 # 新机器/新车首次部署（每槽一次：仿真栈 + 建库 + 上位机）
 powershell -ExecutionPolicy Bypass -File deploy-slot.ps1 -Slot A -Machine 206
@@ -51,6 +51,20 @@ docker compose --env-file docker\multi-robot\machines\205.env -f docker-compose.
 2. 启动基础设施（qc-robot 平台栈：robot-postgres / robot-redis / robot-ceph-rgw / zenoh router）
 3. 仓库加 `machines/<本机机号>.env` 并提交
 4. 逐槽 `deploy-slot.ps1`，每槽前端导入并发布同一份地图包
+
+## CPU 钉核分配（多槽同机必看）
+
+仿真 Gazebo 稳态 ~1 核、桥+定位+导航栈 2-3 核，不钉核会互抢导致"旋转无进展/遥测冻结"。分配（16 核起配）：
+
+| 槽 | 仿真 cpuset | 桥 cpuset | 说明 |
+|----|------------|-----------|------|
+| A | 0,1（sim 仓库钉死） | 2-6（sim 仓库钉死） | 不可改，除非动 simulated_chassis 仓库 |
+| B | 7,8 | 9,10,11 | 模板默认，.env 可覆盖 |
+| C | 12,13 | 14,15 | 模板默认，.env 可覆盖 |
+| D | 不钉（浮动） | 不钉（浮动） | 24 核以上跑满 4 槽再启用（模板内有注释行） |
+
+- 机器不足 16 核时只跑槽 A（8 核刚好覆盖 A 的 0-6）；cpuset 越界容器直接起不来
+- 上位机容器不钉核（JVM 负载中等，浮动即可）
 
 ## 关键规则与坑
 

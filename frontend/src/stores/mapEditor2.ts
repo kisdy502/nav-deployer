@@ -210,14 +210,33 @@ export const useMapEditor2Store = defineStore('mapEditor2', {
       this.cancelDraft()
       this.selection = null
       if (this.tool !== 'select') this.setTool('select')
+      const applyFrame = (g: MapGridVO) => {
+        if (!g.received_at || g.received_at !== this.liveGrid?.received_at) {
+          this.liveGrid = g
+        }
+      }
+      // 首选 worker：~5MB JSON 的下载+解析移出主线程（建图卡顿根因）
+      if (!liveWorker && typeof Worker !== 'undefined') {
+        try {
+          liveWorker = new Worker(new URL('../workers/liveGridWorker.ts', import.meta.url), { type: 'module' })
+          liveWorker.onmessage = (e: MessageEvent) => {
+            const { grid, data } = e.data as { grid: Omit<MapGridVO, 'data'>; data: Int8Array }
+            applyFrame({ ...grid, data })
+          }
+        } catch {
+          liveWorker = undefined
+        }
+      }
+      if (liveWorker) {
+        liveWorker.postMessage({ type: 'start', url: '/api/v2/maps/live', interval: 3000 })
+        return
+      }
+      // 回退：无 Worker 环境走主线程轮询
       const tick = async () => {
         if (liveRequestInFlight) return
         liveRequestInFlight = true
         try {
-          const g = await getLiveGridV2()
-          if (!g.received_at || g.received_at !== this.liveGrid?.received_at) {
-            this.liveGrid = g
-          }
+          applyFrame(await getLiveGridV2())
         } catch {
           /* 后端暂无实时图，忽略 */
         } finally {
@@ -225,13 +244,13 @@ export const useMapEditor2Store = defineStore('mapEditor2', {
         }
       }
       void tick()
-      // 3s 轮询：机器人侧 /map 每 5s 一帧，更高频率只会拉到重复帧
       liveTimer = window.setInterval(tick, 3000)
     },
 
     stopLivePreview() {
       if (liveTimer) window.clearInterval(liveTimer)
       liveTimer = undefined
+      liveWorker?.postMessage({ type: 'stop' })
       this.livePreview = false
     },
 
@@ -566,6 +585,7 @@ export const useMapEditor2Store = defineStore('mapEditor2', {
 // 实时预览轮询定时器（模块级，不进响应式 state）
 let liveTimer: number | undefined
 let liveRequestInFlight = false
+let liveWorker: Worker | undefined
 
 /** 版本号乐观本地自增（真实版本以服务端返回为准，reload 后即校正）。 */
 function bumpVersion(version: string): string {

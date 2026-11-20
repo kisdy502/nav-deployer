@@ -35,8 +35,9 @@ export interface MapGridVO {
   origin_x: number
   origin_y: number
   origin_yaw: number
-  /** -1 未知 / 0 空闲 / 1~100 占据，行优先，第 0 行在世界坐标最下方 */
-  data: number[]
+  /** -1 未知 / 0 空闲 / 1~100 占据，行优先，第 0 行在世界坐标最下方；
+   *  实时帧由 worker 以 Int8Array 回传（~5MB JSON 的解析在 worker 内完成） */
+  data: number[] | Int8Array
   received_at: string | null
 }
 

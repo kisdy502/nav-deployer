@@ -1,6 +1,8 @@
 services:
   robot-simulation:
     image: simulated-robot:wheel-3d
+    # CPU 隔离：槽 A 占 0-6（sim 仓库钉死），槽 B 从 7 起；可用 .env 的 SIM_CPUSET 覆盖
+    cpuset: "${SIM_CPUSET:-7,8}"
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
@@ -26,6 +28,8 @@ services:
 
   agv-bridge:
     image: agv-bridge:wheel-3d
+    # 桥+定位+导航栈比仿真重：给 3 核；可用 .env 的 BRIDGE_CPUSET 覆盖
+    cpuset: "${BRIDGE_CPUSET:-9,10,11}"
     restart: unless-stopped
     init: true
     stop_grace_period: 45s

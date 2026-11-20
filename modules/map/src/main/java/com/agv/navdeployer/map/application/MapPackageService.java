@@ -418,10 +418,18 @@ public class MapPackageService {
             mapMetaMapper.insert(map);
 
             importTree(map, file.mapInfo());
-            if (installLightning != null && entries.containsKey(LIGHTNING_PACKAGE)) {
-                installLightning.accept(mapName, entries.get(LIGHTNING_PACKAGE));
-                map.setRobotMapName(mapName);
-                mapMetaMapper.updateById(map);
+            if (entries.containsKey(LIGHTNING_PACKAGE)) {
+                if (installLightning != null) {
+                    installLightning.accept(mapName, entries.get(LIGHTNING_PACKAGE));
+                    map.setRobotMapName(mapName);
+                    mapMetaMapper.updateById(map);
+                } else {
+                    log.warn("map package {} contains {} but native transfer disabled"
+                            + " (NATIVE_MAP_TOKEN blank): robot side cannot localize on this map", mapName, LIGHTNING_PACKAGE);
+                }
+            } else {
+                log.warn("map package {} has no {} entry: exported without native (lightning) artifacts,"
+                        + " switching to this map will be rejected by robot", mapName, LIGHTNING_PACKAGE);
             }
             log.info("v2 map package imported: id={}, name={}, floors={}",
                     map.getId(), mapName, file.mapInfo().floors() == null ? 0 : file.mapInfo().floors().size());

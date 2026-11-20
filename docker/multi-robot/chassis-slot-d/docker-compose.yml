@@ -1,6 +1,9 @@
 services:
   robot-simulation:
     image: simulated-robot:wheel-3d
+    # CPU 隔离：槽 A/B/C 已占 0-15，槽 D 默认不钉核（浮动）；
+    # 24 核以上机器跑满 4 槽时在 .env 设 SIM_CPUSET=16,17 并取消下行注释
+    # cpuset: "${SIM_CPUSET:-16,17}"
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
@@ -26,6 +29,8 @@ services:
 
   agv-bridge:
     image: agv-bridge:wheel-3d
+    # 24 核以上机器跑满 4 槽时：.env 设 BRIDGE_CPUSET=18,19,20 并取消下行注释
+    # cpuset: "${BRIDGE_CPUSET:-18,19,20}"
     restart: unless-stopped
     init: true
     stop_grace_period: 45s
