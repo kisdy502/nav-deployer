@@ -42,6 +42,19 @@ public class RmsRobotSession {
     private volatile boolean registered;
     private ScheduledFuture<?> heartbeatTask;
     private ScheduledFuture<?> statusTask;
+    private ScheduledFuture<?> positionTask;
+
+    /**
+     * 位置上报独立调度器：避免与心跳的同步 query（最长阻塞 queryTimeoutMs）互相抢占。
+     */
+    private final ScheduledThreadPoolExecutor positionScheduler = createPositionScheduler();
+
+    /**
+     * 上次已上报的位姿基准（x, y, yaw）与时间戳，用于位移/角度阈值判定。
+     */
+    private volatile double[] lastReportedPose;
+    private volatile long lastPositionReportAt = 0L;
+    private long lastPositionLogMs = 0L;
 
     public boolean isRegistered() {
         return registered;
@@ -54,6 +67,17 @@ public class RmsRobotSession {
     private static ScheduledThreadPoolExecutor createReportScheduler() {
         ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
             Thread thread = new Thread(runnable, "rms-report-scheduler");
+            thread.setDaemon(true);
+            return thread;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        executor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        return executor;
+    }
+
+    private static ScheduledThreadPoolExecutor createPositionScheduler() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, runnable -> {
+            Thread thread = new Thread(runnable, "rms-position-scheduler");
             thread.setDaemon(true);
             return thread;
         });
@@ -223,6 +247,55 @@ public class RmsRobotSession {
         }
     }
 
+    /**
+     * 位置上报判定：距上次上报超过基线周期（默认 1 秒），或位移超过
+     * {@code positionMoveThresholdM}（默认 5 厘米）/ 角度超过
+     * {@code positionYawThresholdRad}（默认约 2.86 度）时立即上报。
+     */
+    private void positionReportSafe() {
+        try {
+            RmsProperties.Report report = props.getReport();
+            var pose = stateView.currentPose();
+            long now = System.currentTimeMillis();
+            boolean intervalDue = now - lastPositionReportAt >= report.getPositionIntervalMs();
+            boolean thresholdExceeded = false;
+            if (pose != null) {
+                double[] baseline = lastReportedPose;
+                if (baseline == null) {
+                    thresholdExceeded = true;
+                } else {
+                    double move = Math.hypot(pose.x() - baseline[0], pose.y() - baseline[1]);
+                    double yawDelta = normalizeAngle(pose.yaw() - baseline[2]);
+                    thresholdExceeded = move >= report.getPositionMoveThresholdM()
+                            || Math.abs(yawDelta) >= report.getPositionYawThresholdRad();
+                }
+            }
+            if (!intervalDue && !thresholdExceeded) {
+                return;
+            }
+            reportGateway.publishPosition();
+            lastPositionReportAt = now;
+            if (pose != null) {
+                lastReportedPose = new double[]{pose.x(), pose.y(), pose.yaw()};
+            }
+            long logThrottle = Math.max(props.getReport().getPeriodicLogIntervalMs(),
+                    props.getReport().getUnchangedLogIntervalMs());
+            if (now - lastPositionLogMs > logThrottle) {
+                lastPositionLogMs = now;
+                log.info("rms position report active (interval={}ms, moveThreshold={}m, yawThreshold={}rad)",
+                        report.getPositionIntervalMs(), report.getPositionMoveThresholdM(),
+                        report.getPositionYawThresholdRad());
+            }
+        } catch (Exception exception) {
+            log.warn("rms position report failed: {}", exception.getMessage());
+            markChannelBroken();
+        }
+    }
+
+    private static double normalizeAngle(double angle) {
+        return Math.atan2(Math.sin(angle), Math.cos(angle));
+    }
+
     private RegisterRequest buildRegisterRequest(RmsProperties.Robot robot) {
         return new RegisterRequest(
                 stateView.robotCode(), robot.getRobotSn(), robot.getRobotSn(), robot.getRobotName(),
@@ -241,17 +314,27 @@ public class RmsRobotSession {
         RmsProperties.Report report = props.getReport();
         long heartbeatMs = Math.max(1000L, report.getHeartbeatIntervalMs());
         long statusMs = Math.max(1000L, report.getStatusIntervalMs());
+        long positionTickMs = Math.max(50L, report.getPositionTickMs());
         ScheduledFuture<?> newHeartbeat = null;
+        ScheduledFuture<?> newPosition = null;
         try {
             newHeartbeat = scheduler.scheduleAtFixedRate(
                     this::heartbeatSafe, heartbeatMs, heartbeatMs, TimeUnit.MILLISECONDS);
             ScheduledFuture<?> newStatus = scheduler.scheduleAtFixedRate(
                     this::statusReportSafe, statusMs, statusMs, TimeUnit.MILLISECONDS);
+            if (report.isPublishPosition()) {
+                newPosition = positionScheduler.scheduleAtFixedRate(
+                        this::positionReportSafe, positionTickMs, positionTickMs, TimeUnit.MILLISECONDS);
+            }
             heartbeatTask = newHeartbeat;
             statusTask = newStatus;
+            positionTask = newPosition;
         } catch (RuntimeException exception) {
             if (newHeartbeat != null) {
                 newHeartbeat.cancel(false);
+            }
+            if (newPosition != null) {
+                newPosition.cancel(false);
             }
             throw exception;
         }
@@ -265,6 +348,10 @@ public class RmsRobotSession {
         if (statusTask != null) {
             statusTask.cancel(false);
             statusTask = null;
+        }
+        if (positionTask != null) {
+            positionTask.cancel(false);
+            positionTask = null;
         }
     }
 
@@ -289,6 +376,7 @@ public class RmsRobotSession {
     public void shutdown() {
         resultReporter.detach();
         scheduler.shutdownNow();
+        positionScheduler.shutdownNow();
         closeChannel();
     }
 }

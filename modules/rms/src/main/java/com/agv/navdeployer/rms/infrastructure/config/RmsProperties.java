@@ -241,9 +241,69 @@ public class RmsProperties {
         private long statusIntervalMs = 5000;
         private boolean publishLegacyStatus = true;
         private boolean publishBodyStatus = true;
+        /**
+         * 高频位置上报总开关（RMS 侧通道未启用时会忽略该 topic，打开无副作用）。
+         */
+        private boolean publishPosition = true;
+        /**
+         * 位置上报基线周期：无变化时按该周期兜底上报（1 秒）。
+         */
+        private long positionIntervalMs = 1000;
+        /**
+         * 位置变化检测频率：位移/角度超过阈值时立即上报。
+         */
+        private long positionTickMs = 200;
+        /**
+         * 位移上报阈值（米）：5 厘米。
+         */
+        private double positionMoveThresholdM = 0.05;
+        /**
+         * 角度上报阈值（弧度）：约 2.86 度。
+         */
+        private double positionYawThresholdRad = 0.05;
         private boolean verboseLog = false;
         private long periodicLogIntervalMs = 30_000;
         private long unchangedLogIntervalMs = 60_000;
+
+        public boolean isPublishPosition() {
+            return publishPosition;
+        }
+
+        public void setPublishPosition(boolean publishPosition) {
+            this.publishPosition = publishPosition;
+        }
+
+        public long getPositionIntervalMs() {
+            return positionIntervalMs;
+        }
+
+        public void setPositionIntervalMs(long positionIntervalMs) {
+            this.positionIntervalMs = positionIntervalMs;
+        }
+
+        public long getPositionTickMs() {
+            return positionTickMs;
+        }
+
+        public void setPositionTickMs(long positionTickMs) {
+            this.positionTickMs = positionTickMs;
+        }
+
+        public double getPositionMoveThresholdM() {
+            return positionMoveThresholdM;
+        }
+
+        public void setPositionMoveThresholdM(double positionMoveThresholdM) {
+            this.positionMoveThresholdM = positionMoveThresholdM;
+        }
+
+        public double getPositionYawThresholdRad() {
+            return positionYawThresholdRad;
+        }
+
+        public void setPositionYawThresholdRad(double positionYawThresholdRad) {
+            this.positionYawThresholdRad = positionYawThresholdRad;
+        }
 
         public long getPeriodicLogIntervalMs() {
             return periodicLogIntervalMs;

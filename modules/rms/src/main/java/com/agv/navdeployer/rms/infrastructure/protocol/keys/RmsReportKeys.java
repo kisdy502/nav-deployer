@@ -12,6 +12,13 @@ public final class RmsReportKeys {
         return ctx.bodyApiBase() + "/status/report";
     }
 
+    /**
+     * 高频位置上报（1Hz 基线 + 位移/角度超阈值立即上报）。
+     */
+    public String positionReport() {
+        return ctx.bodyApiBase() + "/position/report";
+    }
+
     public String legacyStatusReport() {
         return ctx.robotScopedBase() + "/status/report";
     }

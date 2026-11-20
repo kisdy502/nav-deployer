@@ -26,6 +26,7 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
     private volatile Publisher bodyStatusPublisher;
     private volatile Publisher legacyStatusPublisher;
     private volatile Publisher legacyHeartbeatPublisher;
+    private volatile Publisher positionReportPublisher;
 
     public RmsReportGateway(RmsReportKeys keys, RobotStateView stateView,
                             ObjectMapper mapper, RmsProperties.Report reportProps) {
@@ -88,6 +89,28 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
 
     }
 
+    /**
+     * 发布高频位置上报（1Hz 基线 + 位移/角度超阈值触发），由会话层决定发送时机。
+     */
+    public void publishPosition() throws Exception {
+        ZenohChannel current = channel;
+        if (current == null || !current.isOpen()) {
+            return;
+        }
+        if (!reportProps.isPublishPosition()) {
+            return;
+        }
+        Publisher publisher = positionReportPublisher;
+        if (publisher == null) {
+            throw new IllegalStateException("position report publisher not initialized");
+        }
+        String reportPosition = mapper.writeValueAsString(stateView.buildPositionEnvelope());
+        if (reportProps.isVerboseLog()) {
+            RmsMessageLog.outboundPublish(keys.positionReport(), reportPosition);
+        }
+        publisher.put(reportPosition);
+    }
+
     @Override
     public void publish(TaskResultEnvelope envelope, String taskId) throws Exception {
         ZenohChannel current = channel;
@@ -110,6 +133,7 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
         bodyStatusPublisher = null;
         legacyStatusPublisher = null;
         legacyHeartbeatPublisher = null;
+        positionReportPublisher = null;
 
         if (reportProps.isPublishBodyStatus()) {
             bodyStatusPublisher =
@@ -119,6 +143,11 @@ public class RmsReportGateway implements RmsResultReporter.Sink {
         if (reportProps.isPublishLegacyStatus()) {
             legacyStatusPublisher =
                     current.declarePublisher(keys.legacyStatusReport());
+        }
+
+        if (reportProps.isPublishPosition()) {
+            positionReportPublisher =
+                    current.declarePublisher(keys.positionReport());
         }
 
         legacyHeartbeatPublisher =

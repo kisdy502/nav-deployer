@@ -152,6 +152,33 @@ public class RobotStateView {
         );
     }
 
+    /**
+     * 当前地图位姿，供位置上报的位移/角度阈值判定使用；遥测未就绪时返回 null。
+     */
+    public SimAgvTelemetry.PoseSnapshot currentPose() {
+        return telemetry.getMapPose();
+    }
+
+    /**
+     * 构造高频位置上报 envelope：data 为单个 Position 对象（含机器人墙钟 update_time）。
+     */
+    public StatusReportEnvelope buildPositionEnvelope() {
+        SimAgvTelemetry.PoseSnapshot pose = telemetry.getMapPose();
+        double x = pose == null ? 0.0 : pose.x();
+        double y = pose == null ? 0.0 : pose.y();
+        double yaw = pose == null ? 0.0 : pose.yaw();
+        String now = OffsetDateTime.now().toLocalDateTime().toString();
+        BodyFullStatusData.Position position = new BodyFullStatusData.Position(
+                "map",
+                round(Math.cos(yaw / 2.0)), 0.0, 0.0, round(Math.sin(yaw / 2.0)),
+                now,
+                round(x), round(y), 0.0, round(yaw));
+        return new StatusReportEnvelope(
+                position,
+                props.getRobot().getRobotSn(),
+                String.valueOf(System.currentTimeMillis()));
+    }
+
     public BodyStatusData bodyStatusData() {
         RmsTask active = taskRegistry.activeTask();
         String taskStatus = active == null ? "idle" : active.status().wireName();
